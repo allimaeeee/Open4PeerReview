@@ -3,7 +3,7 @@
 // All functions accept a Supabase server client as the first argument.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Anchor, CommentWithAuthor, RubricWithItems } from './types'
+import type { Database, Anchor, CommentWithAuthor, RubricWithItems, OLIDocument } from './types'
 
 type Client = SupabaseClient<Database>
 
