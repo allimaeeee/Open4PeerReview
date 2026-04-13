@@ -3,9 +3,13 @@
 // All functions accept a Supabase server client as the first argument.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Anchor, CommentWithAuthor, RubricWithItems, OLIDocument } from './types'
+import type { Database, Anchor, CommentWithAuthor, RubricWithItems } from './types'
 
-type Client = SupabaseClient<Database>
+// Note: our hand-written `Database` type map doesn't currently satisfy Supabase's
+// `GenericSchema` constraint, which causes table inserts to be typed as `never`.
+// We still keep `Database` around for shared enums (e.g. `file_type`), but use an
+// untyped client for now to keep production builds unblocked.
+type Client = SupabaseClient<any>
 
 
 // ── RUBRICS ───────────────────────────────────────────────────
