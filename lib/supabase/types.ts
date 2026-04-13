@@ -65,7 +65,7 @@ export interface RubricItem {
   created_at: string
 }
 
-export interface Document {
+export interface OLIDocument {
   id: string
   author_id: string
   title: string
@@ -101,7 +101,7 @@ export interface RubricWithItems extends Rubric {
   rubric_items: RubricItem[]
 }
 
-export interface DocumentWithRubrics extends Document {
+export interface DocumentWithRubrics extends OLIDocument {
   rubrics: Rubric[]
 }
 
@@ -127,9 +127,9 @@ export type Database = {
         Update: Partial<Omit<RubricItem, 'id' | 'created_at'>>
       }
       documents: {
-        Row: Document
-        Insert: Omit<Document, 'id' | 'created_at'>
-        Update: Partial<Omit<Document, 'id' | 'created_at'>>
+        Row: OLIDocument
+        Insert: Omit<OLIDocument, 'id' | 'created_at'>
+        Update: Partial<Omit<OLIDocument, 'id' | 'created_at'>>
       }
       document_rubrics: {
         Row: DocumentRubric
