@@ -65,7 +65,7 @@ export interface RubricItem {
   created_at: string
 }
 
-export interface OLIDocument {
+export interface Document {
   id: string
   author_id: string
   title: string
@@ -101,7 +101,7 @@ export interface RubricWithItems extends Rubric {
   rubric_items: RubricItem[]
 }
 
-export interface DocumentWithRubrics extends OLIDocument {
+export interface DocumentWithRubrics extends Document {
   rubrics: Rubric[]
 }
 
@@ -115,39 +115,76 @@ export type Database = {
         Row: User
         Insert: Omit<User, 'created_at'>
         Update: Partial<Omit<User, 'id' | 'created_at'>>
+        Relationships: []
       }
       rubrics: {
         Row: Rubric
         Insert: Omit<Rubric, 'id' | 'created_at'>
         Update: Partial<Omit<Rubric, 'id' | 'created_at'>>
+        Relationships: []
       }
       rubric_items: {
         Row: RubricItem
         Insert: Omit<RubricItem, 'id' | 'created_at'>
         Update: Partial<Omit<RubricItem, 'id' | 'created_at'>>
+        Relationships: []
       }
       documents: {
-        Row: OLIDocument
-        Insert: Omit<OLIDocument, 'id' | 'created_at'>
-        Update: Partial<Omit<OLIDocument, 'id' | 'created_at'>>
+        Row: Document
+        Insert: Omit<Document, 'id' | 'created_at'>
+        Update: Partial<Omit<Document, 'id' | 'created_at'>>
+        Relationships: []
       }
       document_rubrics: {
         Row: DocumentRubric
         Insert: Omit<DocumentRubric, 'assigned_at'>
-        Update: never
+        Update: Record<string, never>
+        Relationships: []
       }
       comments: {
         Row: Comment
         Insert: Omit<Comment, 'id' | 'created_at'>
         Update: Partial<Pick<Comment, 'body'>>
+        Relationships: []
       }
     }
-    Views: Record<string, never>
-    Functions: Record<string, never>
+    // Note: Supabase client typing requires `Views`/`Functions` to satisfy
+    // `Record<string, GenericView/GenericFunction>`. We don't define any views/functions
+    // yet, so we use a permissive record shape to keep the schema compatible.
+    Views: Record<
+      string,
+      {
+        Row: Record<string, unknown>
+        Insert: Record<string, unknown>
+        Update: Record<string, unknown>
+        Relationships: {
+          foreignKeyName: string
+          columns: string[]
+          isOneToOne?: boolean
+          referencedRelation: string
+          referencedColumns: string[]
+        }[]
+      }
+    >
+    Functions: Record<
+      string,
+      {
+        Args: Record<string, unknown> | never
+        Returns: unknown
+        SetofOptions?: {
+          isSetofReturn?: boolean
+          isOneToOne?: boolean
+          isNotNullable?: boolean
+          to: string
+          from: string
+        }
+      }
+    >
     Enums: {
       user_role: UserRole
       file_type: FileType
       anchor_type: AnchorType
     }
+    CompositeTypes: { [_ in never]: never }
   }
 }
