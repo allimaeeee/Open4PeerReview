@@ -1,0 +1,221 @@
+'use client'
+
+// components/auth/ProfileForm.tsx
+// Allows an existing user to update display_name, profession, and expert_domain.
+// Used on a /profile or /onboarding page.
+
+import { useState } from 'react'
+import { createBrowserSupabase } from '@/lib/supabase'
+import {
+  PROFESSION_LABELS,
+  EXPERT_DOMAIN_LABELS,
+  type AppUser,
+  type ProfileFormValues,
+  type UserProfession,
+  type ExpertDomain,
+} from '../../types'
+import { Constants } from '../../types/database.types'
+
+const PROFESSIONS = Constants.Enums.user_profession
+const DOMAINS     = Constants.Enums.expert_domain
+
+const inputBase =
+  'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
+  'placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 ' +
+  'focus:border-[#1e3a5f] transition-colors bg-white disabled:bg-slate-50 disabled:cursor-not-allowed'
+
+interface ProfileFormProps {
+  user: AppUser
+  onSaved?: (updated: AppUser) => void
+}
+
+export function ProfileForm({ user, onSaved }: ProfileFormProps) {
+  const [values, setValues] = useState<ProfileFormValues>({
+    displayName: user.display_name ?? '',
+    profession:  user.profession  ?? '',
+    expertDomain: user.expert_domain ?? '',
+  })
+  const [errors, setErrors]       = useState<Partial<Record<keyof ProfileFormValues, string>>>({})
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [loading, setLoading]     = useState(false)
+  const [saved, setSaved]         = useState(false)
+
+  const supabase = createBrowserSupabase()
+
+  const set = (field: keyof ProfileFormValues) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    setValues((v) => ({ ...v, [field]: e.target.value }))
+    setErrors((e2) => ({ ...e2, [field]: undefined }))
+    setSaved(false)
+  }
+
+  const validate = (): boolean => {
+    const newErrors: typeof errors = {}
+    if (!values.displayName.trim()) newErrors.displayName = 'Name is required'
+    if (!values.profession)   newErrors.profession   = 'Please select your profession'
+    if (!values.expertDomain) newErrors.expertDomain = 'Please select your domain'
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!validate()) return
+
+    setLoading(true)
+    setServerError(null)
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        display_name:  values.displayName,
+        profession:    values.profession  as UserProfession,
+        expert_domain: values.expertDomain as ExpertDomain,
+      })
+      .eq('id', user.id)
+      .select()
+      .single()
+
+    setLoading(false)
+
+    if (error) {
+      setServerError(error.message)
+      return
+    }
+
+    setSaved(true)
+    onSaved?.(data as AppUser)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} noValidate className="space-y-5">
+      {/* Display name */}
+      <div>
+        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Full name <span className="text-red-500">*</span>
+        </label>
+        <input
+          id="displayName"
+          type="text"
+          autoComplete="name"
+          value={values.displayName}
+          onChange={set('displayName')}
+          disabled={loading}
+          className={inputBase}
+        />
+        {errors.displayName && (
+          <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>
+        )}
+      </div>
+
+      {/* Email (read-only) */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          Email address
+        </label>
+        <input
+          type="email"
+          value={user.email}
+          readOnly
+          className={inputBase + ' bg-slate-50 text-slate-400 cursor-default'}
+        />
+        <p className="mt-1 text-xs text-slate-400">Email cannot be changed here.</p>
+      </div>
+
+      {/* Profession */}
+      <div>
+        <label htmlFor="profession" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Profession <span className="text-red-500">*</span>
+        </label>
+        <select
+          id="profession"
+          value={values.profession}
+          onChange={set('profession')}
+          disabled={loading}
+          className={inputBase}
+        >
+          <option value="">Select your profession…</option>
+          {PROFESSIONS.map((p) => (
+            <option key={p} value={p}>
+              {PROFESSION_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        {errors.profession && (
+          <p className="mt-1 text-xs text-red-600">{errors.profession}</p>
+        )}
+      </div>
+
+      {/* Expert domain */}
+      <div>
+        <label htmlFor="expertDomain" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Expert domain <span className="text-red-500">*</span>
+        </label>
+        <select
+          id="expertDomain"
+          value={values.expertDomain}
+          onChange={set('expertDomain')}
+          disabled={loading}
+          className={inputBase}
+        >
+          <option value="">Select your domain…</option>
+          {DOMAINS.map((d) => (
+            <option key={d} value={d}>
+              {EXPERT_DOMAIN_LABELS[d]}
+            </option>
+          ))}
+        </select>
+        {errors.expertDomain && (
+          <p className="mt-1 text-xs text-red-600">{errors.expertDomain}</p>
+        )}
+      </div>
+
+      {/* Server error */}
+      {serverError && (
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">
+          {serverError}
+        </p>
+      )}
+
+      {/* Submit */}
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          type="submit"
+          disabled={loading}
+          className={[
+            'flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150',
+            'inline-flex items-center justify-center gap-2',
+            loading
+              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm hover:shadow-md active:scale-[0.99]',
+          ].join(' ')}
+        >
+          {loading ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Saving…
+            </>
+          ) : (
+            'Save changes'
+          )}
+        </button>
+
+        {/* Inline saved confirmation */}
+        {saved && !loading && (
+          <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd" />
+            </svg>
+            Saved
+          </span>
+        )}
+      </div>
+    </form>
+  )
+}

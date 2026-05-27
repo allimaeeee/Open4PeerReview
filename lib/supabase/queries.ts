@@ -3,13 +3,10 @@
 // All functions accept a Supabase server client as the first argument.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database, Anchor, CommentWithAuthor, RubricWithItems } from './types'
+import type { Database } from '@/types/database.types'
+import type { FileType, RubricWithItems } from '@/types'
 
-// Note: our hand-written `Database` type map doesn't currently satisfy Supabase's
-// `GenericSchema` constraint, which causes table inserts to be typed as `never`.
-// We still keep `Database` around for shared enums (e.g. `file_type`), but use an
-// untyped client for now to keep production builds unblocked.
-type Client = SupabaseClient<any>
+type Client = SupabaseClient<Database>
 
 
 // ── RUBRICS ───────────────────────────────────────────────────
@@ -86,7 +83,7 @@ export async function uploadDocument(
   supabase: Client,
   file: File,
   title: string,
-  fileType: Database['public']['Enums']['file_type']
+  fileType: FileType
 ) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -154,61 +151,4 @@ export async function getSignedUrl(supabase: Client, storagePath: string, expire
 
   if (error || !data) throw error
   return data.signedUrl
-}
-
-
-// ── COMMENTS ─────────────────────────────────────────────────
-
-/** Fetch all comments for a document, with author display name */
-export async function getComments(
-  supabase: Client,
-  documentId: string
-): Promise<CommentWithAuthor[]> {
-  const { data, error } = await supabase
-    .from('comments')
-    .select('*, users(display_name, email)')
-    .eq('document_id', documentId)
-    .order('created_at', { ascending: true })
-
-  if (error) throw error
-  return data as CommentWithAuthor[]
-}
-
-/** Create a new comment with a format-specific anchor */
-export async function createComment(
-  supabase: Client,
-  payload: {
-    documentId: string
-    rubricItemId: string
-    body: string
-    anchor: Anchor
-  }
-) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-
-  const { data, error } = await supabase
-    .from('comments')
-    .insert({
-      document_id: payload.documentId,
-      rubric_item_id: payload.rubricItemId,
-      author_id: user.id,
-      body: payload.body,
-      anchor: payload.anchor,
-    })
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-/** Delete a comment (RLS ensures only author or admin can do this) */
-export async function deleteComment(supabase: Client, commentId: string) {
-  const { error } = await supabase
-    .from('comments')
-    .delete()
-    .eq('id', commentId)
-
-  if (error) throw error
 }
