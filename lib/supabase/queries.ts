@@ -152,3 +152,75 @@ export async function getSignedUrl(supabase: Client, storagePath: string, expire
   if (error || !data) throw error
   return data.signedUrl
 }
+
+
+// ── DASHBOARDS ────────────────────────────────────────────────
+
+/** Author dashboard: current user's documents with rubric assignments and review counts */
+export async function getMyDocumentsWithStats(supabase: Client) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select(`
+      id, title, file_type, created_at,
+      document_rubrics ( rubric:rubrics ( id, title ) ),
+      reviews ( id, status )
+    `)
+    .eq('author_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data ?? []
+}
+
+/** Reviewer dashboard: all documents with their rubric assignments and this reviewer's review status */
+export async function getAllDocumentsWithRubrics(supabase: Client) {
+  const { data, error } = await supabase
+    .from('documents')
+    .select(`
+      id, title, file_type, created_at,
+      author:users!author_id ( display_name, email ),
+      document_rubrics ( rubric:rubrics ( id, title ) ),
+      reviews ( id, status, reviewer_id )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data ?? []
+}
+
+/** Coordinator dashboard: high-level stats */
+export async function getCoordinatorStats(supabase: Client) {
+  const [docsResult, reviewsResult, usersResult] = await Promise.all([
+    supabase.from('documents').select('id', { count: 'exact' }),
+    supabase.from('reviews').select('id, status'),
+    supabase.from('users').select('id', { count: 'exact' }),
+  ])
+
+  const reviews = reviewsResult.data ?? []
+  return {
+    documentCount: docsResult.count ?? 0,
+    reviewTotal: reviews.length,
+    reviewsInProgress: reviews.filter(r => r.status === 'in_progress').length,
+    reviewsSubmitted: reviews.filter(r => r.status === 'submitted').length,
+    userCount: usersResult.count ?? 0,
+  }
+}
+
+/** Coordinator dashboard: all documents with author info and review breakdown */
+export async function getAllDocumentsForCoordinator(supabase: Client) {
+  const { data, error } = await supabase
+    .from('documents')
+    .select(`
+      id, title, file_type, created_at,
+      author:users!author_id ( display_name, email ),
+      document_rubrics ( rubric:rubrics ( id, title ) ),
+      reviews ( id, status )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data ?? []
+}

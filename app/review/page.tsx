@@ -1,33 +1,63 @@
 // app/reviewer/page.tsx
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { ReviewerApp } from './components/ReviewerApp'
+import { ReviewerApp, type Review } from './components/ReviewerApp'
 
-export default async function ReviewerPage() {
+export default async function ReviewerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ document?: string }>
+}) {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Demo document — first document in the system
-  const { data: document } = await supabase
+  const { document: documentId } = await searchParams
+
+  // Load the requested document, or fall back to the first one
+  const docQuery = supabase
     .from('documents')
     .select('id, title, file_url, storage_path')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
 
-  // Preset rubrics for the picker — include criteria count for display
-  const { data: rubricsRaw } = await supabase
-    .from('rubrics')
-    .select('id, title, description, operational_definition, rubric_items(id)')
-    .eq('is_preset', true)
-    .order('title')
+  const { data: document } = documentId
+    ? await docQuery.eq('id', documentId).maybeSingle()
+    : await docQuery.order('created_at', { ascending: true }).limit(1).maybeSingle()
 
-  const rubrics = (rubricsRaw ?? []).map((row) => {
-    const { rubric_items, ...r } = row
-    return { ...r, criteria_count: Array.isArray(rubric_items) ? rubric_items.length : 0 }
-  })
+  // If a specific document was requested, load only its assigned rubrics.
+  // Fall back to all preset rubrics if none are assigned.
+  let rubricsRaw: { id: string; title: string; description: string | null; operational_definition: string | null; rubric_items: { id: string }[] }[] = []
+
+  if (document) {
+    if (documentId) {
+      const { data: docRubrics } = await supabase
+        .from('document_rubrics')
+        .select('rubric:rubrics ( id, title, description, operational_definition, rubric_items(id) )')
+        .eq('document_id', document.id)
+
+      const assigned = (docRubrics ?? [])
+        .map(r => r.rubric)
+        .filter(Boolean) as typeof rubricsRaw
+
+      if (assigned.length > 0) {
+        rubricsRaw = assigned
+      }
+    }
+
+    if (rubricsRaw.length === 0) {
+      const { data } = await supabase
+        .from('rubrics')
+        .select('id, title, description, operational_definition, rubric_items(id)')
+        .eq('is_preset', true)
+        .order('title')
+      rubricsRaw = data ?? []
+    }
+  }
+
+  const rubrics = rubricsRaw.map(({ rubric_items, ...r }) => ({
+    ...r,
+    criteria_count: Array.isArray(rubric_items) ? rubric_items.length : 0,
+  }))
 
   // Existing in-progress review by this reviewer on this document
   const { data: existingReview } = document
@@ -36,7 +66,7 @@ export default async function ReviewerPage() {
         .select(`
           id, status, overall_comment, last_saved_at,
           rubric_id,
-          rubric:rubrics ( id, title, description ),
+          rubric:rubrics ( id, title, description, operational_definition ),
           review_scores (
             id, rubric_item_id, score, comment,
             annotations ( id, anchor, body )
@@ -55,7 +85,7 @@ export default async function ReviewerPage() {
       userId={user.id}
       document={document ?? null}
       rubrics={rubrics}
-      existingReview={existingReview ?? null}
+      existingReview={existingReview as Review | null}
     />
   )
 }
