@@ -5,23 +5,68 @@
 
 import { useState } from 'react'
 import { createBrowserSupabase } from '@/lib/supabase'
-import type {
-  OERDocument,
-  ReviewSession,
-  RubricPickerItem,
-} from '@/types'
 import { RubricPicker } from './RubricPicker'
 import { ReviewerConsole } from './ReviewerConsole'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface OERDocument {
+  id: string
+  title: string
+  file_url: string
+  storage_path: string
+}
+
+export interface Rubric {
+  id: string
+  title: string
+  description: string | null
+  operational_definition: string | null
+  criteria_count?: number
+}
+
+export interface RubricItem {
+  id: string
+  label: string
+  description: string | null
+  sort_order: number
+}
+
+export interface AnnotationRecord {
+  id: string
+  anchor: Record<string, unknown>
+  body: string
+}
+
+export interface ReviewScore {
+  id: string
+  rubric_item_id: string
+  score: 'does_not_meet' | 'exemplifies' | 'exceeds' | null
+  comment: string
+  annotations: AnnotationRecord[]
+}
+
+export interface Review {
+  id: string
+  status: 'in_progress' | 'submitted'
+  overall_comment: string | null
+  last_saved_at: string | null
+  rubric_id: string
+  rubric: Rubric
+  review_scores: ReviewScore[]
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 interface ReviewerAppProps {
   userId: string
   document: OERDocument | null
-  rubrics: RubricPickerItem[]
-  existingReview: ReviewSession | null
+  rubrics: Rubric[]
+  existingReview: Review | null
 }
 
 export function ReviewerApp({ userId, document, rubrics, existingReview }: ReviewerAppProps) {
-  const [review, setReview] = useState<ReviewSession | null>(existingReview)
+  const [review, setReview] = useState<Review | null>(existingReview)
 
   const supabase = createBrowserSupabase()
 
@@ -36,7 +81,8 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
     )
   }
 
-  const handleRubricSelected = async (rubric: RubricPickerItem) => {
+  const handleRubricSelected = async (rubric: Rubric) => {
+    // Create the review record
     const { data: newReview, error } = await supabase
       .from('reviews')
       .insert({
@@ -59,7 +105,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
       return
     }
 
-    setReview(newReview as ReviewSession)
+    setReview(newReview as Review)
   }
 
   if (!review) {

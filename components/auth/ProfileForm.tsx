@@ -1,8 +1,7 @@
 'use client'
 
 // components/auth/ProfileForm.tsx
-// Allows an existing user to update display_name, profession, and expert_domain.
-// Used on a /profile or /onboarding page.
+// Allows an existing user to update display_name, profession, and primary_discipline.
 
 import { useState } from 'react'
 import { createBrowserSupabase } from '@/lib/supabase'
@@ -11,13 +10,10 @@ import {
   EXPERT_DOMAIN_LABELS,
   type AppUser,
   type ProfileFormValues,
-  type UserProfession,
-  type ExpertDomain,
 } from '../../types'
-import { Constants } from '../../types/database.types'
 
-const PROFESSIONS = Constants.Enums.user_profession
-const DOMAINS     = Constants.Enums.expert_domain
+const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
+const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
 
 const inputBase =
   'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
@@ -30,15 +26,20 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ user, onSaved }: ProfileFormProps) {
+  const knownDiscipline = DISCIPLINE_OPTIONS.some(d => d.value === user.primary_discipline)
+  const knownProfession = PROFESSION_OPTIONS.some(p => p.value === user.profession)
+
   const [values, setValues] = useState<ProfileFormValues>({
-    displayName: user.display_name ?? '',
-    profession:  user.profession  ?? '',
-    expertDomain: user.expert_domain ?? '',
+    displayName:      user.display_name ?? '',
+    profession:       knownProfession ? (user.profession ?? '') : 'other',
+    primaryDiscipline: knownDiscipline ? (user.primary_discipline ?? '') : (user.primary_discipline ? 'other' : ''),
   })
-  const [errors, setErrors]       = useState<Partial<Record<keyof ProfileFormValues, string>>>({})
-  const [serverError, setServerError] = useState<string | null>(null)
-  const [loading, setLoading]     = useState(false)
-  const [saved, setSaved]         = useState(false)
+  const [professionOther, setProfessionOther]   = useState(knownProfession ? '' : (user.profession ?? ''))
+  const [disciplineOther, setDisciplineOther]   = useState(knownDiscipline ? '' : (user.primary_discipline ?? ''))
+  const [errors, setErrors]                     = useState<Partial<Record<keyof ProfileFormValues, string>>>({})
+  const [serverError, setServerError]           = useState<string | null>(null)
+  const [loading, setLoading]                   = useState(false)
+  const [saved, setSaved]                       = useState(false)
 
   const supabase = createBrowserSupabase()
 
@@ -53,8 +54,8 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
   const validate = (): boolean => {
     const newErrors: typeof errors = {}
     if (!values.displayName.trim()) newErrors.displayName = 'Name is required'
-    if (!values.profession)   newErrors.profession   = 'Please select your profession'
-    if (!values.expertDomain) newErrors.expertDomain = 'Please select your domain'
+    if (!values.profession)        newErrors.profession   = 'Please select your profession'
+    if (!values.primaryDiscipline) newErrors.primaryDiscipline = 'Please select your discipline'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -66,12 +67,15 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
     setLoading(true)
     setServerError(null)
 
+    const finalProfession  = values.profession === 'other' ? professionOther.trim() : values.profession
+    const finalDiscipline  = values.primaryDiscipline === 'other' ? disciplineOther.trim() : values.primaryDiscipline
+
     const { data, error } = await supabase
       .from('users')
       .update({
-        display_name:  values.displayName,
-        profession:    values.profession  as UserProfession,
-        expert_domain: values.expertDomain as ExpertDomain,
+        display_name:       values.displayName,
+        profession:         finalProfession,
+        primary_discipline: finalDiscipline,
       })
       .eq('id', user.id)
       .select()
@@ -90,7 +94,6 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      {/* Display name */}
       <div>
         <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
           Full name <span className="text-red-500">*</span>
@@ -104,16 +107,11 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
           disabled={loading}
           className={inputBase}
         />
-        {errors.displayName && (
-          <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>
-        )}
+        {errors.displayName && <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>}
       </div>
 
-      {/* Email (read-only) */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          Email address
-        </label>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
         <input
           type="email"
           value={user.email}
@@ -123,7 +121,6 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
         <p className="mt-1 text-xs text-slate-400">Email cannot be changed here.</p>
       </div>
 
-      {/* Profession */}
       <div>
         <label htmlFor="profession" className="block text-sm font-medium text-slate-700 mb-1.5">
           Profession <span className="text-red-500">*</span>
@@ -136,49 +133,56 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
           className={inputBase}
         >
           <option value="">Select your profession…</option>
-          {PROFESSIONS.map((p) => (
-            <option key={p} value={p}>
-              {PROFESSION_LABELS[p]}
-            </option>
+          {PROFESSION_OPTIONS.map(p => (
+            <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </select>
-        {errors.profession && (
-          <p className="mt-1 text-xs text-red-600">{errors.profession}</p>
+        {errors.profession && <p className="mt-1 text-xs text-red-600">{errors.profession}</p>}
+        {values.profession === 'other' && (
+          <input
+            type="text"
+            placeholder="Please describe your profession"
+            value={professionOther}
+            onChange={e => { setProfessionOther(e.target.value); setSaved(false) }}
+            disabled={loading}
+            className={inputBase + ' mt-2'}
+          />
         )}
       </div>
 
-      {/* Expert domain */}
       <div>
-        <label htmlFor="expertDomain" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Expert domain <span className="text-red-500">*</span>
+        <label htmlFor="primaryDiscipline" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Primary discipline <span className="text-red-500">*</span>
         </label>
         <select
-          id="expertDomain"
-          value={values.expertDomain}
-          onChange={set('expertDomain')}
+          id="primaryDiscipline"
+          value={values.primaryDiscipline}
+          onChange={set('primaryDiscipline')}
           disabled={loading}
           className={inputBase}
         >
-          <option value="">Select your domain…</option>
-          {DOMAINS.map((d) => (
-            <option key={d} value={d}>
-              {EXPERT_DOMAIN_LABELS[d]}
-            </option>
+          <option value="">Select your discipline…</option>
+          {DISCIPLINE_OPTIONS.map(d => (
+            <option key={d.value} value={d.value}>{d.label}</option>
           ))}
         </select>
-        {errors.expertDomain && (
-          <p className="mt-1 text-xs text-red-600">{errors.expertDomain}</p>
+        {errors.primaryDiscipline && <p className="mt-1 text-xs text-red-600">{errors.primaryDiscipline}</p>}
+        {values.primaryDiscipline === 'other' && (
+          <input
+            type="text"
+            placeholder="Please specify your discipline"
+            value={disciplineOther}
+            onChange={e => { setDisciplineOther(e.target.value); setSaved(false) }}
+            disabled={loading}
+            className={inputBase + ' mt-2'}
+          />
         )}
       </div>
 
-      {/* Server error */}
       {serverError && (
-        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">
-          {serverError}
-        </p>
+        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{serverError}</p>
       )}
 
-      {/* Submit */}
       <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
@@ -204,7 +208,6 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
           )}
         </button>
 
-        {/* Inline saved confirmation */}
         {saved && !loading && (
           <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
             <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
