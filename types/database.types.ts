@@ -309,37 +309,46 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string
+          expertise_tags: string[]
           id: string
           institution: string | null
           onboarding_completed: boolean
           primary_discipline: string | null
           profession: string | null
+          reviewer_type: string | null
           role: Database["public"]["Enums"]["user_role"]
           roles: string[]
+          rubric_specializations: string[]
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email: string
+          expertise_tags?: string[]
           id: string
           institution?: string | null
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
+          reviewer_type?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           roles?: string[]
+          rubric_specializations?: string[]
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string
+          expertise_tags?: string[]
           id?: string
           institution?: string | null
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
+          reviewer_type?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           roles?: string[]
+          rubric_specializations?: string[]
         }
         Relationships: []
       }
