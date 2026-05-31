@@ -1,5 +1,4 @@
 // types/database.types.ts
-// AUTO-GENERATED — do not edit by hand.
 // Regenerate with: npx supabase gen types typescript --project-id nkcyjfuzmmkuavhmqyvu > types/database.types.ts
 
 export type Json =
@@ -118,6 +117,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      institutions: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
       }
       review_scores: {
         Row: {
@@ -292,28 +309,37 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string
-          expert_domain: Database["public"]["Enums"]["expert_domain"] | null
           id: string
-          profession: Database["public"]["Enums"]["user_profession"] | null
+          institution: string | null
+          onboarding_completed: boolean
+          primary_discipline: string | null
+          profession: string | null
           role: Database["public"]["Enums"]["user_role"]
+          roles: string[]
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email: string
-          expert_domain?: Database["public"]["Enums"]["expert_domain"] | null
           id: string
-          profession?: Database["public"]["Enums"]["user_profession"] | null
+          institution?: string | null
+          onboarding_completed?: boolean
+          primary_discipline?: string | null
+          profession?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          roles?: string[]
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string
-          expert_domain?: Database["public"]["Enums"]["expert_domain"] | null
           id?: string
-          profession?: Database["public"]["Enums"]["user_profession"] | null
+          institution?: string | null
+          onboarding_completed?: boolean
+          primary_discipline?: string | null
+          profession?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          roles?: string[]
         }
         Relationships: []
       }
@@ -350,12 +376,6 @@ export type Database = {
         | "other"
       file_type: "pdf" | "html" | "image" | "audio"
       review_status: "in_progress" | "submitted"
-      user_profession:
-        | "professor"
-        | "administrator"
-        | "freelancer"
-        | "student"
-        | "other"
       user_role: "author" | "reviewer" | "admin"
     }
     CompositeTypes: {
@@ -392,7 +412,6 @@ export const Constants = {
                        "other"] as const,
     file_type:        ["pdf", "html", "image", "audio"] as const,
     review_status:    ["in_progress", "submitted"] as const,
-    user_profession:  ["professor", "administrator", "freelancer", "student", "other"] as const,
     user_role:        ["author", "reviewer", "admin"] as const,
   },
 } as const

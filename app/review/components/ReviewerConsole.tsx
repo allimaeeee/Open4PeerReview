@@ -6,33 +6,26 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useReviewAutoSave } from '../../../hooks/useReviewAutoSave'
-import type {
-  CriterionScore,
-  LocalAnnotation,
-  OERDocument,
-  ReviewSession,
-  RubricItemSummary,
-} from '@/types'
-import type { PdfTextAnchor } from '@/lib/supabase/types'
-import { SaveStatusIndicator } from '../../../components/SaveStatusIndicator'
+import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
+import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection } from './PDFViewer'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
+import type { OERDocument, Review, ReviewScore, RubricItem } from './ReviewerApp'
 
 interface ReviewerConsoleProps {
   supabase: SupabaseClient
   userId: string
   document: OERDocument
-  review: ReviewSession
-  onReviewUpdate: (r: ReviewSession) => void
+  review: Review
+  onReviewUpdate: (r: Review) => void
 }
 
 export interface LocalScore {
   rubricItemId: string
   score: CriterionScore | null
   comment: string
-  annotations: LocalAnnotation[]
+  annotations: { id: string; anchor: Record<string, unknown>; body: string }[]
   reviewScoreId: string | null  // null until first save
 }
 
@@ -43,7 +36,7 @@ export function ReviewerConsole({
   review,
   onReviewUpdate,
 }: ReviewerConsoleProps) {
-  const [rubricItems, setRubricItems] = useState<RubricItemSummary[]>([])
+  const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
   const [scores, setScores] = useState<Record<string, LocalScore>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [pendingSelection, setPendingSelection] = useState<TextSelection | null>(null)
@@ -156,9 +149,7 @@ export function ReviewerConsole({
         }))
       }
 
-      if (!reviewScoreId) return
-
-      const anchor: PdfTextAnchor = {
+      const anchor = {
         page: pendingSelection.page,
         text: pendingSelection.text,
         rects: pendingSelection.rects,

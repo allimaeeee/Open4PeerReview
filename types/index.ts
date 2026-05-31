@@ -7,7 +7,6 @@ import type { Tables, TablesInsert, TablesUpdate, Enums } from './database.types
 // ─── Enum aliases ─────────────────────────────────────────────────────────────
 
 export type UserRole       = Enums<'user_role'>
-export type UserProfession = Enums<'user_profession'>
 export type ExpertDomain   = Enums<'expert_domain'>
 export type FileType       = Enums<'file_type'>
 export type ReviewStatus   = Enums<'review_status'>
@@ -89,42 +88,59 @@ export interface SignupFormValues {
   password: string
   confirmPassword: string
   displayName: string
-  profession: UserProfession | ''
-  expertDomain: ExpertDomain | ''
+}
+
+/** Fields collected during onboarding */
+export interface OnboardingFormValues {
+  displayName: string
+  institution: string
+  primaryDiscipline: string
+  profession: string
+  roles: ('author' | 'reviewer')[]
+}
+
+/** Fields collected during onboarding */
+export interface OnboardingFormValues {
+  displayName: string
+  institution: string
+  primaryDiscipline: string
+  profession: string
+  roles: ('author' | 'reviewer')[]
 }
 
 /** Fields available when editing a user profile */
 export interface ProfileFormValues {
   displayName: string
-  profession: UserProfession | ''
-  expertDomain: ExpertDomain | ''
+  profession: string
+  primaryDiscipline: string
 }
 
 // ─── Display label maps ───────────────────────────────────────────────────────
 
-export const PROFESSION_LABELS: Record<UserProfession, string> = {
-  professor:     'Professor / Faculty',
-  administrator: 'Administrator',
-  freelancer:    'Freelancer / Consultant',
-  student:       'Student',
-  other:         'Other',
+export const PROFESSION_LABELS: Record<string, string> = {
+  faculty_professor:      'Faculty / Professor',
+  instructional_designer: 'Instructional Designer',
+  editor:                 'Editor',
+  industry_practitioner:  'Industry Practitioner',
+  graduate_student:       'Graduate Student',
+  other:                  'Other',
 }
 
 export const EXPERT_DOMAIN_LABELS: Record<ExpertDomain, string> = {
   agriculture:           'Agriculture',
   arts_and_humanities:   'Arts & Humanities',
-  biology:               'Biology',
-  business:              'Business',
+  biology:               'Biology / Life Sciences',
+  business:              'Business & Management',
   chemistry:             'Chemistry',
-  computer_science:      'Computer Science',
+  computer_science:      'Computer Science & IT',
   economics:             'Economics',
   education:             'Education',
-  engineering:           'Engineering',
+  engineering:           'Engineering & Technology',
   environmental_science: 'Environmental Science',
   health_and_medicine:   'Health & Medicine',
   history:               'History',
-  law:                   'Law',
-  mathematics:           'Mathematics',
+  law:                   'Law & Legal Studies',
+  mathematics:           'Mathematics & Statistics',
   physics:               'Physics',
   social_sciences:       'Social Sciences',
   other:                 'Other',

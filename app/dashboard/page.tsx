@@ -6,8 +6,15 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Middleware handles redirect, but this is a belt-and-suspenders check
   if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('onboarding_completed')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (!profile?.onboarding_completed) redirect('/onboard')
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">

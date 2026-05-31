@@ -1,46 +1,15 @@
 'use client'
 
 // components/auth/SignupForm.tsx
-// Full signup form: email, password, display name, profession, expert domain.
 
 import { useState } from 'react'
 import { createBrowserSupabase } from '@/lib/supabase'
-import {
-  PROFESSION_LABELS,
-  EXPERT_DOMAIN_LABELS,
-  type SignupFormValues,
-  type UserProfession,
-  type ExpertDomain,
-} from '../../types'
-import { Constants } from '../../types/database.types'
-
-const PROFESSIONS  = Constants.Enums.user_profession
-const DOMAINS      = Constants.Enums.expert_domain
-
-// ─── Field helpers ────────────────────────────────────────────────────────────
-
-function FieldLabel({ htmlFor, children, required }: {
-  htmlFor: string; children: React.ReactNode; required?: boolean
-}) {
-  return (
-    <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700 mb-1.5">
-      {children}
-      {required && <span className="text-red-500 ml-0.5">*</span>}
-    </label>
-  )
-}
-
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null
-  return <p className="mt-1 text-xs text-red-600">{message}</p>
-}
+import type { SignupFormValues } from '../../types'
 
 const inputBase =
   'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
   'placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 ' +
   'focus:border-[#1e3a5f] transition-colors bg-white disabled:bg-slate-50 disabled:cursor-not-allowed'
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 interface SignupFormProps {
   onSuccess?: () => void
@@ -52,8 +21,6 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
     password: '',
     confirmPassword: '',
     displayName: '',
-    profession: '',
-    expertDomain: '',
   })
   const [errors, setErrors] = useState<Partial<Record<keyof SignupFormValues, string>>>({})
   const [serverError, setServerError] = useState<string | null>(null)
@@ -63,13 +30,11 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const supabase = createBrowserSupabase()
 
   const set = (field: keyof SignupFormValues) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     setValues((v) => ({ ...v, [field]: e.target.value }))
     setErrors((e2) => ({ ...e2, [field]: undefined }))
   }
-
-  // ── Validation ────────────────────────────────────────────────────────────
 
   const validate = (): boolean => {
     const newErrors: typeof errors = {}
@@ -87,14 +52,9 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
     if (!values.displayName.trim()) newErrors.displayName = 'Name is required'
 
-    if (!values.profession) newErrors.profession = 'Please select your profession'
-    if (!values.expertDomain) newErrors.expertDomain = 'Please select your domain'
-
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
-
-  // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,50 +63,25 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
     setLoading(true)
     setServerError(null)
 
-    // 1. Create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
       options: {
         data: { display_name: values.displayName },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
 
-    if (authError) {
-      setServerError(authError.message)
-      setLoading(false)
-      return
-    }
-
-    const userId = authData.user?.id
-    if (!userId) {
-      setServerError('Unexpected error — please try again.')
-      setLoading(false)
-      return
-    }
-
-    // 2. Insert public user profile
-    const { error: profileError } = await supabase.from('users').insert({
-      id: userId,
-      email: values.email,
-      display_name: values.displayName,
-      profession: values.profession as UserProfession,
-      expert_domain: values.expertDomain as ExpertDomain,
-      role: 'reviewer',
-    })
-
-    if (profileError) {
-      setServerError(profileError.message)
-      setLoading(false)
-      return
-    }
-
     setLoading(false)
+
+    if (error) {
+      setServerError(error.message)
+      return
+    }
+
     setSuccess(true)
     onSuccess?.()
   }
-
-  // ── Success state ──────────────────────────────────────────────────────────
 
   if (success) {
     return (
@@ -161,19 +96,18 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         <h3 className="text-lg font-semibold text-slate-900">Check your inbox</h3>
         <p className="text-sm text-slate-500 max-w-xs mx-auto">
           We sent a confirmation link to <strong>{values.email}</strong>.
-          Click it to activate your account.
+          Click it to activate your account and complete your profile.
         </p>
       </div>
     )
   }
 
-  // ── Form ──────────────────────────────────────────────────────────────────
-
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      {/* Display name */}
       <div>
-        <FieldLabel htmlFor="displayName" required>Full name</FieldLabel>
+        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Full name <span className="text-red-500">*</span>
+        </label>
         <input
           id="displayName"
           type="text"
@@ -184,12 +118,13 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           disabled={loading}
           className={inputBase}
         />
-        <FieldError message={errors.displayName} />
+        {errors.displayName && <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>}
       </div>
 
-      {/* Email */}
       <div>
-        <FieldLabel htmlFor="email" required>Email address</FieldLabel>
+        <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Email address <span className="text-red-500">*</span>
+        </label>
         <input
           id="email"
           type="email"
@@ -200,12 +135,13 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           disabled={loading}
           className={inputBase}
         />
-        <FieldError message={errors.email} />
+        {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
       </div>
 
-      {/* Password */}
       <div>
-        <FieldLabel htmlFor="password" required>Password</FieldLabel>
+        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Password <span className="text-red-500">*</span>
+        </label>
         <input
           id="password"
           type="password"
@@ -216,12 +152,13 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           disabled={loading}
           className={inputBase}
         />
-        <FieldError message={errors.password} />
+        {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
       </div>
 
-      {/* Confirm password */}
       <div>
-        <FieldLabel htmlFor="confirmPassword" required>Confirm password</FieldLabel>
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1.5">
+          Confirm password <span className="text-red-500">*</span>
+        </label>
         <input
           id="confirmPassword"
           type="password"
@@ -232,58 +169,15 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           disabled={loading}
           className={inputBase}
         />
-        <FieldError message={errors.confirmPassword} />
+        {errors.confirmPassword && <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>}
       </div>
 
-      {/* Profession + Expert domain side by side */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <FieldLabel htmlFor="profession" required>Profession</FieldLabel>
-          <select
-            id="profession"
-            value={values.profession}
-            onChange={set('profession')}
-            disabled={loading}
-            className={inputBase}
-          >
-            <option value="">Select…</option>
-            {PROFESSIONS.map((p) => (
-              <option key={p} value={p}>
-                {PROFESSION_LABELS[p]}
-              </option>
-            ))}
-          </select>
-          <FieldError message={errors.profession} />
-        </div>
-
-        <div>
-          <FieldLabel htmlFor="expertDomain" required>Expert domain</FieldLabel>
-          <select
-            id="expertDomain"
-            value={values.expertDomain}
-            onChange={set('expertDomain')}
-            disabled={loading}
-            className={inputBase}
-          >
-            <option value="">Select…</option>
-            {DOMAINS.map((d) => (
-              <option key={d} value={d}>
-                {EXPERT_DOMAIN_LABELS[d]}
-              </option>
-            ))}
-          </select>
-          <FieldError message={errors.expertDomain} />
-        </div>
-      </div>
-
-      {/* Server error */}
       {serverError && (
         <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">
           {serverError}
         </p>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
         disabled={loading}

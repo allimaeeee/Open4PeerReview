@@ -3,25 +3,25 @@
 // app/reviewer/_components/RubricPicker.tsx
 
 import { useState } from 'react'
-import type { OERDocument, RubricPickerItem } from '@/types'
+import type { OERDocument, Rubric } from './ReviewerApp'
 
 const RUBRIC_ICONS: Record<string, string> = {
-  'Accessibility':                    '♿',
-  'Copy Editing':                     '✏️',
-  'Copyright Review':                 '©️',
-  'Disciplinary Appropriateness':     '🎓',
-  'eLearning':                        '💻',
+  'Accessibility':                       '♿',
+  'Copy Editing':                        '✏️',
+  'Copyright Review':                    '©️',
+  'Disciplinary Appropriateness':        '🎓',
+  'eLearning':                           '💻',
   'Universal Design for Learning (UDL)': '🌐',
 }
 
 interface RubricPickerProps {
   document: OERDocument
-  rubrics: RubricPickerItem[]
-  onSelect: (rubric: RubricPickerItem) => Promise<void>
+  rubrics: Rubric[]
+  onSelect: (rubric: Rubric) => Promise<void>
 }
 
 export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps) {
-  const [selected, setSelected] = useState<RubricPickerItem | null>(null)
+  const [selected, setSelected] = useState<Rubric | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -37,7 +37,7 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-8 py-5">
         <div className="max-w-4xl mx-auto">
-          <p className="text-xs font-semibold tracking-widest text-navy-600 uppercase text-[#1e3a5f] mb-1">
+          <p className="text-xs font-semibold tracking-widest uppercase text-[#1e3a5f] mb-1">
             Open 4 Peer Review
           </p>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -73,32 +73,39 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
               >
                 {/* Card header */}
                 <div className="flex items-start gap-3 p-5">
-                  {/* Selection indicator */}
-                  <div
-                    className={[
-                      'mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all',
-                      isSelected
-                        ? 'border-[#1e3a5f] bg-[#1e3a5f]'
-                        : 'border-slate-300',
-                    ].join(' ')}
-                  >
+                  {/* Selection radio */}
+                  <div className={[
+                    'mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all',
+                    isSelected ? 'border-[#1e3a5f] bg-[#1e3a5f]' : 'border-slate-300',
+                  ].join(' ')}>
                     {isSelected && (
-                      <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="currentColor">
-                        <path d="M10 3L5 8.5 2 5.5" stroke="white" strokeWidth="2"
-                          strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                      <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6L5 9L10 3" stroke="white" strokeWidth="2"
+                          strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg leading-none">
-                        {RUBRIC_ICONS[rubric.title] ?? '📋'}
-                      </span>
-                      <h3 className="font-semibold text-slate-900 text-sm leading-tight">
-                        {rubric.title}
-                      </h3>
+                    {/* Title row */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg leading-none">
+                          {RUBRIC_ICONS[rubric.title] ?? '📋'}
+                        </span>
+                        <h3 className="font-semibold text-slate-900 text-sm leading-tight">
+                          {rubric.title}
+                        </h3>
+                      </div>
+                      {/* Criteria count badge */}
+                      {rubric.criteria_count != null && (
+                        <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                          {rubric.criteria_count} criteria
+                        </span>
+                      )}
                     </div>
+
+                    {/* Short description */}
                     {rubric.description && (
                       <p className="mt-1.5 text-xs text-slate-500 leading-relaxed line-clamp-2">
                         {rubric.description}
@@ -107,9 +114,9 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
                   </div>
                 </div>
 
-                {/* Expandable definition */}
+                {/* Expandable operational definition */}
                 {rubric.operational_definition && (
-                  <div className="px-5 pb-4">
+                  <div className="px-5 pb-4 border-t border-slate-100 pt-3">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -117,10 +124,13 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
                       }}
                       className="text-xs text-[#1e3a5f] hover:underline font-medium flex items-center gap-1"
                     >
-                      {isOpen ? '▾ Hide definition' : '▸ View definition'}
+                      {isOpen
+                        ? <><span>▾</span> Hide definition</>
+                        : <><span>▸</span> View full definition</>
+                      }
                     </button>
                     {isOpen && (
-                      <p className="mt-2 text-xs text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                      <p className="mt-2.5 text-xs text-slate-600 leading-relaxed">
                         {rubric.operational_definition}
                       </p>
                     )}
@@ -131,7 +141,7 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
           })}
         </div>
 
-        {/* Start button */}
+        {/* Footer action row */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-400">
             {selected
