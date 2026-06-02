@@ -24,12 +24,12 @@ git add .
 
 git commit -m ''
 
-git push origin dev
+git push origin testing
 
 
 **DIRECTORY**
 ```markdown
-. 📂 annotation-platform
+. 📂 Open4PeerReview
 ├── 📄 AGENTS.md
 ├── 📄 CLAUDE.md
 ├── 📄 README.md
@@ -39,24 +39,18 @@ git push origin dev
 │      ├── 📄 route.ts
 │  └── 📂 dashboard/
 │    ├── 📄 page.tsx
+│    └── 📂 settings/
+│      ├── 📄 SettingsForm.tsx
+│      ├── 📄 page.tsx
 │  ├── 📄 favicon.ico
 │  ├── 📄 globals.css
 │  ├── 📄 layout.tsx
 │  └── 📂 login/
 │    ├── 📄 page.tsx
-│  ├── 📄 page.tsx
-│  └── 📂 review/
-│    └── 📂 [id]/
-│    └── 📂 components/
-│      ├── 📄 AnnotationPanel.tsx
-│      ├── 📄 PDFViewer.tsx
-│      ├── 📄 PDFViewerCanvas.tsx
-│      ├── 📄 ReviewerApp.tsx
-│      ├── 📄 ReviewerConsole.tsx
-│      ├── 📄 RubricPicker.tsx
-│      ├── 📄 SubmitButton.tsx
+│  └── 📂 onboard/
+│    ├── 📄 OnboardingForm.tsx
 │    ├── 📄 page.tsx
-│  └── 📂 upload/
+│  ├── 📄 page.tsx
 └── 📂 components/
 │  ├── 📄 Navbar.tsx
 │  ├── 📄 SaveStatusIndicator.tsx
