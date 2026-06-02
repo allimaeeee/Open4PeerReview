@@ -29,7 +29,7 @@ git push origin dev
 
 **DIRECTORY**
 ```markdown
-. 📂 annotation-platform
+. 📂 Open4PeerReview
 ├── 📄 AGENTS.md
 ├── 📄 CLAUDE.md
 ├── 📄 README.md
@@ -38,11 +38,24 @@ git push origin dev
 │    └── 📂 callback/
 │      ├── 📄 route.ts
 │  └── 📂 dashboard/
+│    └── 📂 components/
+│      ├── 📄 AuthorDashboard.tsx
+│      ├── 📄 AuthorDashboardClient.tsx
+│      ├── 📄 CoordinatorDashboard.tsx
+│      ├── 📄 ReviewerDashboard.tsx
+│      ├── 📄 RoleToggle.tsx
+│      ├── 📄 UploadDocumentForm.tsx
 │    ├── 📄 page.tsx
+│    └── 📂 settings/
+│      ├── 📄 SettingsForm.tsx
+│      ├── 📄 page.tsx
 │  ├── 📄 favicon.ico
 │  ├── 📄 globals.css
 │  ├── 📄 layout.tsx
 │  └── 📂 login/
+│    ├── 📄 page.tsx
+│  └── 📂 onboard/
+│    ├── 📄 OnboardingForm.tsx
 │    ├── 📄 page.tsx
 │  ├── 📄 page.tsx
 │  └── 📂 review/
