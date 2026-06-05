@@ -98,33 +98,39 @@ export type Database = {
           author_id: string
           authors: string
           created_at: string
+          creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
           storage_path: string
           subject_matter: string
+          third_party_content_disclosure: string | null
           title: string
         }
         Insert: {
           author_id: string
           authors?: string
           created_at?: string
+          creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
           storage_path: string
           subject_matter?: string
+          third_party_content_disclosure?: string | null
           title: string
         }
         Update: {
           author_id?: string
           authors?: string
           created_at?: string
+          creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
           storage_path?: string
           subject_matter?: string
+          third_party_content_disclosure?: string | null
           title?: string
         }
         Relationships: [
@@ -386,6 +392,7 @@ export type Database = {
     }
     Enums: {
       anchor_type: "text-range" | "dom-range" | "bbox" | "timestamp"
+      creative_commons_license: "cc_by" | "cc_by_sa" | "cc_by_nd" | "cc_by_nc" | "cc_by_nc_sa" | "cc_by_nc_nd"
       criterion_score: "does_not_meet" | "exemplifies" | "exceeds"
       expert_domain:
         | "agriculture"
@@ -435,6 +442,7 @@ export type Enums<T extends keyof DefaultSchema["Enums"]> =
 
 export const Constants = {
   Enums: {
+    creative_commons_license: ["cc_by", "cc_by_sa", "cc_by_nd", "cc_by_nc", "cc_by_nc_sa", "cc_by_nc_nd"] as const,
     criterion_score:  ["does_not_meet", "exemplifies", "exceeds"] as const,
     expert_domain:    ["agriculture", "arts_and_humanities", "biology", "business",
                        "chemistry", "computer_science", "economics", "education",
