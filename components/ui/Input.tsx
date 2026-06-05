@@ -28,7 +28,7 @@ export function Input({
       {label && (
         <label
           htmlFor={id}
-          className="block mb-1.5 text-label-md font-label font-semibold uppercase tracking-wide text-text-muted"
+          className="block mb-1.5 text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary"
         >
           {label}
           {props.required && (
