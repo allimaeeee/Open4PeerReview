@@ -24,7 +24,7 @@ git add .
 
 git commit -m ''
 
-git push origin dev
+git push origin testing
 
 
 **DIRECTORY**
@@ -69,7 +69,7 @@ git push origin dev
 │      ├── 📄 RubricPicker.tsx
 │      ├── 📄 SubmitButton.tsx
 │    ├── 📄 page.tsx
-│  └── 📂 upload/
+│  ├── 📄 page.tsx
 └── 📂 components/
 │  ├── 📄 Navbar.tsx
 │  ├── 📄 SaveStatusIndicator.tsx
