@@ -11,6 +11,8 @@ import {
   type AppUser,
   type ProfileFormValues,
 } from '../../types'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -94,32 +96,25 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      <div>
-        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Full name <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="displayName"
-          type="text"
-          autoComplete="name"
-          value={values.displayName}
-          onChange={set('displayName')}
-          disabled={loading}
-          className={inputBase}
-        />
-        {errors.displayName && <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>}
-      </div>
+      <Input
+        id="displayName"
+        type="text"
+        label="Full name"
+        required
+        autoComplete="name"
+        value={values.displayName}
+        onChange={set('displayName')}
+        disabled={loading}
+        error={errors.displayName}
+      />
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
-        <input
-          type="email"
-          value={user.email}
-          readOnly
-          className={inputBase + ' bg-slate-50 text-slate-400 cursor-default'}
-        />
-        <p className="mt-1 text-xs text-slate-400">Email cannot be changed here.</p>
-      </div>
+      <Input
+        type="email"
+        label="Email address"
+        value={user.email}
+        readOnly
+        helperText="Email cannot be changed here."
+      />
 
       <div>
         <label htmlFor="profession" className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -139,13 +134,13 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
         </select>
         {errors.profession && <p className="mt-1 text-xs text-red-600">{errors.profession}</p>}
         {values.profession === 'other' && (
-          <input
+          <Input
             type="text"
             placeholder="Please describe your profession"
             value={professionOther}
             onChange={e => { setProfessionOther(e.target.value); setSaved(false) }}
             disabled={loading}
-            className={inputBase + ' mt-2'}
+            className="mt-2"
           />
         )}
       </div>
@@ -168,13 +163,13 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
         </select>
         {errors.primaryDiscipline && <p className="mt-1 text-xs text-red-600">{errors.primaryDiscipline}</p>}
         {values.primaryDiscipline === 'other' && (
-          <input
+          <Input
             type="text"
             placeholder="Please specify your discipline"
             value={disciplineOther}
             onChange={e => { setDisciplineOther(e.target.value); setSaved(false) }}
             disabled={loading}
-            className={inputBase + ' mt-2'}
+            className="mt-2"
           />
         )}
       </div>
@@ -184,29 +179,15 @@ export function ProfileForm({ user, onSaved }: ProfileFormProps) {
       )}
 
       <div className="flex items-center gap-3 pt-1">
-        <button
+        <Button
           type="submit"
-          disabled={loading}
-          className={[
-            'flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150',
-            'inline-flex items-center justify-center gap-2',
-            loading
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm hover:shadow-md active:scale-[0.99]',
-          ].join(' ')}
+          variant="primary"
+          size="lg"
+          className="flex-1"
+          loading={loading}
         >
-          {loading ? (
-            <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Saving…
-            </>
-          ) : (
-            'Save changes'
-          )}
-        </button>
+          Save changes
+        </Button>
 
         {saved && !loading && (
           <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
