@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
 import Link from 'next/link'
+import { Button } from '@/components/ui/Button'
 
 export default function Navbar() {
   const { user, loading } = useUser()
@@ -28,12 +29,9 @@ export default function Navbar() {
         {user && (
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{user.email}</span>
-            <button
-              onClick={handleSignOut}
-              className="text-sm text-gray-500 hover:text-gray-900"
-            >
+            <Button variant="text" onClick={handleSignOut}>
               Sign out
-            </button>
+            </Button>
           </div>
         )}
       </div>
