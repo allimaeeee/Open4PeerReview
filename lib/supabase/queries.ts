@@ -83,7 +83,9 @@ export async function uploadDocument(
   supabase: Client,
   file: File,
   title: string,
-  fileType: FileType
+  fileType: FileType,
+  authors: string,
+  subjectMatter: string,
 ) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -114,6 +116,8 @@ export async function uploadDocument(
       file_url: signedUrl.signedUrl,
       storage_path: storagePath,
       file_type: fileType,
+      authors,
+      subject_matter: subjectMatter,
     })
     .select()
     .single()
@@ -164,9 +168,9 @@ export async function getMyDocumentsWithStats(supabase: Client) {
   const { data, error } = await supabase
     .from('documents')
     .select(`
-      id, title, file_type, created_at,
+      id, title, file_type, created_at, authors, subject_matter,
       document_rubrics ( rubric:rubrics ( id, title ) ),
-      reviews ( id, status )
+      reviews ( id, status, submitted_at )
     `)
     .eq('author_id', user.id)
     .order('created_at', { ascending: false })
@@ -175,12 +179,55 @@ export async function getMyDocumentsWithStats(supabase: Client) {
   return data ?? []
 }
 
+/** Full feedback for a single document — submitted reviews only, visible to the document author */
+export async function getDocumentFeedback(supabase: Client, documentId: string) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc, error: docError } = await supabase
+    .from('documents')
+    .select('id, title, author_id')
+    .eq('id', documentId)
+    .single()
+
+  if (docError) throw docError
+  if (doc.author_id !== user.id) throw new Error('Not authorised')
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select(`
+      id, status, overall_comment, submitted_at,
+      reviewer:users!reviewer_id ( display_name, email ),
+      rubric:rubrics ( id, title ),
+      review_scores (
+        id, score, comment,
+        rubric_item:rubric_items ( id, label, sort_order )
+      )
+    `)
+    .eq('document_id', documentId)
+    .eq('status', 'submitted')
+    .order('submitted_at', { ascending: true })
+
+  if (error) throw error
+  return { document: doc, reviews: data ?? [] }
+}
+
+/** All distinct subject_matter values stored across documents (used to populate the custom options list) */
+export async function getDistinctSubjectMatters(supabase: Client): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('subject_matter')
+
+  if (error) throw error
+  return [...new Set((data ?? []).map(d => d.subject_matter).filter(Boolean))]
+}
+
 /** Reviewer dashboard: all documents with their rubric assignments and this reviewer's review status */
 export async function getAllDocumentsWithRubrics(supabase: Client) {
   const { data, error } = await supabase
     .from('documents')
     .select(`
-      id, title, file_type, created_at,
+      id, title, file_type, created_at, subject_matter,
       author:users!author_id ( display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title ) ),
       reviews ( id, status, reviewer_id )
@@ -190,7 +237,6 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
   if (error) throw error
   return data ?? []
 }
-
 /** Coordinator dashboard: high-level stats */
 export async function getCoordinatorStats(supabase: Client) {
   const [docsResult, reviewsResult, usersResult] = await Promise.all([
