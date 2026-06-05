@@ -38,14 +38,21 @@ export interface AnnotationRecord {
   rubric_item_id: string | null
   anchor: Record<string, unknown>
   body: string
-  tag: string
+  tag: string | null
 }
 
 export interface ReviewScore {
   id: string
   rubric_item_id: string
   score: 'does_not_meet' | 'exemplifies' | 'exceeds' | null
-  comment: string
+  comment: string | null
+}
+
+export interface ScoreComment {
+  id: string
+  rubric_item_id: string
+  score_level: 'does_not_meet' | 'exceeds'
+  body: string
 }
 
 export interface Review {
@@ -58,6 +65,7 @@ export interface Review {
   rubric: Rubric
   review_scores: ReviewScore[]
   annotations: AnnotationRecord[]
+  score_comments: ScoreComment[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -75,10 +83,19 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
 
   const supabase = createBrowserSupabase()
 
+  const reviewSelect = `
+    id, status, overall_comment, notes, last_saved_at, rubric_id,
+    rubric:rubrics ( id, title, description, operational_definition ),
+    review_scores ( id, rubric_item_id, score, comment ),
+    annotations ( id, rubric_item_id, anchor, body, tag ),
+    score_comments ( id, rubric_item_id, score_level, body )
+  `
+
   // Auto-create a review on first visit (no picker step)
   useEffect(() => {
     if (review || creating || rubrics.length === 0 || !document) return
     setCreating(true)
+
     supabase
       .from('reviews')
       .insert({
@@ -86,16 +103,24 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
         rubric_id: rubrics[0].id,
         reviewer_id: userId,
       })
-      .select(`
-        id, status, overall_comment, notes, last_saved_at, rubric_id,
-        rubric:rubrics ( id, title, description, operational_definition ),
-        review_scores ( id, rubric_item_id, score, comment ),
-        annotations ( id, rubric_item_id, anchor, body, tag )
-      `)
+      .select(reviewSelect)
       .single()
-      .then(({ data: newReview, error }) => {
+      .then(async ({ data: newReview, error }) => {
         if (error) {
-          console.error('Failed to create review:', error)
+          if (error.code === '23505') {
+            // A review already exists (Strict Mode double-fire or concurrent navigation)
+            const { data: existing } = await supabase
+              .from('reviews')
+              .select(reviewSelect)
+              .eq('document_id', document.id)
+              .eq('reviewer_id', userId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single()
+            if (existing) setReview(existing as Review)
+          } else {
+            console.error('Failed to create review:', error)
+          }
         } else {
           setReview(newReview as Review)
         }

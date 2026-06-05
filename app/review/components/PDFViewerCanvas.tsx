@@ -18,23 +18,23 @@ export interface TextSelection {
 
 export interface AnnotationConfirmPayload {
   body: string
-  rubricItemId: string
-  tag: HighlightTag
+  rubricItemId: string | null
+  tag: HighlightTag | null
 }
 
 export interface SavedAnnotation {
   id: string
-  rubricItemId: string
+  rubricItemId: string | null
   anchor: Record<string, unknown>
   body: string
-  tag: string
+  tag: string | null
 }
 
 const HIGHLIGHT_BG: Record<string, string> = {
-  general:     'bg-slate-400/30',
   action_item: 'bg-orange-300/40',
   quick_fix:   'bg-blue-300/40',
 }
+const HIGHLIGHT_BG_DEFAULT = 'bg-slate-400/30'
 
 interface TooltipPosition {
   x: number
@@ -42,9 +42,8 @@ interface TooltipPosition {
 }
 
 const TAG_OPTIONS: { value: HighlightTag; label: string; bg: string; text: string; ring: string }[] = [
-  { value: 'general',     label: 'General',     bg: 'bg-slate-100',  text: 'text-slate-600', ring: 'ring-slate-400' },
-  { value: 'action_item', label: 'Action Item',  bg: 'bg-orange-50',  text: 'text-orange-700', ring: 'ring-orange-400' },
-  { value: 'quick_fix',   label: 'Quick Fix',   bg: 'bg-blue-50',    text: 'text-blue-700',  ring: 'ring-blue-400' },
+  { value: 'action_item', label: 'Action Item', bg: 'bg-orange-50', text: 'text-orange-700', ring: 'ring-orange-400' },
+  { value: 'quick_fix',   label: 'Quick Fix',   bg: 'bg-blue-50',   text: 'text-blue-700',  ring: 'ring-blue-400' },
 ]
 
 interface PDFViewerCanvasProps {
@@ -75,7 +74,7 @@ export default function PDFViewerCanvas({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [annotationBody, setAnnotationBody] = useState('')
   const [selectedCriterionId, setSelectedCriterionId] = useState<string>('')
-  const [selectedTag, setSelectedTag] = useState<HighlightTag>('general')
+  const [selectedTag, setSelectedTag] = useState<HighlightTag | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition | null>(null)
@@ -86,7 +85,7 @@ export default function PDFViewerCanvas({
   useEffect(() => {
     if (tooltipPos) {
       setAnnotationBody('')
-      setSelectedTag('general')
+      setSelectedTag(null)
       setSaveError(null)
       setSelectedCriterionId(activeItemId ?? rubricItems[0]?.id ?? '')
     }
@@ -129,12 +128,12 @@ export default function PDFViewerCanvas({
   }, [disabled, currentPage, onTextSelected])
 
   const handleConfirm = async () => {
-    if (!annotationBody.trim() || !selectedCriterionId) return
+    if (!annotationBody.trim()) return
     setIsSaving(true)
     setSaveError(null)
     const err = await onAnnotationConfirm({
       body: annotationBody.trim(),
-      rubricItemId: selectedCriterionId,
+      rubricItemId: selectedCriterionId || null,
       tag: selectedTag,
     })
     setIsSaving(false)
@@ -248,7 +247,7 @@ export default function PDFViewerCanvas({
             ((ann.anchor as any)?.rects ?? []).map((rect: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
               <div
                 key={`${ann.id}-${i}`}
-                className={`absolute pointer-events-none rounded-sm ${HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG.general}`}
+                className={`absolute pointer-events-none rounded-sm ${ann.tag ? (HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG_DEFAULT) : HIGHLIGHT_BG_DEFAULT}`}
                 style={{
                   left:   rect.x1,
                   top:    rect.y1,
@@ -299,11 +298,10 @@ export default function PDFViewerCanvas({
                   focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]
                   text-slate-700 bg-white"
               >
-                <option value="" disabled>Select a criterion…</option>
+                <option value="">No criterion</option>
                 {rubricItems.map((item) => (
                   <option key={item.id} value={item.id}>{item.label}</option>
                 ))}
-                <option value="__general__">General Notes</option>
               </select>
             </div>
 
@@ -319,7 +317,7 @@ export default function PDFViewerCanvas({
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setSelectedTag(opt.value)}
+                      onClick={() => setSelectedTag(prev => prev === opt.value ? null : opt.value)}
                       className={[
                         'flex-1 py-1 text-[10px] font-semibold rounded-lg border transition-all duration-100',
                         isSelected
@@ -364,7 +362,7 @@ export default function PDFViewerCanvas({
               <span className="text-[10px] text-slate-400">⌘↵ to save</span>
               <button
                 onClick={handleConfirm}
-                disabled={!annotationBody.trim() || !selectedCriterionId || isSaving}
+                disabled={!annotationBody.trim() || isSaving}
                 className="text-xs px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white font-medium
                   disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#162d4a] transition-colors"
               >

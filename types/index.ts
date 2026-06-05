@@ -12,7 +12,7 @@ export type FileType                = Enums<'file_type'>
 export type ReviewStatus            = Enums<'review_status'>
 export type CriterionScore          = Enums<'criterion_score'>
 export type CreativeCommonsLicense  = Enums<'creative_commons_license'>
-export type HighlightTag   = 'general' | 'action_item' | 'quick_fix'
+export type HighlightTag   = 'action_item' | 'quick_fix'
 
 // ─── Table row types ──────────────────────────────────────────────────────────
 
@@ -150,8 +150,8 @@ export const EXPERT_DOMAIN_LABELS: Record<ExpertDomain, string> = {
 }
 
 export const CRITERION_SCORE_LABELS: Record<CriterionScore, string> = {
-  does_not_meet: 'Does Not Meet',
-  exemplifies:   'Exemplifies',
+  does_not_meet: 'Needs Improvement',
+  exemplifies:   'Proficient',
   exceeds:       'Exceeds',
 }
 

@@ -31,10 +31,10 @@ export interface ScoreDraft {
 export interface AnnotationDraft {
   id?: string           // present on existing annotations
   reviewId: string
-  rubricItemId: string | null   // null = General Notes
+  rubricItemId: string | null   // null = Free Notes
   anchor: PdfTextAnchor | Json
   body: string
-  tag: HighlightTag
+  tag: HighlightTag | null
 }
 
 export type { CriterionScore }
@@ -82,7 +82,7 @@ export function useReviewAutoSave({
             review_id: reviewId,
             rubric_item_id: draft.rubricItemId,
             score: draft.score,
-            comment: draft.comment,
+            comment: draft.comment.trim() || null,
           },
           { onConflict: 'review_id,rubric_item_id' }
         )
@@ -240,12 +240,57 @@ export function useReviewAutoSave({
     return () => clearTimeout(t)
   }, [saveStatus])
 
+  // ── Score comments (immediate — no debounce) ──────────────────────────────
+
+  const addScoreComment = useCallback(
+    async (
+      reviewId: string,
+      rubricItemId: string,
+      scoreLevel: 'does_not_meet' | 'exceeds',
+      body: string,
+    ): Promise<string | null> => {
+      setSaveStatus('saving')
+      const { data, error } = await supabase
+        .from('score_comments')
+        .insert({ review_id: reviewId, rubric_item_id: rubricItemId, score_level: scoreLevel, body })
+        .select('id')
+        .single()
+      if (error) {
+        console.error('[useReviewAutoSave] addScoreComment error:', error)
+        setSaveStatus('error')
+        return null
+      }
+      setSaveStatus('saved')
+      return data.id
+    },
+    [supabase]
+  )
+
+  const deleteScoreComment = useCallback(
+    async (commentId: string): Promise<void> => {
+      setSaveStatus('saving')
+      const { error } = await supabase
+        .from('score_comments')
+        .delete()
+        .eq('id', commentId)
+      if (error) {
+        console.error('[useReviewAutoSave] deleteScoreComment error:', error)
+        setSaveStatus('error')
+        return
+      }
+      setSaveStatus('saved')
+    },
+    [supabase]
+  )
+
   return {
     saveStatus,
     onScoreChange,
     onNotesChange,
     saveAnnotation,
     deleteAnnotation,
+    addScoreComment,
+    deleteScoreComment,
     saveDraft,
   }
 }

@@ -20,7 +20,7 @@ export type Database = {
           id: string
           review_id: string
           rubric_item_id: string | null
-          tag: string
+          tag: string | null
           updated_at: string
         }
         Insert: {
@@ -30,7 +30,7 @@ export type Database = {
           id?: string
           review_id: string
           rubric_item_id?: string | null
-          tag?: string
+          tag?: string | null
           updated_at?: string
         }
         Update: {
@@ -40,7 +40,7 @@ export type Database = {
           id?: string
           review_id?: string
           rubric_item_id?: string
-          tag?: string
+          tag?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -53,6 +53,48 @@ export type Database = {
           },
           {
             foreignKeyName: "annotations_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "rubric_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      score_comments: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          review_id?: string
+          rubric_item_id?: string
+          score_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "score_comments_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "score_comments_rubric_item_id_fkey"
             columns: ["rubric_item_id"]
             isOneToOne: false
             referencedRelation: "rubric_items"
@@ -163,7 +205,7 @@ export type Database = {
       }
       review_scores: {
         Row: {
-          comment: string
+          comment: string | null
           created_at: string
           id: string
           review_id: string
@@ -172,7 +214,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          comment: string
+          comment?: string | null
           created_at?: string
           id?: string
           review_id: string
@@ -181,7 +223,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          comment?: string
+          comment?: string | null
           created_at?: string
           id?: string
           review_id?: string

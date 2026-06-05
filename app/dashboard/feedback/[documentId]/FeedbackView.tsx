@@ -18,7 +18,7 @@ interface RubricItem {
 interface ReviewScore {
   id: string
   score: CriterionScore | null
-  comment: string
+  comment: string | null
   rubric_item: RubricItem | null
 }
 
