@@ -4,7 +4,8 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { uploadDocument, assignRubrics } from '@/lib/supabase/queries'
-import type { FileType } from '@/types'
+import { EXPERT_DOMAIN_LABELS } from '@/types'
+import type { ExpertDomain } from '@/types'
 
 interface RubricOption {
   id: string
@@ -14,25 +15,26 @@ interface RubricOption {
 
 interface Props {
   rubrics: RubricOption[]
+  customSubjectMatters: string[]
   onCancel: () => void
 }
 
-function detectFileType(file: File): FileType | null {
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (ext === 'pdf') return 'pdf'
-  if (ext === 'html' || ext === 'htm') return 'html'
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext ?? '')) return 'image'
-  if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext ?? '')) return 'audio'
-  return null
-}
+// All predefined keys except "other", which we handle as a special sentinel
+const PREDEFINED_ENTRIES = (Object.entries(EXPERT_DOMAIN_LABELS) as [ExpertDomain, string][])
+  .filter(([key]) => key !== 'other')
+
+const OTHER_SENTINEL = 'other'
 
 const inputBase =
   'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
   'placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 ' +
   'focus:border-[#1e3a5f] transition-colors bg-white disabled:bg-slate-50'
 
-export function UploadDocumentForm({ rubrics, onCancel }: Props) {
+export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: Props) {
   const [title, setTitle] = useState('')
+  const [authors, setAuthors] = useState('')
+  const [subjectMatter, setSubjectMatter] = useState('')
+  const [customSubject, setCustomSubject] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +42,9 @@ export function UploadDocumentForm({ rubrics, onCancel }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
+
+  const isOther = subjectMatter === OTHER_SENTINEL
+  const finalSubjectMatter = isOther ? customSubject.trim() : subjectMatter
 
   function toggleRubric(id: string) {
     setSelectedRubrics(prev => {
@@ -55,14 +60,15 @@ export function UploadDocumentForm({ rubrics, onCancel }: Props) {
     setError(null)
 
     if (!title.trim()) { setError('Title is required.'); return }
-    if (!file) { setError('Please select a file.'); return }
-
-    const fileType = detectFileType(file)
-    if (!fileType) { setError('Unsupported file type. Upload a PDF, HTML, image, or audio file.'); return }
+    if (!authors.trim()) { setError('Author(s) is required.'); return }
+    if (!subjectMatter) { setError('Subject matter is required.'); return }
+    if (isOther && !customSubject.trim()) { setError('Please enter a subject area.'); return }
+    if (!file) { setError('Please select a PDF file.'); return }
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
 
     setLoading(true)
     try {
-      const doc = await uploadDocument(supabase, file, title.trim(), fileType)
+      const doc = await uploadDocument(supabase, file, title.trim(), 'pdf', authors.trim(), finalSubjectMatter)
       if (selectedRubrics.size > 0) {
         await assignRubrics(supabase, doc.id, Array.from(selectedRubrics))
       }
@@ -84,7 +90,7 @@ export function UploadDocumentForm({ rubrics, onCancel }: Props) {
         </label>
         <input
           type="text"
-          placeholder="Document title"
+          placeholder="OER title"
           value={title}
           onChange={e => setTitle(e.target.value)}
           disabled={loading}
@@ -92,10 +98,74 @@ export function UploadDocumentForm({ rubrics, onCancel }: Props) {
         />
       </div>
 
-      {/* File */}
+      {/* Author(s) */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          File <span className="text-red-500">*</span>
+          Author(s) <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          placeholder="e.g. Jane Smith, John Doe"
+          value={authors}
+          onChange={e => setAuthors(e.target.value)}
+          disabled={loading}
+          className={inputBase}
+        />
+        <p className="mt-1 text-xs text-slate-400">Separate multiple authors with commas.</p>
+      </div>
+
+      {/* Subject matter */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          Subject Matter <span className="text-red-500">*</span>
+        </label>
+        <select
+          value={subjectMatter}
+          onChange={e => {
+            setSubjectMatter(e.target.value)
+            if (e.target.value !== OTHER_SENTINEL) setCustomSubject('')
+          }}
+          disabled={loading}
+          className={inputBase}
+        >
+          <option value="">Select a subject area…</option>
+
+          {/* Predefined domains */}
+          <optgroup label="Standard domains">
+            {PREDEFINED_ENTRIES.map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </optgroup>
+
+          {/* Previously entered custom subjects */}
+          {customSubjectMatters.length > 0 && (
+            <optgroup label="Community-added">
+              {customSubjectMatters.map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </optgroup>
+          )}
+
+          <option value={OTHER_SENTINEL}>Other (specify below)…</option>
+        </select>
+
+        {isOther && (
+          <input
+            type="text"
+            placeholder="Enter a subject area"
+            value={customSubject}
+            onChange={e => setCustomSubject(e.target.value)}
+            disabled={loading}
+            className={`${inputBase} mt-2`}
+            autoFocus
+          />
+        )}
+      </div>
+
+      {/* PDF file */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          PDF File <span className="text-red-500">*</span>
         </label>
         <div
           onClick={() => fileRef.current?.click()}
@@ -108,12 +178,12 @@ export function UploadDocumentForm({ rubrics, onCancel }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
           <span className="text-sm text-slate-600 truncate">
-            {file ? file.name : 'Click to select a file (PDF, HTML, image, or audio)'}
+            {file ? file.name : 'Click to select a PDF file'}
           </span>
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.html,.htm,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.m4a"
+            accept=".pdf,application/pdf"
             className="hidden"
             onChange={e => setFile(e.target.files?.[0] ?? null)}
             disabled={loading}

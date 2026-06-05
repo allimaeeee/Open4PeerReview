@@ -83,29 +83,35 @@ export type Database = {
       documents: {
         Row: {
           author_id: string
+          authors: string
           created_at: string
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
           storage_path: string
+          subject_matter: string
           title: string
         }
         Insert: {
           author_id: string
+          authors?: string
           created_at?: string
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
           storage_path: string
+          subject_matter?: string
           title: string
         }
         Update: {
           author_id?: string
+          authors?: string
           created_at?: string
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
           storage_path?: string
+          subject_matter?: string
           title?: string
         }
         Relationships: [
