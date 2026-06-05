@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SaveStatus } from '../hooks/useReviewAutoSave'
+import { Button } from '@/components/ui/Button'
 
 interface SaveStatusIndicatorProps {
   status: SaveStatus
@@ -91,20 +92,16 @@ export function SaveStatusIndicator({
 
       {/* Manual save-draft button */}
       {!disabled && (
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={handleSaveDraft}
-          disabled={saving || status === 'saving'}
-          className={[
-            'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium',
-            'transition-all duration-150',
-            saving || status === 'saving'
-              ? 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
-              : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 active:scale-95',
-          ].join(' ')}
+          loading={saving}
+          disabled={status === 'saving'}
         >
-          {saving ? <SpinnerIcon /> : <SaveIcon />}
+          {!saving && <SaveIcon />}
           Save Draft
-        </button>
+        </Button>
       )}
 
       {disabled && (

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -36,27 +38,9 @@ interface Props {
 function SaveButton({ loading, saved }: { loading: boolean; saved: boolean }) {
   return (
     <div className="flex items-center gap-3 pt-1">
-      <button
-        type="submit"
-        disabled={loading}
-        className={[
-          'px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150',
-          'inline-flex items-center justify-center gap-2',
-          loading
-            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-            : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm hover:shadow-md active:scale-[0.99]',
-        ].join(' ')}
-      >
-        {loading ? (
-          <>
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Saving…
-          </>
-        ) : 'Save changes'}
-      </button>
+      <Button type="submit" variant="primary" size="lg" loading={loading}>
+        Save changes
+      </Button>
       {saved && !loading && (
         <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
           <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -323,36 +307,29 @@ export function SettingsForm({
         <SectionHeading title="Profile" description="Your public-facing name and academic background." />
         <form onSubmit={handleProfileSubmit} noValidate className="space-y-5">
 
-          <div>
-            <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Display name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="displayName"
-              type="text"
-              autoComplete="name"
-              value={displayName}
-              onChange={e => { setDisplayName(e.target.value); clearProfileError('displayName') }}
-              disabled={profileLoading}
-              className={inputBase}
-            />
-            {profileErrors.displayName && <p className="mt-1 text-xs text-red-600">{profileErrors.displayName}</p>}
-          </div>
+          <Input
+            id="displayName"
+            type="text"
+            label="Display name"
+            required
+            autoComplete="name"
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); clearProfileError('displayName') }}
+            disabled={profileLoading}
+            error={profileErrors.displayName}
+          />
 
           <div>
-            <label htmlFor="institution" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Institution
-            </label>
-            <input
+            <Input
               id="institution"
               type="text"
+              label="Institution"
               list="settings-institutions-list"
               autoComplete="organization"
               placeholder="Your university or organization"
               value={institution}
               onChange={e => { setInstitution(e.target.value); setProfileSaved(false) }}
               disabled={profileLoading}
-              className={inputBase}
             />
             <datalist id="settings-institutions-list">
               {institutions.map(name => <option key={name} value={name} />)}
@@ -377,17 +354,15 @@ export function SettingsForm({
             </select>
             {profileErrors.discipline && <p className="mt-1 text-xs text-red-600">{profileErrors.discipline}</p>}
             {discipline === 'other' && (
-              <div className="mt-2">
-                <input
-                  type="text"
-                  placeholder="Please specify your discipline"
-                  value={disciplineOther}
-                  onChange={e => { setDisciplineOther(e.target.value); clearProfileError('disciplineOther') }}
-                  disabled={profileLoading}
-                  className={inputBase}
-                />
-                {profileErrors.disciplineOther && <p className="mt-1 text-xs text-red-600">{profileErrors.disciplineOther}</p>}
-              </div>
+              <Input
+                type="text"
+                placeholder="Please specify your discipline"
+                value={disciplineOther}
+                onChange={e => { setDisciplineOther(e.target.value); clearProfileError('disciplineOther') }}
+                disabled={profileLoading}
+                error={profileErrors.disciplineOther}
+                className="mt-2"
+              />
             )}
           </div>
 
@@ -409,17 +384,15 @@ export function SettingsForm({
             </select>
             {profileErrors.profession && <p className="mt-1 text-xs text-red-600">{profileErrors.profession}</p>}
             {profession === 'other' && (
-              <div className="mt-2">
-                <input
-                  type="text"
-                  placeholder="Please describe your profession"
-                  value={professionOther}
-                  onChange={e => { setProfessionOther(e.target.value); clearProfileError('professionOther') }}
-                  disabled={profileLoading}
-                  className={inputBase}
-                />
-                {profileErrors.professionOther && <p className="mt-1 text-xs text-red-600">{profileErrors.professionOther}</p>}
-              </div>
+              <Input
+                type="text"
+                placeholder="Please describe your profession"
+                value={professionOther}
+                onChange={e => { setProfessionOther(e.target.value); clearProfileError('professionOther') }}
+                disabled={profileLoading}
+                error={profileErrors.professionOther}
+                className="mt-2"
+              />
             )}
           </div>
 
@@ -434,24 +407,18 @@ export function SettingsForm({
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <SectionHeading title="Email address" description="Changing your email sends a confirmation link to the new address." />
         <form onSubmit={handleEmailSubmit} noValidate className="space-y-5">
-          <div>
-            <label htmlFor="newEmail" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Email <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="newEmail"
-              type="email"
-              autoComplete="email"
-              value={newEmail}
-              onChange={e => { setNewEmail(e.target.value); setEmailError(null); setEmailSaved(false) }}
-              disabled={emailLoading}
-              className={inputBase}
-            />
-            {emailError && <p className="mt-1 text-xs text-red-600">{emailError}</p>}
-            {emailSaved && (
-              <p className="mt-1 text-xs text-emerald-600">Confirmation email sent to {newEmail}. Check your inbox to complete the change.</p>
-            )}
-          </div>
+          <Input
+            id="newEmail"
+            type="email"
+            label="Email"
+            required
+            autoComplete="email"
+            value={newEmail}
+            onChange={e => { setNewEmail(e.target.value); setEmailError(null); setEmailSaved(false) }}
+            disabled={emailLoading}
+            error={emailError ?? undefined}
+            helperText={emailSaved ? `Confirmation email sent to ${newEmail}. Check your inbox to complete the change.` : undefined}
+          />
           {emailServerError && (
             <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{emailServerError}</p>
           )}
@@ -464,53 +431,41 @@ export function SettingsForm({
         <SectionHeading title="Password" />
         <form onSubmit={handlePasswordSubmit} noValidate className="space-y-5">
 
-          <div>
-            <label htmlFor="currentPassword" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Current password <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="currentPassword"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={e => { setCurrentPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.currentPassword; return n }) }}
-              disabled={passwordLoading}
-              className={inputBase}
-            />
-            {passwordErrors.currentPassword && <p className="mt-1 text-xs text-red-600">{passwordErrors.currentPassword}</p>}
-          </div>
+          <Input
+            id="currentPassword"
+            type="password"
+            label="Current password"
+            required
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={e => { setCurrentPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.currentPassword; return n }) }}
+            disabled={passwordLoading}
+            error={passwordErrors.currentPassword}
+          />
 
-          <div>
-            <label htmlFor="newPassword" className="block text-sm font-medium text-slate-700 mb-1.5">
-              New password <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="newPassword"
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={e => { setNewPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.newPassword; return n }); setPasswordSaved(false) }}
-              disabled={passwordLoading}
-              className={inputBase}
-            />
-            {passwordErrors.newPassword && <p className="mt-1 text-xs text-red-600">{passwordErrors.newPassword}</p>}
-          </div>
+          <Input
+            id="newPassword"
+            type="password"
+            label="New password"
+            required
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={e => { setNewPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.newPassword; return n }); setPasswordSaved(false) }}
+            disabled={passwordLoading}
+            error={passwordErrors.newPassword}
+          />
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Confirm new password <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={e => { setConfirmPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.confirmPassword; return n }); setPasswordSaved(false) }}
-              disabled={passwordLoading}
-              className={inputBase}
-            />
-            {passwordErrors.confirmPassword && <p className="mt-1 text-xs text-red-600">{passwordErrors.confirmPassword}</p>}
-          </div>
+          <Input
+            id="confirmPassword"
+            type="password"
+            label="Confirm new password"
+            required
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={e => { setConfirmPassword(e.target.value); setPasswordErrors(p => { const n = {...p}; delete n.confirmPassword; return n }); setPasswordSaved(false) }}
+            disabled={passwordLoading}
+            error={passwordErrors.confirmPassword}
+          />
 
           {passwordServerError && (
             <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{passwordServerError}</p>
@@ -532,25 +487,21 @@ export function SettingsForm({
             <p className="text-xs text-slate-500 mb-3">Select all that apply.</p>
             <div className="grid grid-cols-2 gap-3">
               {(['author', 'reviewer'] as const).map(role => (
-                <button
+                <Button
                   key={role}
                   type="button"
+                  variant="toggle"
+                  active={roles.has(role)}
                   onClick={() => toggleRole(role)}
                   disabled={rolesLoading}
-                  className={[
-                    'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                    roles.has(role)
-                      ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                      : 'border-slate-200 bg-white hover:border-slate-300',
-                  ].join(' ')}
                 >
-                  <span className={['text-sm font-semibold capitalize', roles.has(role) ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
+                  <span className="text-sm font-semibold capitalize">
                     {role === 'author' ? 'Author' : 'Reviewer'}
                   </span>
                   <span className="mt-0.5 text-xs text-slate-500">
                     {role === 'author' ? 'Submit work for peer review' : 'Review and evaluate submissions'}
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
             {rolesErrors.roles && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.roles}</p>}
@@ -567,23 +518,17 @@ export function SettingsForm({
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   {REVIEWER_TYPE_OPTIONS.map(opt => (
-                    <button
+                    <Button
                       key={opt.value}
                       type="button"
+                      variant="toggle"
+                      active={reviewerType === opt.value}
                       onClick={() => { setReviewerType(opt.value); setRolesErrors(p => { const n={...p}; delete n.reviewerType; return n }); setRolesSaved(false) }}
                       disabled={rolesLoading}
-                      className={[
-                        'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                        reviewerType === opt.value
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                          : 'border-slate-200 bg-white hover:border-slate-300',
-                      ].join(' ')}
                     >
-                      <span className={['text-sm font-semibold', reviewerType === opt.value ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
-                        {opt.label}
-                      </span>
+                      <span className="text-sm font-semibold">{opt.label}</span>
                       <span className="mt-0.5 text-xs text-slate-500">{opt.description}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {rolesErrors.reviewerType && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.reviewerType}</p>}
@@ -598,20 +543,16 @@ export function SettingsForm({
                 <p className="text-xs text-slate-500 mb-3">Disciplines you can review, or add your own.</p>
                 <div className="flex flex-wrap gap-2">
                   {DISCIPLINE_OPTIONS.map(d => (
-                    <button
+                    <Button
                       key={d.value}
                       type="button"
+                      variant="pill"
+                      active={expertiseTags.has(d.value)}
                       onClick={() => toggleExpertiseTag(d.value)}
                       disabled={rolesLoading}
-                      className={[
-                        'rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150',
-                        expertiseTags.has(d.value)
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
-                      ].join(' ')}
                     >
                       {d.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {customTags.length > 0 && (
@@ -619,35 +560,40 @@ export function SettingsForm({
                     {customTags.map(tag => (
                       <span key={tag} className="inline-flex items-center gap-1 rounded-full border border-[#1e3a5f] bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white">
                         {tag}
-                        <button
+                        <Button
                           type="button"
+                          variant="icon"
+                          size="sm"
                           onClick={() => removeTag(tag)}
                           disabled={rolesLoading}
-                          className="ml-0.5 text-white/70 hover:text-white"
+                          className="ml-0.5"
                           aria-label={`Remove ${tag}`}
-                        >×</button>
+                        >×</Button>
                       </span>
                     ))}
                   </div>
                 )}
                 <div className="flex gap-2 mt-3">
-                  <input
-                    type="text"
-                    placeholder="Add a custom tag…"
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
-                    disabled={rolesLoading}
-                    className={inputBase}
-                  />
-                  <button
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      type="text"
+                      placeholder="Add a custom tag…"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
+                      disabled={rolesLoading}
+                    />
+                  </div>
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="lg"
                     onClick={addCustomTag}
                     disabled={rolesLoading || !tagInput.trim()}
-                    className="shrink-0 rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                    className="shrink-0"
                   >
                     Add
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -659,17 +605,14 @@ export function SettingsForm({
                 <p className="text-xs text-slate-500 mb-3">Rubrics you are qualified to apply.</p>
                 <div className="space-y-2">
                   {rubrics.map(r => (
-                    <button
+                    <Button
                       key={r.id}
                       type="button"
+                      variant="toggle"
+                      active={rubricSpecs.has(r.id)}
                       onClick={() => toggleRubric(r.id)}
                       disabled={rolesLoading}
-                      className={[
-                        'w-full flex items-center gap-3 rounded-lg border-2 px-4 py-2.5 text-left transition-all duration-150',
-                        rubricSpecs.has(r.id)
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                          : 'border-slate-200 bg-white hover:border-slate-300',
-                      ].join(' ')}
+                      className="!flex-row !items-center gap-3 !py-2.5"
                     >
                       <span className={[
                         'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors',
@@ -684,7 +627,7 @@ export function SettingsForm({
                       <span className={['text-sm font-medium', rubricSpecs.has(r.id) ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
                         {r.title}
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {rolesErrors.rubricSpecs && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.rubricSpecs}</p>}

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -197,38 +199,31 @@ export function OnboardingForm({
         <form onSubmit={handleSubmit} noValidate className="space-y-5">
 
           {/* Display name */}
-          <div>
-            <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Display name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="displayName"
-              type="text"
-              autoComplete="name"
-              placeholder="Your name"
-              value={displayName}
-              onChange={e => { setDisplayName(e.target.value); clearError('displayName') }}
-              disabled={loading}
-              className={inputBase}
-            />
-            {errors.displayName && <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>}
-          </div>
+          <Input
+            id="displayName"
+            type="text"
+            label="Display name"
+            required
+            autoComplete="name"
+            placeholder="Your name"
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); clearError('displayName') }}
+            disabled={loading}
+            error={errors.displayName}
+          />
 
           {/* Institution */}
           <div>
-            <label htmlFor="institution" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Institution
-            </label>
-            <input
+            <Input
               id="institution"
               type="text"
+              label="Institution"
               list="institutions-list"
               autoComplete="organization"
               placeholder="Your university or organization"
               value={institution}
               onChange={e => setInstitution(e.target.value)}
               disabled={loading}
-              className={inputBase}
             />
             <datalist id="institutions-list">
               {institutions.map(name => <option key={name} value={name} />)}
@@ -254,17 +249,15 @@ export function OnboardingForm({
             </select>
             {errors.discipline && <p className="mt-1 text-xs text-red-600">{errors.discipline}</p>}
             {discipline === 'other' && (
-              <div className="mt-2">
-                <input
-                  type="text"
-                  placeholder="Please specify your discipline"
-                  value={disciplineOther}
-                  onChange={e => { setDisciplineOther(e.target.value); clearError('disciplineOther') }}
-                  disabled={loading}
-                  className={inputBase}
-                />
-                {errors.disciplineOther && <p className="mt-1 text-xs text-red-600">{errors.disciplineOther}</p>}
-              </div>
+              <Input
+                type="text"
+                placeholder="Please specify your discipline"
+                value={disciplineOther}
+                onChange={e => { setDisciplineOther(e.target.value); clearError('disciplineOther') }}
+                disabled={loading}
+                error={errors.disciplineOther}
+                className="mt-2"
+              />
             )}
           </div>
 
@@ -287,17 +280,15 @@ export function OnboardingForm({
             </select>
             {errors.profession && <p className="mt-1 text-xs text-red-600">{errors.profession}</p>}
             {profession === 'other' && (
-              <div className="mt-2">
-                <input
-                  type="text"
-                  placeholder="Please describe your profession"
-                  value={professionOther}
-                  onChange={e => { setProfessionOther(e.target.value); clearError('professionOther') }}
-                  disabled={loading}
-                  className={inputBase}
-                />
-                {errors.professionOther && <p className="mt-1 text-xs text-red-600">{errors.professionOther}</p>}
-              </div>
+              <Input
+                type="text"
+                placeholder="Please describe your profession"
+                value={professionOther}
+                onChange={e => { setProfessionOther(e.target.value); clearError('professionOther') }}
+                disabled={loading}
+                error={errors.professionOther}
+                className="mt-2"
+              />
             )}
           </div>
 
@@ -309,22 +300,15 @@ export function OnboardingForm({
             <p className="text-xs text-slate-500 mb-3">Select all that apply. You must choose at least one.</p>
             <div className="grid grid-cols-2 gap-3">
               {(['author', 'reviewer'] as const).map(role => (
-                <button
+                <Button
                   key={role}
                   type="button"
+                  variant="toggle"
+                  active={roles.has(role)}
                   onClick={() => toggleRole(role)}
                   disabled={loading}
-                  className={[
-                    'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                    roles.has(role)
-                      ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                      : 'border-slate-200 bg-white hover:border-slate-300',
-                  ].join(' ')}
                 >
-                  <span className={[
-                    'text-sm font-semibold capitalize',
-                    roles.has(role) ? 'text-[#1e3a5f]' : 'text-slate-700',
-                  ].join(' ')}>
+                  <span className="text-sm font-semibold capitalize">
                     {role === 'author' ? 'Author' : 'Reviewer'}
                   </span>
                   <span className="mt-0.5 text-xs text-slate-500">
@@ -332,7 +316,7 @@ export function OnboardingForm({
                       ? 'Submit work for peer review'
                       : 'Review and evaluate submissions'}
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
             {errors.roles && <p className="mt-1.5 text-xs text-red-600">{errors.roles}</p>}
@@ -349,26 +333,17 @@ export function OnboardingForm({
                 </p>
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   {REVIEWER_TYPE_OPTIONS.map(opt => (
-                    <button
+                    <Button
                       key={opt.value}
                       type="button"
+                      variant="toggle"
+                      active={reviewerType === opt.value}
                       onClick={() => { setReviewerType(opt.value); clearError('reviewerType') }}
                       disabled={loading}
-                      className={[
-                        'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                        reviewerType === opt.value
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                          : 'border-slate-200 bg-white hover:border-slate-300',
-                      ].join(' ')}
                     >
-                      <span className={[
-                        'text-sm font-semibold',
-                        reviewerType === opt.value ? 'text-[#1e3a5f]' : 'text-slate-700',
-                      ].join(' ')}>
-                        {opt.label}
-                      </span>
+                      <span className="text-sm font-semibold">{opt.label}</span>
                       <span className="mt-0.5 text-xs text-slate-500">{opt.description}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {errors.reviewerType && <p className="mt-1.5 text-xs text-red-600">{errors.reviewerType}</p>}
@@ -383,20 +358,16 @@ export function OnboardingForm({
                 <p className="text-xs text-slate-500 mb-3">Select disciplines you can review, or add your own.</p>
                 <div className="flex flex-wrap gap-2">
                   {DISCIPLINE_OPTIONS.map(d => (
-                    <button
+                    <Button
                       key={d.value}
                       type="button"
+                      variant="pill"
+                      active={expertiseTags.has(d.value)}
                       onClick={() => toggleExpertiseTag(d.value)}
                       disabled={loading}
-                      className={[
-                        'rounded-full border px-3 py-1 text-xs font-medium transition-all duration-150',
-                        expertiseTags.has(d.value)
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
-                      ].join(' ')}
                     >
                       {d.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
@@ -409,38 +380,43 @@ export function OnboardingForm({
                         className="inline-flex items-center gap-1 rounded-full border border-[#1e3a5f] bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white"
                       >
                         {tag}
-                        <button
+                        <Button
                           type="button"
+                          variant="icon"
+                          size="sm"
                           onClick={() => removeTag(tag)}
                           disabled={loading}
-                          className="ml-0.5 text-white/70 hover:text-white"
+                          className="ml-0.5"
                           aria-label={`Remove ${tag}`}
                         >
                           ×
-                        </button>
+                        </Button>
                       </span>
                     ))}
                   </div>
                 )}
 
                 <div className="flex gap-2 mt-3">
-                  <input
-                    type="text"
-                    placeholder="Add a custom tag…"
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
-                    disabled={loading}
-                    className={inputBase}
-                  />
-                  <button
+                  <div className="flex-1 min-w-0">
+                    <Input
+                      type="text"
+                      placeholder="Add a custom tag…"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
+                      disabled={loading}
+                    />
+                  </div>
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="lg"
                     onClick={addCustomTag}
                     disabled={loading || !tagInput.trim()}
-                    className="shrink-0 rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                    className="shrink-0"
                   >
                     Add
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -452,17 +428,14 @@ export function OnboardingForm({
                 <p className="text-xs text-slate-500 mb-3">Choose at least one rubric you are qualified to apply.</p>
                 <div className="space-y-2">
                   {rubrics.map(r => (
-                    <button
+                    <Button
                       key={r.id}
                       type="button"
+                      variant="toggle"
+                      active={rubricSpecs.has(r.id)}
                       onClick={() => toggleRubric(r.id)}
                       disabled={loading}
-                      className={[
-                        'w-full flex items-center gap-3 rounded-lg border-2 px-4 py-2.5 text-left transition-all duration-150',
-                        rubricSpecs.has(r.id)
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                          : 'border-slate-200 bg-white hover:border-slate-300',
-                      ].join(' ')}
+                      className="!flex-row !items-center gap-3 !py-2.5"
                     >
                       <span className={[
                         'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors',
@@ -482,7 +455,7 @@ export function OnboardingForm({
                       ].join(' ')}>
                         {r.title}
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {errors.rubricSpecs && <p className="mt-1.5 text-xs text-red-600">{errors.rubricSpecs}</p>}
@@ -495,29 +468,16 @@ export function OnboardingForm({
             <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{serverError}</p>
           )}
 
-          <button
+          <Button
             type="submit"
-            disabled={loading}
-            className={[
-              'w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 mt-2',
-              'inline-flex items-center justify-center gap-2',
-              loading
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm hover:shadow-md active:scale-[0.99]',
-            ].join(' ')}
+            variant="primary"
+            size="lg"
+            fullWidth
+            loading={loading}
+            className="mt-2"
           >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Saving…
-              </>
-            ) : (
-              'Get started'
-            )}
-          </button>
+            Get started
+          </Button>
 
         </form>
       </div>
