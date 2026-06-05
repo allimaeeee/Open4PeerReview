@@ -4,7 +4,7 @@
 // Split-pane: PDF viewer (left) + annotation panel (right).
 // Owns score/comment/annotation state and wires up useReviewAutoSave.
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
 import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
@@ -27,7 +27,6 @@ export interface LocalScore {
   score: CriterionScore | null
   comment: string
   annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string }[]
-  reviewScoreId: string | null  // null until first save
 }
 
 export function ReviewerConsole({
@@ -44,6 +43,11 @@ export function ReviewerConsole({
   const [pendingSelection, setPendingSelection] = useState<TextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
+  const [generalAnnotations, setGeneralAnnotations] = useState<
+    { id: string; anchor: Record<string, unknown>; body: string; tag: string }[]
+  >(
+    (review.annotations ?? []).filter((a) => a.rubric_item_id === null)
+  )
 
   const isSubmitted = review.status === 'submitted'
 
@@ -69,18 +73,18 @@ export function ReviewerConsole({
         setRubricItems(items)
         setActiveItemId(items[0]?.id ?? null)
 
-        // Hydrate local scores from existing review_scores
+        // Hydrate local scores from existing review_scores + annotations
         const initialScores: Record<string, LocalScore> = {}
         items.forEach((item) => {
-          const existing = review.review_scores.find(
-            (rs) => rs.rubric_item_id === item.id
+          const existingScore = review.review_scores.find((rs) => rs.rubric_item_id === item.id)
+          const existingAnnotations = (review.annotations ?? []).filter(
+            (a) => a.rubric_item_id === item.id
           )
           initialScores[item.id] = {
             rubricItemId: item.id,
-            score: existing?.score ?? null,
-            comment: existing?.comment ?? '',
-            annotations: existing?.annotations ?? [],
-            reviewScoreId: existing?.id ?? null,
+            score: existingScore?.score ?? null,
+            comment: existingScore?.comment ?? '',
+            annotations: existingAnnotations,
           }
         })
         setScores(initialScores)
@@ -134,59 +138,49 @@ export function ReviewerConsole({
       if (!pendingSelection) return
       const { body, rubricItemId, tag } = payload
 
-      const currentScore = scores[rubricItemId]
-      if (!currentScore) return
-
-      // Ensure a review_score row exists before inserting annotation
-      let reviewScoreId = currentScore.reviewScoreId
-      if (!reviewScoreId) {
-        if (!currentScore.score) {
-          // Surface error via return value — caller shows it in the tooltip
-          return 'Please select a rating for this criterion before adding evidence.'
-        }
-        const { data: rs } = await supabase
-          .from('review_scores')
-          .upsert({
-            review_id: review.id,
-            rubric_item_id: rubricItemId,
-            score: currentScore.score,
-            comment: currentScore.comment || ' ',
-          }, { onConflict: 'review_id,rubric_item_id' })
-          .select('id')
-          .single()
-
-        if (!rs) return 'Failed to save rating. Please try again.'
-        reviewScoreId = rs.id
-        setScores((prev) => ({
-          ...prev,
-          [rubricItemId]: { ...prev[rubricItemId], reviewScoreId: rs.id },
-        }))
-      }
-
       const anchor = {
         page: pendingSelection.page,
         text: pendingSelection.text,
         rects: pendingSelection.rects,
       }
 
-      const newId = await saveAnnotation({ reviewScoreId: reviewScoreId!, anchor, body, tag })
+      if (rubricItemId === '__general__') {
+        const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
+        if (!newId) return 'Failed to save evidence. Please try again.'
+        setGeneralAnnotations((prev) => [...prev, { id: newId, anchor, body, tag }])
+        setPendingSelection(null)
+        return null
+      }
+
+      if (!scores[rubricItemId]) return
+
+      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId, anchor, body, tag })
       if (!newId) return 'Failed to save evidence. Please try again.'
 
       setScores((prev) => ({
         ...prev,
         [rubricItemId]: {
           ...prev[rubricItemId],
-          annotations: [
-            ...prev[rubricItemId].annotations,
-            { id: newId, anchor, body, tag },
-          ],
+          annotations: [...prev[rubricItemId].annotations, { id: newId, anchor, body, tag }],
         },
       }))
       setPendingSelection(null)
       return null
     },
-    [pendingSelection, scores, review.id, supabase, saveAnnotation]
+    [pendingSelection, scores, review.id, saveAnnotation, setGeneralAnnotations]
   )
+
+  const handleAddGeneralNote = useCallback(async (body: string): Promise<string | null> => {
+    const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor: {}, body, tag: 'general' })
+    if (!newId) return 'Failed to save note. Please try again.'
+    setGeneralAnnotations((prev) => [...prev, { id: newId, anchor: {}, body, tag: 'general' }])
+    return null
+  }, [review.id, saveAnnotation])
+
+  const handleDeleteGeneralAnnotation = useCallback(async (annotationId: string) => {
+    await deleteAnnotation(annotationId)
+    setGeneralAnnotations((prev) => prev.filter((a) => a.id !== annotationId))
+  }, [deleteAnnotation])
 
   const handleAnnotationDelete = useCallback(
     async (rubricItemId: string, annotationId: string) => {
@@ -220,6 +214,14 @@ export function ReviewerConsole({
 
   const scoredCount = Object.values(scores).filter((s) => s.score !== null).length
   const totalCount = rubricItems.length
+
+  // Flatten all saved annotations for PDF highlight overlays
+  const savedAnnotations = useMemo(() => [
+    ...Object.entries(scores).flatMap(([rubricItemId, s]) =>
+      s.annotations.map((ann) => ({ ...ann, rubricItemId }))
+    ),
+    ...generalAnnotations.map((ann) => ({ ...ann, rubricItemId: '__general__' })),
+  ], [scores, generalAnnotations])
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden">
@@ -274,6 +276,7 @@ export function ReviewerConsole({
             rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
             activeItemId={activeItemId}
             pendingSelection={pendingSelection}
+            savedAnnotations={savedAnnotations}
             onTextSelected={handleTextSelected}
             onAnnotationConfirm={handleAnnotationConfirm}
             onPendingSelectionClear={() => setPendingSelection(null)}
@@ -288,9 +291,12 @@ export function ReviewerConsole({
             scores={scores}
             activeItemId={activeItemId}
             isSubmitted={isSubmitted}
+            generalAnnotations={generalAnnotations}
             onActiveItemChange={setActiveItemId}
             onScoreChange={handleScoreChange}
             onAnnotationDelete={handleAnnotationDelete}
+            onAddGeneralNote={handleAddGeneralNote}
+            onDeleteGeneralAnnotation={handleDeleteGeneralAnnotation}
           />
         </div>
       </div>

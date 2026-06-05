@@ -35,6 +35,7 @@ export interface RubricItem {
 
 export interface AnnotationRecord {
   id: string
+  rubric_item_id: string | null
   anchor: Record<string, unknown>
   body: string
   tag: string
@@ -45,17 +46,18 @@ export interface ReviewScore {
   rubric_item_id: string
   score: 'does_not_meet' | 'exemplifies' | 'exceeds' | null
   comment: string
-  annotations: AnnotationRecord[]
 }
 
 export interface Review {
   id: string
   status: 'in_progress' | 'submitted'
   overall_comment: string | null
+  notes: string | null
   last_saved_at: string | null
   rubric_id: string
   rubric: Rubric
   review_scores: ReviewScore[]
+  annotations: AnnotationRecord[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -85,12 +87,10 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
         reviewer_id: userId,
       })
       .select(`
-        id, status, overall_comment, last_saved_at, rubric_id,
+        id, status, overall_comment, notes, last_saved_at, rubric_id,
         rubric:rubrics ( id, title, description, operational_definition ),
-        review_scores (
-          id, rubric_item_id, score, comment,
-          annotations ( id, anchor, body, tag )
-        )
+        review_scores ( id, rubric_item_id, score, comment ),
+        annotations ( id, rubric_item_id, anchor, body, tag )
       `)
       .single()
       .then(({ data: newReview, error }) => {
