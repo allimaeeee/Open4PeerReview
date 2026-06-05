@@ -11,6 +11,7 @@
   --color-surface-container-high:   #ebe8e1;
   --color-surface-bright:           #fcf9f2;
   --color-surface-card:             #ffffff;
+  --color-surface-warm:             #fefaf0;
 
   /* ── Text ── */
   --color-text-primary:             #1c1c18;
@@ -64,8 +65,8 @@
   /* ── Font families ── */
   --font-display:   'Newsreader', Georgia, 'Iowan Old Style', serif;
   --font-heading:   'Newsreader', Georgia, 'Iowan Old Style', serif;
-  --font-body:      'Inter', system-ui, -apple-system, sans-serif;
-  --font-label:     'Inter', system-ui, -apple-system, sans-serif;
+  --font-body:      var(--font-lato), system-ui, -apple-system, sans-serif;
+  --font-label:     var(--font-lato), system-ui, -apple-system, sans-serif;
   --font-code:      'JetBrains Mono', ui-monospace, monospace;
 
   /* ── Font sizes ── */
