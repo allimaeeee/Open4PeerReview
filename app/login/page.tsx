@@ -4,6 +4,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -63,49 +65,34 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'signup' && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Display Name
-              </label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Your name"
-              />
-            </div>
+            <Input
+              type="text"
+              label="Display Name"
+              required
+              placeholder="Your name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
           )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="you@example.com"
-            />
-          </div>
+          <Input
+            type="email"
+            label="Email"
+            required
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="••••••••"
-            />
-          </div>
+          <Input
+            type="password"
+            label="Password"
+            required
+            placeholder="••••••••"
+            minLength={6}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
@@ -114,23 +101,20 @@ export default function LoginPage() {
             <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-600">{message}</p>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Loading...' : mode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
+          <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
+            {mode === 'login' ? 'Sign In' : 'Create Account'}
+          </Button>
         </form>
 
         <p className="mt-4 text-center text-sm text-gray-500">
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
-          <button
+          <Button
+            type="button"
+            variant="text"
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null) }}
-            className="font-medium text-blue-600 hover:underline"
           >
             {mode === 'login' ? 'Sign up' : 'Sign in'}
-          </button>
+          </Button>
         </p>
       </div>
     </main>

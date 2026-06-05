@@ -5,11 +5,8 @@
 import { useState } from 'react'
 import { createBrowserSupabase } from '@/lib/supabase'
 import type { SignupFormValues } from '../../types'
-
-const inputBase =
-  'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
-  'placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 ' +
-  'focus:border-[#1e3a5f] transition-colors bg-white disabled:bg-slate-50 disabled:cursor-not-allowed'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 interface SignupFormProps {
   onSuccess?: () => void
@@ -104,73 +101,57 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      <div>
-        <label htmlFor="displayName" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Full name <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="displayName"
-          type="text"
-          autoComplete="name"
-          placeholder="Jane Smith"
-          value={values.displayName}
-          onChange={set('displayName')}
-          disabled={loading}
-          className={inputBase}
-        />
-        {errors.displayName && <p className="mt-1 text-xs text-red-600">{errors.displayName}</p>}
-      </div>
+      <Input
+        id="displayName"
+        type="text"
+        label="Full name"
+        required
+        autoComplete="name"
+        placeholder="Jane Smith"
+        value={values.displayName}
+        onChange={set('displayName')}
+        disabled={loading}
+        error={errors.displayName}
+      />
 
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Email address <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@university.edu"
-          value={values.email}
-          onChange={set('email')}
-          disabled={loading}
-          className={inputBase}
-        />
-        {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
-      </div>
+      <Input
+        id="email"
+        type="email"
+        label="Email address"
+        required
+        autoComplete="email"
+        placeholder="you@university.edu"
+        value={values.email}
+        onChange={set('email')}
+        disabled={loading}
+        error={errors.email}
+      />
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Password <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="At least 8 characters"
-          value={values.password}
-          onChange={set('password')}
-          disabled={loading}
-          className={inputBase}
-        />
-        {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password}</p>}
-      </div>
+      <Input
+        id="password"
+        type="password"
+        label="Password"
+        required
+        autoComplete="new-password"
+        placeholder="At least 8 characters"
+        value={values.password}
+        onChange={set('password')}
+        disabled={loading}
+        error={errors.password}
+      />
 
-      <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1.5">
-          Confirm password <span className="text-red-500">*</span>
-        </label>
-        <input
-          id="confirmPassword"
-          type="password"
-          autoComplete="new-password"
-          placeholder="Repeat your password"
-          value={values.confirmPassword}
-          onChange={set('confirmPassword')}
-          disabled={loading}
-          className={inputBase}
-        />
-        {errors.confirmPassword && <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>}
-      </div>
+      <Input
+        id="confirmPassword"
+        type="password"
+        label="Confirm password"
+        required
+        autoComplete="new-password"
+        placeholder="Repeat your password"
+        value={values.confirmPassword}
+        onChange={set('confirmPassword')}
+        disabled={loading}
+        error={errors.confirmPassword}
+      />
 
       {serverError && (
         <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">
@@ -178,29 +159,9 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className={[
-          'w-full py-2.5 rounded-lg text-sm font-semibold transition-all duration-150',
-          'inline-flex items-center justify-center gap-2',
-          loading
-            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-            : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm hover:shadow-md active:scale-[0.99]',
-        ].join(' ')}
-      >
-        {loading ? (
-          <>
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Creating account…
-          </>
-        ) : (
-          'Create account'
-        )}
-      </button>
+      <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
+        Create account
+      </Button>
     </form>
   )
 }
