@@ -11,13 +11,14 @@ import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
-import type { OERDocument, Review, ReviewScore, RubricItem } from './ReviewerApp'
+import type { OERDocument, Review, Rubric, RubricItem } from './ReviewerApp'
 
 interface ReviewerConsoleProps {
   supabase: SupabaseClient
   userId: string
   document: OERDocument
   review: Review
+  rubrics: Rubric[]
   onReviewUpdate: (r: Review) => void
 }
 
@@ -31,9 +32,10 @@ export interface LocalScore {
 
 export function ReviewerConsole({
   supabase,
-  userId,
+  userId: _userId,
   document,
   review,
+  rubrics,
   onReviewUpdate,
 }: ReviewerConsoleProps) {
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
@@ -47,19 +49,29 @@ export function ReviewerConsole({
 
   // ── Load rubric items ──────────────────────────────────────────────────────
   useEffect(() => {
+    const rubricIds = rubrics.map((r) => r.id)
+    if (rubricIds.length === 0) return
+
+    const rubricTitleById = Object.fromEntries(rubrics.map((r) => [r.id, r.title]))
+
     supabase
       .from('rubric_items')
-      .select('id, label, description, sort_order')
-      .eq('rubric_id', review.rubric_id)
+      .select('id, label, description, sort_order, rubric_id')
+      .in('rubric_id', rubricIds)
+      .order('rubric_id')
       .order('sort_order')
       .then(({ data }) => {
         if (!data) return
-        setRubricItems(data)
-        setActiveItemId(data[0]?.id ?? null)
+        const items: RubricItem[] = data.map((item) => ({
+          ...item,
+          rubric_title: rubricTitleById[item.rubric_id],
+        }))
+        setRubricItems(items)
+        setActiveItemId(items[0]?.id ?? null)
 
         // Hydrate local scores from existing review_scores
         const initialScores: Record<string, LocalScore> = {}
-        data.forEach((item) => {
+        items.forEach((item) => {
           const existing = review.review_scores.find(
             (rs) => rs.rubric_item_id === item.id
           )
@@ -73,7 +85,9 @@ export function ReviewerConsole({
         })
         setScores(initialScores)
       })
-  }, [supabase, review.rubric_id, review.review_scores])
+  // rubrics is stable (set once from server props); review.review_scores seeds initial UI only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, rubrics])
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const { saveStatus, onScoreChange, saveAnnotation, deleteAnnotation, saveDraft } =

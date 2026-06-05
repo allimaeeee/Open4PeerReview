@@ -1,11 +1,10 @@
 'use client'
 
 // app/reviewer/_components/ReviewerApp.tsx
-// Client root — manages the picker → console transition and all shared state.
+// Client root — auto-creates a review on mount and transitions to the console.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createBrowserSupabase } from '@/lib/supabase'
-import { RubricPicker } from './RubricPicker'
 import { ReviewerConsole } from './ReviewerConsole'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +29,8 @@ export interface RubricItem {
   label: string
   description: string | null
   sort_order: number
+  rubric_id: string
+  rubric_title?: string
 }
 
 export interface AnnotationRecord {
@@ -68,8 +69,40 @@ interface ReviewerAppProps {
 
 export function ReviewerApp({ userId, document, rubrics, existingReview }: ReviewerAppProps) {
   const [review, setReview] = useState<Review | null>(existingReview)
+  const [creating, setCreating] = useState(false)
 
   const supabase = createBrowserSupabase()
+
+  // Auto-create a review on first visit (no picker step)
+  useEffect(() => {
+    if (review || creating || rubrics.length === 0 || !document) return
+    setCreating(true)
+    supabase
+      .from('reviews')
+      .insert({
+        document_id: document.id,
+        rubric_id: rubrics[0].id,
+        reviewer_id: userId,
+      })
+      .select(`
+        id, status, overall_comment, last_saved_at, rubric_id,
+        rubric:rubrics ( id, title, description, operational_definition ),
+        review_scores (
+          id, rubric_item_id, score, comment,
+          annotations ( id, anchor, body, tag )
+        )
+      `)
+      .single()
+      .then(({ data: newReview, error }) => {
+        if (error) {
+          console.error('Failed to create review:', error)
+        } else {
+          setReview(newReview as Review)
+        }
+        setCreating(false)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!document) {
     return (
@@ -82,40 +115,11 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
     )
   }
 
-  const handleRubricSelected = async (rubric: Rubric) => {
-    // Create the review record
-    const { data: newReview, error } = await supabase
-      .from('reviews')
-      .insert({
-        document_id: document.id,
-        rubric_id: rubric.id,
-        reviewer_id: userId,
-      })
-      .select(`
-        id, status, overall_comment, last_saved_at, rubric_id,
-        rubric:rubrics ( id, title, description ),
-        review_scores (
-          id, rubric_item_id, score, comment,
-          annotations ( id, anchor, body, tag )
-        )
-      `)
-      .single()
-
-    if (error) {
-      console.error('Failed to create review:', error)
-      return
-    }
-
-    setReview(newReview as Review)
-  }
-
   if (!review) {
     return (
-      <RubricPicker
-        document={document}
-        rubrics={rubrics}
-        onSelect={handleRubricSelected}
-      />
+      <div className="flex items-center justify-center h-screen bg-slate-50">
+        <div className="w-6 h-6 border-2 border-slate-300 border-t-[#1e3a5f] rounded-full animate-spin" />
+      </div>
     )
   }
 
@@ -125,6 +129,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
       userId={userId}
       document={document}
       review={review}
+      rubrics={rubrics}
       onReviewUpdate={setReview}
     />
   )
