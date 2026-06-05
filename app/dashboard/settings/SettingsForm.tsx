@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Card } from '@/components/ui/Card'
+import { Alert } from '@/components/ui/Alert'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -42,7 +44,7 @@ function SaveButton({ loading, saved }: { loading: boolean; saved: boolean }) {
         Save changes
       </Button>
       {saved && !loading && (
-        <span className="flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
+        <span className="flex items-center gap-1.5 text-sm text-success font-medium">
           <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
@@ -178,11 +180,11 @@ export function SettingsForm({
   async function handleProfileSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const errs: Record<string, string> = {}
-    if (!displayName.trim()) errs.displayName = 'Display name is required'
-    if (!discipline)         errs.discipline  = 'Please select a discipline'
-    if (discipline === 'other' && !disciplineOther.trim()) errs.disciplineOther = 'Please specify your discipline'
-    if (!profession)         errs.profession  = 'Please select a profession'
-    if (profession === 'other' && !professionOther.trim()) errs.professionOther = 'Please specify your profession'
+    if (!displayName.trim()) errs.displayName = 'Display name is required.'
+    if (!discipline)         errs.discipline  = 'Please select a discipline.'
+    if (discipline === 'other' && !disciplineOther.trim()) errs.disciplineOther = 'Please specify your discipline.'
+    if (!profession)         errs.profession  = 'Please select a profession.'
+    if (profession === 'other' && !professionOther.trim()) errs.professionOther = 'Please specify your profession.'
     setProfileErrors(errs)
     if (Object.keys(errs).length) return
 
@@ -217,11 +219,11 @@ export function SettingsForm({
   async function handleEmailSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!newEmail.trim() || newEmail === email) {
-      setEmailError('Enter a new email address')
+      setEmailError('Enter a new email address.')
       return
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-      setEmailError('Enter a valid email address')
+      setEmailError('Enter a valid email address.')
       return
     }
     setEmailError(null)
@@ -238,10 +240,10 @@ export function SettingsForm({
   async function handlePasswordSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const errs: Record<string, string> = {}
-    if (!currentPassword)              errs.currentPassword  = 'Enter your current password'
-    if (!newPassword)                  errs.newPassword      = 'Enter a new password'
-    else if (newPassword.length < 8)   errs.newPassword      = 'Password must be at least 8 characters'
-    if (newPassword !== confirmPassword) errs.confirmPassword = 'Passwords do not match'
+    if (!currentPassword)              errs.currentPassword  = 'Enter your current password.'
+    if (!newPassword)                  errs.newPassword      = 'Enter a new password.'
+    else if (newPassword.length < 8)   errs.newPassword      = 'Password must be at least 8 characters.'
+    if (newPassword !== confirmPassword) errs.confirmPassword = 'Passwords do not match.'
     setPasswordErrors(errs)
     if (Object.keys(errs).length) return
 
@@ -251,7 +253,7 @@ export function SettingsForm({
     // Verify current password
     const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
     if (verifyError) {
-      setPasswordErrors({ currentPassword: 'Current password is incorrect' })
+      setPasswordErrors({ currentPassword: 'Current password is incorrect.' })
       setPasswordLoading(false)
       return
     }
@@ -269,10 +271,10 @@ export function SettingsForm({
   async function handleRolesSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const errs: Record<string, string> = {}
-    if (roles.size === 0)   errs.roles       = 'Please select at least one role'
+    if (roles.size === 0)   errs.roles       = 'Please select at least one role.'
     if (isReviewer) {
-      if (!reviewerType)    errs.reviewerType  = 'Please select your reviewer type'
-      if (rubricSpecs.size === 0) errs.rubricSpecs = 'Please select at least one rubric'
+      if (!reviewerType)    errs.reviewerType  = 'Please select your reviewer type.'
+      if (rubricSpecs.size === 0) errs.rubricSpecs = 'Please select at least one rubric.'
     }
     setRolesErrors(errs)
     if (Object.keys(errs).length) return
@@ -303,7 +305,7 @@ export function SettingsForm({
     <div className="space-y-8">
 
       {/* ── Profile ─────────────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <Card variant="outlined" className="p-6">
         <SectionHeading title="Profile" description="Your public-facing name and academic background." />
         <form onSubmit={handleProfileSubmit} noValidate className="space-y-5">
 
@@ -352,7 +354,7 @@ export function SettingsForm({
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
             </select>
-            {profileErrors.discipline && <p className="mt-1 text-xs text-red-600">{profileErrors.discipline}</p>}
+            {profileErrors.discipline && <Alert variant="error" message={profileErrors.discipline} className="mt-1" />}
             {discipline === 'other' && (
               <Input
                 type="text"
@@ -382,7 +384,7 @@ export function SettingsForm({
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            {profileErrors.profession && <p className="mt-1 text-xs text-red-600">{profileErrors.profession}</p>}
+            {profileErrors.profession && <Alert variant="error" message={profileErrors.profession} className="mt-1" />}
             {profession === 'other' && (
               <Input
                 type="text"
@@ -396,15 +398,13 @@ export function SettingsForm({
             )}
           </div>
 
-          {profileServerError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{profileServerError}</p>
-          )}
+          {profileServerError && <Alert variant="error" message={profileServerError} />}
           <SaveButton loading={profileLoading} saved={profileSaved} />
         </form>
-      </section>
+      </Card>
 
       {/* ── Email ───────────────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <Card variant="outlined" className="p-6">
         <SectionHeading title="Email address" description="Changing your email sends a confirmation link to the new address." />
         <form onSubmit={handleEmailSubmit} noValidate className="space-y-5">
           <Input
@@ -419,15 +419,13 @@ export function SettingsForm({
             error={emailError ?? undefined}
             helperText={emailSaved ? `Confirmation email sent to ${newEmail}. Check your inbox to complete the change.` : undefined}
           />
-          {emailServerError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{emailServerError}</p>
-          )}
+          {emailServerError && <Alert variant="error" message={emailServerError} />}
           <SaveButton loading={emailLoading} saved={false} />
         </form>
-      </section>
+      </Card>
 
       {/* ── Password ────────────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <Card variant="outlined" className="p-6">
         <SectionHeading title="Password" />
         <form onSubmit={handlePasswordSubmit} noValidate className="space-y-5">
 
@@ -467,15 +465,13 @@ export function SettingsForm({
             error={passwordErrors.confirmPassword}
           />
 
-          {passwordServerError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{passwordServerError}</p>
-          )}
+          {passwordServerError && <Alert variant="error" message={passwordServerError} />}
           <SaveButton loading={passwordLoading} saved={passwordSaved} />
         </form>
-      </section>
+      </Card>
 
       {/* ── Roles ───────────────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6">
+      <Card variant="outlined" className="p-6">
         <SectionHeading title="Role & reviewer preferences" description="Your role determines which dashboards you can access." />
         <form onSubmit={handleRolesSubmit} noValidate className="space-y-5">
 
@@ -504,7 +500,7 @@ export function SettingsForm({
                 </Button>
               ))}
             </div>
-            {rolesErrors.roles && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.roles}</p>}
+            {rolesErrors.roles && <Alert variant="error" message={rolesErrors.roles} className="mt-1.5" />}
           </div>
 
           {/* Reviewer-specific fields */}
@@ -531,7 +527,7 @@ export function SettingsForm({
                     </Button>
                   ))}
                 </div>
-                {rolesErrors.reviewerType && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.reviewerType}</p>}
+                {rolesErrors.reviewerType && <Alert variant="error" message={rolesErrors.reviewerType} className="mt-1.5" />}
               </div>
 
               {/* Expertise tags */}
@@ -630,18 +626,16 @@ export function SettingsForm({
                     </Button>
                   ))}
                 </div>
-                {rolesErrors.rubricSpecs && <p className="mt-1.5 text-xs text-red-600">{rolesErrors.rubricSpecs}</p>}
+                {rolesErrors.rubricSpecs && <Alert variant="error" message={rolesErrors.rubricSpecs} className="mt-1.5" />}
               </div>
 
             </div>
           )}
 
-          {rolesServerError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{rolesServerError}</p>
-          )}
+          {rolesServerError && <Alert variant="error" message={rolesServerError} />}
           <SaveButton loading={rolesLoading} saved={rolesSaved} />
         </form>
-      </section>
+      </Card>
 
     </div>
   )

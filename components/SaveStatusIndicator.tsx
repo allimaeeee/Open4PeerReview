@@ -61,22 +61,22 @@ export function SaveStatusIndicator({
     idle: {
       icon: null,
       label: lastSavedAt ? `Saved ${relativeTime}` : null,
-      className: 'text-gray-400',
+      className: 'text-text-muted',
     },
     saving: {
       icon: <SpinnerIcon />,
       label: 'Saving…',
-      className: 'text-gray-400',
+      className: 'text-text-muted',
     },
     saved: {
       icon: <CheckIcon />,
       label: 'Saved',
-      className: 'text-emerald-500',
+      className: 'text-success',
     },
     error: {
       icon: <AlertIcon />,
       label: 'Save failed — try again',
-      className: 'text-red-500',
+      className: 'text-error',
     },
   }[status]
 
@@ -105,7 +105,7 @@ export function SaveStatusIndicator({
       )}
 
       {disabled && (
-        <span className="flex items-center gap-1.5 text-gray-400">
+        <span className="flex items-center gap-1.5 text-text-muted">
           <LockIcon />
           Submitted
         </span>

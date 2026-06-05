@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Card } from '@/components/ui/Card'
+import { Alert } from '@/components/ui/Alert'
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -28,7 +30,7 @@ export default function LoginPage() {
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
-        setError(error.message)
+        setError(error.message.endsWith('.') ? error.message : error.message + '.')
       } else {
         router.push('/dashboard')
         router.refresh()
@@ -44,7 +46,7 @@ export default function LoginPage() {
         },
       })
       if (error) {
-        setError(error.message)
+        setError(error.message.endsWith('.') ? error.message : error.message + '.')
       } else {
         setMessage('Check your email to confirm your account.')
       }
@@ -55,7 +57,7 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-md">
+      <Card variant="elevated" className="w-full max-w-md p-8">
         <h1 className="mb-2 text-2xl font-bold text-gray-900">
           OLI Annotation Platform
         </h1>
@@ -94,12 +96,8 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {error && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
-          )}
-          {message && (
-            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-600">{message}</p>
-          )}
+          {error && <Alert variant="error" message={error} />}
+          {message && <Alert variant="success" message={message} />}
 
           <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
             {mode === 'login' ? 'Sign In' : 'Create Account'}
@@ -116,7 +114,7 @@ export default function LoginPage() {
             {mode === 'login' ? 'Sign up' : 'Sign in'}
           </Button>
         </p>
-      </div>
+      </Card>
     </main>
   )
 }
