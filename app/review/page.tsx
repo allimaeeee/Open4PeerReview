@@ -70,13 +70,11 @@ export default async function ReviewerPage({
     ? await supabase
         .from('reviews')
         .select(`
-          id, status, overall_comment, last_saved_at,
+          id, status, overall_comment, notes, last_saved_at,
           rubric_id,
           rubric:rubrics ( id, title, description, operational_definition ),
-          review_scores (
-            id, rubric_item_id, score, comment,
-            annotations ( id, anchor, body, tag )
-          )
+          review_scores ( id, rubric_item_id, score, comment ),
+          annotations ( id, rubric_item_id, anchor, body, tag )
         `)
         .eq('document_id', document.id)
         .eq('reviewer_id', user.id)

@@ -30,7 +30,8 @@ export interface ScoreDraft {
 
 export interface AnnotationDraft {
   id?: string           // present on existing annotations
-  reviewScoreId: string
+  reviewId: string
+  rubricItemId: string | null   // null = General Notes
   anchor: PdfTextAnchor | Json
   body: string
   tag: HighlightTag
@@ -60,6 +61,9 @@ export function useReviewAutoSave({
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   // Tracks the last save per rubricItemId to avoid redundant requests
   const lastSaved = useRef<Map<string, string>>(new Map())
+  // Notes debounce
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedNotes = useRef<string | null>(null)
 
   // ── Core upsert ────────────────────────────────────────────────────────────
 
@@ -117,6 +121,26 @@ export function useReviewAutoSave({
     [upsertScore, debounceMs]
   )
 
+  // ── Auto-save: debounced notes ────────────────────────────────────────────
+
+  const onNotesChange = useCallback(
+    (notes: string) => {
+      if (notesTimer.current) clearTimeout(notesTimer.current)
+      setSaveStatus('saving')
+      notesTimer.current = setTimeout(async () => {
+        if (lastSavedNotes.current === notes) { setSaveStatus('saved'); return }
+        const { error } = await supabase
+          .from('reviews')
+          .update({ notes })
+          .eq('id', reviewId)
+        if (error) { setSaveStatus('error'); return }
+        lastSavedNotes.current = notes
+        setSaveStatus('saved')
+      }, debounceMs)
+    },
+    [supabase, reviewId, debounceMs]
+  )
+
   // ── Auto-save: immediate annotation operations ─────────────────────────────
 
   const saveAnnotation = useCallback(
@@ -142,7 +166,8 @@ export function useReviewAutoSave({
         const { data, error } = await supabase
           .from('annotations')
           .insert({
-            review_score_id: annotation.reviewScoreId,
+            review_id: annotation.reviewId,
+            rubric_item_id: annotation.rubricItemId,
             anchor: annotation.anchor as Json,
             body: annotation.body,
             tag: annotation.tag,
@@ -203,6 +228,7 @@ export function useReviewAutoSave({
   useEffect(() => {
     return () => {
       debounceTimers.current.forEach((timer) => clearTimeout(timer))
+      if (notesTimer.current) clearTimeout(notesTimer.current)
     }
   }, [])
 
@@ -217,6 +243,7 @@ export function useReviewAutoSave({
   return {
     saveStatus,
     onScoreChange,
+    onNotesChange,
     saveAnnotation,
     deleteAnnotation,
     saveDraft,

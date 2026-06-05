@@ -18,7 +18,8 @@ export type Database = {
           body: string
           created_at: string
           id: string
-          review_score_id: string
+          review_id: string
+          rubric_item_id: string | null
           tag: string
           updated_at: string
         }
@@ -27,7 +28,8 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
-          review_score_id: string
+          review_id: string
+          rubric_item_id?: string | null
           tag?: string
           updated_at?: string
         }
@@ -36,16 +38,24 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
-          review_score_id?: string
+          review_id?: string
+          rubric_item_id?: string
           tag?: string
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "annotations_review_score_id_fkey"
-            columns: ["review_score_id"]
+            foreignKeyName: "annotations_review_id_fkey"
+            columns: ["review_id"]
             isOneToOne: false
-            referencedRelation: "review_scores"
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "annotations_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "rubric_items"
             referencedColumns: ["id"]
           },
         ]
@@ -152,7 +162,7 @@ export type Database = {
           id: string
           review_id: string
           rubric_item_id: string
-          score: Database["public"]["Enums"]["criterion_score"]
+          score: Database["public"]["Enums"]["criterion_score"] | null
           updated_at: string
         }
         Insert: {
@@ -161,7 +171,7 @@ export type Database = {
           id?: string
           review_id: string
           rubric_item_id: string
-          score: Database["public"]["Enums"]["criterion_score"]
+          score?: Database["public"]["Enums"]["criterion_score"] | null
           updated_at?: string
         }
         Update: {
@@ -196,6 +206,7 @@ export type Database = {
           document_id: string
           id: string
           last_saved_at: string | null
+          notes: string | null
           overall_comment: string | null
           reviewer_id: string
           rubric_id: string
@@ -208,6 +219,7 @@ export type Database = {
           document_id: string
           id?: string
           last_saved_at?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id: string
           rubric_id: string
@@ -220,6 +232,7 @@ export type Database = {
           document_id?: string
           id?: string
           last_saved_at?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id?: string
           rubric_id?: string

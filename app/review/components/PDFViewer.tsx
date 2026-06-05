@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 import type { ComponentProps } from 'react'
 import type PDFViewerCanvas from './PDFViewerCanvas'
 
-export type { TextSelection, AnnotationConfirmPayload } from './PDFViewerCanvas'
+export type { TextSelection, AnnotationConfirmPayload, SavedAnnotation } from './PDFViewerCanvas'
 
 const PDFViewerCanvasDynamic = dynamic(() => import('./PDFViewerCanvas'), {
   ssr: false,

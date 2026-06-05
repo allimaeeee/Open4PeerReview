@@ -22,6 +22,20 @@ export interface AnnotationConfirmPayload {
   tag: HighlightTag
 }
 
+export interface SavedAnnotation {
+  id: string
+  rubricItemId: string
+  anchor: Record<string, unknown>
+  body: string
+  tag: string
+}
+
+const HIGHLIGHT_BG: Record<string, string> = {
+  general:     'bg-slate-400/30',
+  action_item: 'bg-orange-300/40',
+  quick_fix:   'bg-blue-300/40',
+}
+
 interface TooltipPosition {
   x: number
   y: number
@@ -38,6 +52,7 @@ interface PDFViewerCanvasProps {
   rubricItems: { id: string; label: string }[]
   activeItemId: string | null
   pendingSelection: TextSelection | null
+  savedAnnotations: SavedAnnotation[]
   onTextSelected: (selection: TextSelection) => void
   onAnnotationConfirm: (payload: AnnotationConfirmPayload) => Promise<string | null | undefined>
   onPendingSelectionClear: () => void
@@ -49,6 +64,7 @@ export default function PDFViewerCanvas({
   rubricItems,
   activeItemId,
   pendingSelection,
+  savedAnnotations,
   onTextSelected,
   onAnnotationConfirm,
   onPendingSelectionClear,
@@ -85,20 +101,28 @@ export default function PDFViewerCanvas({
 
     const text = selection.toString().trim()
     const range = selection.getRangeAt(0)
-    const rects = Array.from(range.getClientRects()).map((r) => ({
-      x1: r.left,
-      y1: r.top,
-      x2: r.right,
-      y2: r.bottom,
+    const containerEl = containerRef.current
+    if (!containerEl) return
+
+    const containerRect = containerEl.getBoundingClientRect()
+    const scrollLeft = containerEl.scrollLeft
+    const scrollTop = containerEl.scrollTop
+    const clientRects = Array.from(range.getClientRects())
+
+    // Store rects relative to the container's scrollable content so
+    // highlight overlays (position: absolute inside the container) stay
+    // aligned with the text regardless of scroll position.
+    const rects = clientRects.map((r) => ({
+      x1: r.left  - containerRect.left + scrollLeft,
+      y1: r.top   - containerRect.top  + scrollTop,
+      x2: r.right - containerRect.left + scrollLeft,
+      y2: r.bottom- containerRect.top  + scrollTop,
     }))
 
-    const lastRect = rects[rects.length - 1]
-    const containerRect = containerRef.current?.getBoundingClientRect()
-    if (!containerRect) return
-
+    const last = clientRects[clientRects.length - 1]
     setTooltipPos({
-      x: lastRect.x1 - containerRect.left + (lastRect.x2 - lastRect.x1) / 2,
-      y: lastRect.y1 - containerRect.top - 8,
+      x: last.left - containerRect.left + (last.right - last.left) / 2,
+      y: last.top  - containerRect.top - 8,
     })
 
     onTextSelected({ text, page: currentPage, rects })
@@ -217,6 +241,24 @@ export default function PDFViewerCanvas({
           </Document>
         )}
 
+        {/* Saved annotation highlights */}
+        {savedAnnotations
+          .filter((ann) => (ann.anchor as any)?.page === currentPage)
+          .flatMap((ann) =>
+            ((ann.anchor as any)?.rects ?? []).map((rect: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
+              <div
+                key={`${ann.id}-${i}`}
+                className={`absolute pointer-events-none rounded-sm ${HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG.general}`}
+                style={{
+                  left:   rect.x1,
+                  top:    rect.y1,
+                  width:  Math.max(2, rect.x2 - rect.x1),
+                  height: Math.max(3, rect.y2 - rect.y1),
+                }}
+              />
+            ))
+          )}
+
         {pendingSelection && tooltipPos && !disabled && (
           <div
             className="absolute z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-3 w-80"
@@ -261,6 +303,7 @@ export default function PDFViewerCanvas({
                 {rubricItems.map((item) => (
                   <option key={item.id} value={item.id}>{item.label}</option>
                 ))}
+                <option value="__general__">General Notes</option>
               </select>
             </div>
 
