@@ -7,6 +7,7 @@ import { createBrowserSupabase } from '@/lib/supabase'
 import type { SignupFormValues } from '../../types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Alert } from '@/components/ui/Alert'
 
 interface SignupFormProps {
   onSuccess?: () => void
@@ -36,18 +37,18 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const validate = (): boolean => {
     const newErrors: typeof errors = {}
 
-    if (!values.email.trim()) newErrors.email = 'Email is required'
+    if (!values.email.trim()) newErrors.email = 'Email is required.'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email))
-      newErrors.email = 'Enter a valid email address'
+      newErrors.email = 'Enter a valid email address.'
 
-    if (!values.password) newErrors.password = 'Password is required'
+    if (!values.password) newErrors.password = 'Password is required.'
     else if (values.password.length < 8)
-      newErrors.password = 'Password must be at least 8 characters'
+      newErrors.password = 'Password must be at least 8 characters.'
 
     if (values.confirmPassword !== values.password)
-      newErrors.confirmPassword = 'Passwords do not match'
+      newErrors.confirmPassword = 'Passwords do not match.'
 
-    if (!values.displayName.trim()) newErrors.displayName = 'Name is required'
+    if (!values.displayName.trim()) newErrors.displayName = 'Name is required.'
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -83,8 +84,8 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   if (success) {
     return (
       <div className="text-center py-8 space-y-3">
-        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
-          <svg className="h-6 w-6 text-emerald-600" viewBox="0 0 20 20" fill="currentColor">
+        <div className="w-12 h-12 rounded-full bg-success-container flex items-center justify-center mx-auto">
+          <svg className="h-6 w-6 text-success" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd"
               d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
               clipRule="evenodd" />
@@ -153,11 +154,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         error={errors.confirmPassword}
       />
 
-      {serverError && (
-        <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">
-          {serverError}
-        </p>
-      )}
+      {serverError && <Alert variant="error" message={serverError} />}
 
       <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
         Create account

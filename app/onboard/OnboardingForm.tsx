@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Card } from '@/components/ui/Card'
+import { Alert } from '@/components/ui/Alert'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -121,17 +123,17 @@ export function OnboardingForm({
 
   function validate() {
     const errs: Record<string, string> = {}
-    if (!displayName.trim())    errs.displayName     = 'Display name is required'
-    if (!discipline)            errs.discipline      = 'Please select a discipline'
+    if (!displayName.trim())    errs.displayName     = 'Display name is required.'
+    if (!discipline)            errs.discipline      = 'Please select a discipline.'
     if (discipline === 'other' && !disciplineOther.trim())
-                                errs.disciplineOther = 'Please specify your discipline'
-    if (!profession)            errs.profession      = 'Please select a profession'
+                                errs.disciplineOther = 'Please specify your discipline.'
+    if (!profession)            errs.profession      = 'Please select a profession.'
     if (profession === 'other' && !professionOther.trim())
-                                errs.professionOther = 'Please specify your profession'
-    if (roles.size === 0)       errs.roles           = 'Please select at least one role'
+                                errs.professionOther = 'Please specify your profession.'
+    if (roles.size === 0)       errs.roles           = 'Please select at least one role.'
     if (isReviewer) {
-      if (!reviewerType)        errs.reviewerType    = 'Please select your reviewer type'
-      if (rubricSpecs.size === 0) errs.rubricSpecs   = 'Please select at least one rubric'
+      if (!reviewerType)        errs.reviewerType    = 'Please select your reviewer type.'
+      if (rubricSpecs.size === 0) errs.rubricSpecs   = 'Please select at least one rubric.'
     }
     setErrors(errs)
     return Object.keys(errs).length === 0
@@ -188,7 +190,7 @@ export function OnboardingForm({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="w-full max-w-lg rounded-xl bg-white p-8 shadow-md">
+      <Card variant="elevated" className="w-full max-w-lg p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900">Welcome!</h1>
           <p className="mt-1.5 text-sm text-slate-500">
@@ -247,7 +249,7 @@ export function OnboardingForm({
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
             </select>
-            {errors.discipline && <p className="mt-1 text-xs text-red-600">{errors.discipline}</p>}
+            {errors.discipline && <Alert variant="error" message={errors.discipline} className="mt-1" />}
             {discipline === 'other' && (
               <Input
                 type="text"
@@ -278,7 +280,7 @@ export function OnboardingForm({
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
-            {errors.profession && <p className="mt-1 text-xs text-red-600">{errors.profession}</p>}
+            {errors.profession && <Alert variant="error" message={errors.profession} className="mt-1" />}
             {profession === 'other' && (
               <Input
                 type="text"
@@ -319,7 +321,7 @@ export function OnboardingForm({
                 </Button>
               ))}
             </div>
-            {errors.roles && <p className="mt-1.5 text-xs text-red-600">{errors.roles}</p>}
+            {errors.roles && <Alert variant="error" message={errors.roles} className="mt-1.5" />}
           </div>
 
           {/* ── Reviewer-specific fields ── */}
@@ -346,7 +348,7 @@ export function OnboardingForm({
                     </Button>
                   ))}
                 </div>
-                {errors.reviewerType && <p className="mt-1.5 text-xs text-red-600">{errors.reviewerType}</p>}
+                {errors.reviewerType && <Alert variant="error" message={errors.reviewerType} className="mt-1.5" />}
               </div>
 
               {/* Expertise tags */}
@@ -458,15 +460,13 @@ export function OnboardingForm({
                     </Button>
                   ))}
                 </div>
-                {errors.rubricSpecs && <p className="mt-1.5 text-xs text-red-600">{errors.rubricSpecs}</p>}
+                {errors.rubricSpecs && <Alert variant="error" message={errors.rubricSpecs} className="mt-1.5" />}
               </div>
 
             </div>
           )}
 
-          {serverError && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3.5 py-2.5">{serverError}</p>
-          )}
+          {serverError && <Alert variant="error" message={serverError} />}
 
           <Button
             type="submit"
@@ -480,7 +480,7 @@ export function OnboardingForm({
           </Button>
 
         </form>
-      </div>
+      </Card>
     </main>
   )
 }

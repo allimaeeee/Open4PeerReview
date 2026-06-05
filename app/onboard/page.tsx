@@ -14,7 +14,7 @@ export default async function OnboardPage() {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (profile?.onboarding_completed) redirect('/dashboard')
+  // if (profile?.onboarding_completed) redirect('/dashboard')
 
   const [{ data: institutions }, { data: rubrics }] = await Promise.all([
     supabase.from('institutions').select('name').order('name'),
