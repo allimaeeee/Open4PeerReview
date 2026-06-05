@@ -11,7 +11,7 @@ import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
-import type { OERDocument, Review, Rubric, RubricItem } from './ReviewerApp'
+import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
 
 interface ReviewerConsoleProps {
   supabase: SupabaseClient
@@ -22,11 +22,18 @@ interface ReviewerConsoleProps {
   onReviewUpdate: (r: Review) => void
 }
 
+export interface ScoreCommentItem {
+  id: string
+  body: string
+}
+
 export interface LocalScore {
   rubricItemId: string
   score: CriterionScore | null
   comment: string
-  annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string }[]
+  niComments: ScoreCommentItem[]
+  exceedsComments: ScoreCommentItem[]
+  annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
 }
 
 export function ReviewerConsole({
@@ -44,7 +51,7 @@ export function ReviewerConsole({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
   const [generalAnnotations, setGeneralAnnotations] = useState<
-    { id: string; anchor: Record<string, unknown>; body: string; tag: string }[]
+    { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
   >(
     (review.annotations ?? []).filter((a) => a.rubric_item_id === null)
   )
@@ -73,17 +80,26 @@ export function ReviewerConsole({
         setRubricItems(items)
         setActiveItemId(items[0]?.id ?? null)
 
-        // Hydrate local scores from existing review_scores + annotations
+        // Hydrate local scores from existing review_scores, annotations, and score_comments
         const initialScores: Record<string, LocalScore> = {}
         items.forEach((item) => {
           const existingScore = review.review_scores.find((rs) => rs.rubric_item_id === item.id)
           const existingAnnotations = (review.annotations ?? []).filter(
             (a) => a.rubric_item_id === item.id
           )
+          const itemScoreComments = (review.score_comments ?? []).filter(
+            (sc) => sc.rubric_item_id === item.id
+          )
           initialScores[item.id] = {
             rubricItemId: item.id,
             score: existingScore?.score ?? null,
             comment: existingScore?.comment ?? '',
+            niComments: itemScoreComments
+              .filter((sc) => sc.score_level === 'does_not_meet')
+              .map((sc) => ({ id: sc.id, body: sc.body })),
+            exceedsComments: itemScoreComments
+              .filter((sc) => sc.score_level === 'exceeds')
+              .map((sc) => ({ id: sc.id, body: sc.body })),
             annotations: existingAnnotations,
           }
         })
@@ -94,8 +110,10 @@ export function ReviewerConsole({
   }, [supabase, rubrics])
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
-  const { saveStatus, onScoreChange, saveAnnotation, deleteAnnotation, saveDraft } =
-    useReviewAutoSave({ supabase, reviewId: review.id })
+  const {
+    saveStatus, onScoreChange, saveAnnotation, deleteAnnotation,
+    addScoreComment, deleteScoreComment, saveDraft,
+  } = useReviewAutoSave({ supabase, reviewId: review.id })
 
   // After any save, refresh last_saved_at from DB
   const refreshLastSaved = useCallback(async () => {
@@ -113,9 +131,9 @@ export function ReviewerConsole({
 
   // ── Score / comment change ─────────────────────────────────────────────────
   const handleScoreChange = useCallback(
-    (rubricItemId: string, field: 'score' | 'comment', value: string) => {
+    (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => {
       setScores((prev) => {
-        const updated = { ...prev[rubricItemId], [field]: value }
+        const updated = { ...prev[rubricItemId], ...changes }
         onScoreChange({
           rubricItemId,
           score: updated.score,
@@ -144,15 +162,13 @@ export function ReviewerConsole({
         rects: pendingSelection.rects,
       }
 
-      if (rubricItemId === '__general__') {
+      if (!rubricItemId || !scores[rubricItemId]) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         setGeneralAnnotations((prev) => [...prev, { id: newId, anchor, body, tag }])
         setPendingSelection(null)
         return null
       }
-
-      if (!scores[rubricItemId]) return
 
       const newId = await saveAnnotation({ reviewId: review.id, rubricItemId, anchor, body, tag })
       if (!newId) return 'Failed to save evidence. Please try again.'
@@ -171,9 +187,9 @@ export function ReviewerConsole({
   )
 
   const handleAddGeneralNote = useCallback(async (body: string): Promise<string | null> => {
-    const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor: {}, body, tag: 'general' })
+    const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor: {}, body, tag: null })
     if (!newId) return 'Failed to save note. Please try again.'
-    setGeneralAnnotations((prev) => [...prev, { id: newId, anchor: {}, body, tag: 'general' }])
+    setGeneralAnnotations((prev) => [...prev, { id: newId, anchor: {}, body, tag: null }])
     return null
   }, [review.id, saveAnnotation])
 
@@ -194,6 +210,49 @@ export function ReviewerConsole({
       }))
     },
     [deleteAnnotation]
+  )
+
+  // ── Score comments ────────────────────────────────────────────────────────
+  const handleAddScoreComment = useCallback(
+    async (rubricItemId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => {
+      const id = await addScoreComment(review.id, rubricItemId, scoreLevel, body)
+      if (!id) return
+      setScores((prev) => {
+        const existing = prev[rubricItemId]
+        const item: ScoreComment = { id, rubric_item_id: rubricItemId, score_level: scoreLevel, body }
+        const updated: LocalScore = {
+          ...existing,
+          score: scoreLevel,
+          ...(scoreLevel === 'does_not_meet'
+            ? { niComments: [...existing.niComments, { id: item.id, body: item.body }] }
+            : { exceedsComments: [...existing.exceedsComments, { id: item.id, body: item.body }] }
+          ),
+        }
+        onScoreChange({ rubricItemId, score: scoreLevel, comment: existing.comment })
+        return { ...prev, [rubricItemId]: updated }
+      })
+    },
+    [review.id, addScoreComment, onScoreChange]
+  )
+
+  const handleDeleteScoreComment = useCallback(
+    async (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => {
+      await deleteScoreComment(commentId)
+      setScores((prev) => {
+        const existing = prev[rubricItemId]
+        return {
+          ...prev,
+          [rubricItemId]: {
+            ...existing,
+            ...(scoreLevel === 'does_not_meet'
+              ? { niComments: existing.niComments.filter((c) => c.id !== commentId) }
+              : { exceedsComments: existing.exceedsComments.filter((c) => c.id !== commentId) }
+            ),
+          },
+        }
+      })
+    },
+    [deleteScoreComment]
   )
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -220,7 +279,7 @@ export function ReviewerConsole({
     ...Object.entries(scores).flatMap(([rubricItemId, s]) =>
       s.annotations.map((ann) => ({ ...ann, rubricItemId }))
     ),
-    ...generalAnnotations.map((ann) => ({ ...ann, rubricItemId: '__general__' })),
+    ...generalAnnotations.map((ann) => ({ ...ann, rubricItemId: null })),
   ], [scores, generalAnnotations])
 
   return (
@@ -297,6 +356,8 @@ export function ReviewerConsole({
             onAnnotationDelete={handleAnnotationDelete}
             onAddGeneralNote={handleAddGeneralNote}
             onDeleteGeneralAnnotation={handleDeleteGeneralAnnotation}
+            onAddScoreComment={handleAddScoreComment}
+            onDeleteScoreComment={handleDeleteScoreComment}
           />
         </div>
       </div>

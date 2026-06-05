@@ -74,7 +74,8 @@ export default async function ReviewerPage({
           rubric_id,
           rubric:rubrics ( id, title, description, operational_definition ),
           review_scores ( id, rubric_item_id, score, comment ),
-          annotations ( id, rubric_item_id, anchor, body, tag )
+          annotations ( id, rubric_item_id, anchor, body, tag ),
+          score_comments ( id, rubric_item_id, score_level, body )
         `)
         .eq('document_id', document.id)
         .eq('reviewer_id', user.id)
