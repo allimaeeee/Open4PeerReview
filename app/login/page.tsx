@@ -56,13 +56,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card variant="elevated" className="w-full max-w-md p-8">
-        <h1 className="mb-2 text-2xl font-bold text-gray-900">
-          OLI Annotation Platform
+    <main className="flex min-h-screen items-center justify-center bg-surface">
+      <Card variant="elevated" className="flex w-full max-w-4xl overflow-hidden">
+        <div className="flex flex-col items-center justify-center gap-5 bg-surface-warm p-8 flex-1">
+          <img src="/welcome-icon.svg" alt="" className="w-20 h-20" />
+          <h2 className="font-heading text-heading-sm font-semibold text-text-primary text-center">
+            Welcome to Open4PeerReview
+          </h2>
+          <p className="font-body text-body-md text-text-muted text-center">
+            OER thrive when experts collaborate. Open4PeerReview brings together scholarly collaborators to ensure OER meets the highest standards of quality.
+          </p>
+        </div>
+        <div className="p-8 flex-1">
+        <h1 className="mb-2 text-heading-sm font-semibold font-heading text-text-primary">
+          {mode === 'login' ? 'Log In' : 'Sign Up'}
         </h1>
-        <p className="mb-6 text-sm text-gray-500">
-          {mode === 'login' ? 'Sign in to your account' : 'Create an account'}
+        <p className="mb-6 text-body-md font-body text-text-muted">
+          {mode === 'login' ? 'Welcome back — log in to continue.' : 'Create your account to get started.'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -104,7 +114,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-gray-500">
+        <p className="mt-4 text-center text-body-md font-body text-text-muted">
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <Button
             type="button"
@@ -114,6 +124,7 @@ export default function LoginPage() {
             {mode === 'login' ? 'Sign up' : 'Sign in'}
           </Button>
         </p>
+        </div>
       </Card>
     </main>
   )
