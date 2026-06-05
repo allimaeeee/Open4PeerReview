@@ -8,7 +8,7 @@ import { useState, useCallback, useEffect } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
 import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
-import { PDFViewer, type TextSelection } from './PDFViewer'
+import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
 import type { OERDocument, Review, ReviewScore, RubricItem } from './ReviewerApp'
@@ -25,7 +25,7 @@ export interface LocalScore {
   rubricItemId: string
   score: CriterionScore | null
   comment: string
-  annotations: { id: string; anchor: Record<string, unknown>; body: string }[]
+  annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string }[]
   reviewScoreId: string | null  // null until first save
 }
 
@@ -111,41 +111,41 @@ export function ReviewerConsole({
 
   // ── Annotation from PDF text selection ────────────────────────────────────
   const handleTextSelected = useCallback((selection: TextSelection) => {
-    if (!activeItemId || isSubmitted) return
+    if (isSubmitted || rubricItems.length === 0) return
     setPendingSelection(selection)
-  }, [activeItemId, isSubmitted])
+  }, [isSubmitted, rubricItems.length])
 
   const handleAnnotationConfirm = useCallback(
-    async (body: string) => {
-      if (!pendingSelection || !activeItemId) return
+    async (payload: AnnotationConfirmPayload) => {
+      if (!pendingSelection) return
+      const { body, rubricItemId, tag } = payload
 
-      const currentScore = scores[activeItemId]
+      const currentScore = scores[rubricItemId]
+      if (!currentScore) return
 
       // Ensure a review_score row exists before inserting annotation
       let reviewScoreId = currentScore.reviewScoreId
       if (!reviewScoreId) {
-        // Upsert score row with whatever we have (score can still be null here,
-        // but the DB constraint requires a score — prompt user if missing)
         if (!currentScore.score) {
-          alert('Please select a rating for this criterion before adding an annotation.')
-          return
+          // Surface error via return value — caller shows it in the tooltip
+          return 'Please select a rating for this criterion before adding evidence.'
         }
         const { data: rs } = await supabase
           .from('review_scores')
           .upsert({
             review_id: review.id,
-            rubric_item_id: activeItemId,
+            rubric_item_id: rubricItemId,
             score: currentScore.score,
             comment: currentScore.comment || ' ',
           }, { onConflict: 'review_id,rubric_item_id' })
           .select('id')
           .single()
 
-        if (!rs) return
+        if (!rs) return 'Failed to save rating. Please try again.'
         reviewScoreId = rs.id
         setScores((prev) => ({
           ...prev,
-          [activeItemId]: { ...prev[activeItemId], reviewScoreId: rs.id },
+          [rubricItemId]: { ...prev[rubricItemId], reviewScoreId: rs.id },
         }))
       }
 
@@ -155,22 +155,23 @@ export function ReviewerConsole({
         rects: pendingSelection.rects,
       }
 
-      const newId = await saveAnnotation({ reviewScoreId, anchor, body })
-      if (!newId) return
+      const newId = await saveAnnotation({ reviewScoreId: reviewScoreId!, anchor, body, tag })
+      if (!newId) return 'Failed to save evidence. Please try again.'
 
       setScores((prev) => ({
         ...prev,
-        [activeItemId]: {
-          ...prev[activeItemId],
+        [rubricItemId]: {
+          ...prev[rubricItemId],
           annotations: [
-            ...prev[activeItemId].annotations,
-            { id: newId, anchor, body },
+            ...prev[rubricItemId].annotations,
+            { id: newId, anchor, body, tag },
           ],
         },
       }))
       setPendingSelection(null)
+      return null
     },
-    [pendingSelection, activeItemId, scores, review.id, supabase, saveAnnotation]
+    [pendingSelection, scores, review.id, supabase, saveAnnotation]
   )
 
   const handleAnnotationDelete = useCallback(
@@ -256,9 +257,8 @@ export function ReviewerConsole({
         <div className="w-[60%] border-r border-slate-200 overflow-hidden">
           <PDFViewer
             fileUrl={document.file_url}
-            activeItemLabel={
-              activeItemId ? rubricItems.find((r) => r.id === activeItemId)?.label ?? null : null
-            }
+            rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
+            activeItemId={activeItemId}
             pendingSelection={pendingSelection}
             onTextSelected={handleTextSelected}
             onAnnotationConfirm={handleAnnotationConfirm}

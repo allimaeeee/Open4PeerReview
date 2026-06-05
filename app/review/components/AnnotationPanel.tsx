@@ -6,6 +6,7 @@ import { useRef, useEffect } from 'react'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore } from './ReviewerConsole'
 import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
+import type { HighlightTag } from '@/types'
 
 // ─── Sub-criteria parser ──────────────────────────────────────────────────────
 // Descriptions are stored as "1. Point one\n2. Point two\n..." in the DB.
@@ -54,6 +55,12 @@ const SCORE_OPTIONS: {
 ]
 
 const SCORE_OPTION_MAP = Object.fromEntries(SCORE_OPTIONS.map((o) => [o.value, o]))
+
+const TAG_LABELS: Record<HighlightTag, { label: string; bg: string; text: string }> = {
+  general:     { label: 'General',     bg: 'bg-slate-100',  text: 'text-slate-500' },
+  action_item: { label: 'Action Item', bg: 'bg-orange-50',  text: 'text-orange-700' },
+  quick_fix:   { label: 'Quick Fix',   bg: 'bg-blue-50',    text: 'text-blue-700' },
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface AnnotationPanelProps {
@@ -270,10 +277,21 @@ export function AnnotationPanel({
                                 clipRule="evenodd" />
                             </svg>
                             <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                {ann.tag && TAG_LABELS[ann.tag as HighlightTag] && (
+                                  <span className={[
+                                    'text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide',
+                                    TAG_LABELS[ann.tag as HighlightTag].bg,
+                                    TAG_LABELS[ann.tag as HighlightTag].text,
+                                  ].join(' ')}>
+                                    {TAG_LABELS[ann.tag as HighlightTag].label}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-amber-800 leading-snug">{ann.body}</p>
                               {(ann.anchor as any)?.text && (
                                 <p className="mt-0.5 text-[10px] text-amber-600 italic truncate">
-                                  "{(ann.anchor as any).text.slice(0, 60)}…"
+                                  &ldquo;{(ann.anchor as any).text.slice(0, 60)}&hellip;&rdquo;
                                 </p>
                               )}
                             </div>

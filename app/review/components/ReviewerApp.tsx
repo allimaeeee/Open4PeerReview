@@ -36,6 +36,7 @@ export interface AnnotationRecord {
   id: string
   anchor: Record<string, unknown>
   body: string
+  tag: string
 }
 
 export interface ReviewScore {
@@ -95,7 +96,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
         rubric:rubrics ( id, title, description ),
         review_scores (
           id, rubric_item_id, score, comment,
-          annotations ( id, anchor, body )
+          annotations ( id, anchor, body, tag )
         )
       `)
       .single()

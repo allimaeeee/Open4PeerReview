@@ -5,14 +5,6 @@
 import { useState } from 'react'
 import type { OERDocument, Rubric } from './ReviewerApp'
 
-const RUBRIC_ICONS: Record<string, string> = {
-  'Accessibility':                       '♿',
-  'Copy Editing':                        '✏️',
-  'Copyright Review':                    '©️',
-  'Disciplinary Appropriateness':        '🎓',
-  'eLearning':                           '💻',
-  'Universal Design for Learning (UDL)': '🌐',
-}
 
 interface RubricPickerProps {
   document: OERDocument
@@ -90,9 +82,6 @@ export function RubricPicker({ document, rubrics, onSelect }: RubricPickerProps)
                     {/* Title row */}
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg leading-none">
-                          {RUBRIC_ICONS[rubric.title] ?? '📋'}
-                        </span>
                         <h3 className="font-semibold text-slate-900 text-sm leading-tight">
                           {rubric.title}
                         </h3>

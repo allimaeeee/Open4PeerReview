@@ -1,6 +1,7 @@
 // app/reviewer/page.tsx
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getSignedUrl } from '@/lib/supabase/queries'
 import { ReviewerApp, type Review } from './components/ReviewerApp'
 
 export default async function ReviewerPage({
@@ -20,9 +21,14 @@ export default async function ReviewerPage({
     .from('documents')
     .select('id, title, file_url, storage_path')
 
-  const { data: document } = documentId
+  const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()
     : await docQuery.order('created_at', { ascending: true }).limit(1).maybeSingle()
+
+  // Regenerate signed URL on every page load (stored URL is only valid 1 hour)
+  const document = docRow
+    ? { ...docRow, file_url: await getSignedUrl(supabase, docRow.storage_path) }
+    : null
 
   // If a specific document was requested, load only its assigned rubrics.
   // Fall back to all preset rubrics if none are assigned.
@@ -69,7 +75,7 @@ export default async function ReviewerPage({
           rubric:rubrics ( id, title, description, operational_definition ),
           review_scores (
             id, rubric_item_id, score, comment,
-            annotations ( id, anchor, body )
+            annotations ( id, anchor, body, tag )
           )
         `)
         .eq('document_id', document.id)

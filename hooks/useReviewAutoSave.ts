@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
-import type { CriterionScore } from '@/types'
+import type { CriterionScore, HighlightTag } from '@/types'
 import type { PdfTextAnchor } from '@/lib/supabase/types'
 
 export interface ScoreDraft {
@@ -33,8 +33,10 @@ export interface AnnotationDraft {
   reviewScoreId: string
   anchor: PdfTextAnchor | Json
   body: string
+  tag: HighlightTag
 }
 
+export type { CriterionScore }
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -143,6 +145,7 @@ export function useReviewAutoSave({
             review_score_id: annotation.reviewScoreId,
             anchor: annotation.anchor as Json,
             body: annotation.body,
+            tag: annotation.tag,
           })
           .select('id')
           .single()

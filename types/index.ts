@@ -11,6 +11,7 @@ export type ExpertDomain   = Enums<'expert_domain'>
 export type FileType       = Enums<'file_type'>
 export type ReviewStatus   = Enums<'review_status'>
 export type CriterionScore = Enums<'criterion_score'>
+export type HighlightTag   = 'general' | 'action_item' | 'quick_fix'
 
 // ─── Table row types ──────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ export type ReviewScoreSession = Pick<
   ReviewScore,
   'id' | 'rubric_item_id' | 'score' | 'comment'
 > & {
-  annotations: Pick<Annotation, 'id' | 'anchor' | 'body'>[]
+  annotations: Pick<Annotation, 'id' | 'anchor' | 'body' | 'tag'>[]
 }
 
 /** Local annotation state in the reviewer console */
@@ -61,6 +62,7 @@ export interface LocalAnnotation {
   id: string
   anchor: unknown
   body: string
+  tag: HighlightTag
 }
 
 export interface ReviewScoreWithAnnotations extends ReviewScore {
