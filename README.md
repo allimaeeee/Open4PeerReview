@@ -4,27 +4,17 @@
 
 **RUN DEMO**
 
-
-
-
-
-zsh-
 npm run dev
 
 
 
 **COMMIT TO GIT**
 
-
-
-
-
-
 git add .
 
 git commit -m ''
 
-git push origin dev
+git push origin dev / git push origin testing
 
 
 **DIRECTORY**
@@ -45,6 +35,10 @@ git push origin dev
 │      ├── 📄 ReviewerDashboard.tsx
 │      ├── 📄 RoleToggle.tsx
 │      ├── 📄 UploadDocumentForm.tsx
+│    └── 📂 feedback/
+│      └── 📂 [documentId]/
+│        ├── 📄 FeedbackView.tsx
+│        ├── 📄 page.tsx
 │    ├── 📄 page.tsx
 │    └── 📂 settings/
 │      ├── 📄 SettingsForm.tsx
@@ -59,7 +53,6 @@ git push origin dev
 │    ├── 📄 page.tsx
 │  ├── 📄 page.tsx
 │  └── 📂 review/
-│    └── 📂 [id]/
 │    └── 📂 components/
 │      ├── 📄 AnnotationPanel.tsx
 │      ├── 📄 PDFViewer.tsx
