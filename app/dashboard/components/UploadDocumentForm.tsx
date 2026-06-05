@@ -4,8 +4,8 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { uploadDocument, assignRubrics } from '@/lib/supabase/queries'
-import { EXPERT_DOMAIN_LABELS } from '@/types'
-import type { ExpertDomain } from '@/types'
+import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
+import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 
 interface RubricOption {
   id: string
@@ -35,6 +35,8 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
   const [authors, setAuthors] = useState('')
   const [subjectMatter, setSubjectMatter] = useState('')
   const [customSubject, setCustomSubject] = useState('')
+  const [ccLicense, setCcLicense] = useState<CreativeCommonsLicense | ''>('')
+  const [thirdPartyDisclosure, setThirdPartyDisclosure] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -63,12 +65,16 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
     if (!authors.trim()) { setError('Author(s) is required.'); return }
     if (!subjectMatter) { setError('Subject matter is required.'); return }
     if (isOther && !customSubject.trim()) { setError('Please enter a subject area.'); return }
+    if (!ccLicense) { setError('Creative Commons license is required.'); return }
     if (!file) { setError('Please select a PDF file.'); return }
     if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
 
     setLoading(true)
     try {
-      const doc = await uploadDocument(supabase, file, title.trim(), 'pdf', authors.trim(), finalSubjectMatter)
+      const doc = await uploadDocument(
+        supabase, file, title.trim(), 'pdf', authors.trim(), finalSubjectMatter,
+        ccLicense, thirdPartyDisclosure.trim() || null,
+      )
       if (selectedRubrics.size > 0) {
         await assignRubrics(supabase, doc.id, Array.from(selectedRubrics))
       }
@@ -160,6 +166,43 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
             autoFocus
           />
         )}
+      </div>
+
+      {/* Creative Commons License */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          Creative Commons License <span className="text-red-500">*</span>
+        </label>
+        <select
+          value={ccLicense}
+          onChange={e => setCcLicense(e.target.value as CreativeCommonsLicense | '')}
+          disabled={loading}
+          className={inputBase}
+        >
+          <option value="">Select a license…</option>
+          {(Object.entries(CC_LICENSE_LABELS) as [CreativeCommonsLicense, string][]).map(([key, label]) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+        {ccLicense && (
+          <p className="mt-1 text-xs text-slate-400">{CC_LICENSE_DESCRIPTIONS[ccLicense]}</p>
+        )}
+      </div>
+
+      {/* Third-party content disclosure */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          Third-Party Content Disclosure
+          <span className="ml-1.5 text-xs font-normal text-slate-400">(optional)</span>
+        </label>
+        <textarea
+          placeholder="Describe any third-party content included in this OER (e.g. images, excerpts) and confirm you have rights to use it."
+          value={thirdPartyDisclosure}
+          onChange={e => setThirdPartyDisclosure(e.target.value)}
+          disabled={loading}
+          rows={3}
+          className={`${inputBase} resize-none`}
+        />
       </div>
 
       {/* PDF file */}

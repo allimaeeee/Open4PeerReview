@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAllDocumentsWithRubrics } from '@/lib/supabase/queries'
-import { EXPERT_DOMAIN_LABELS } from '@/types'
-import type { ExpertDomain } from '@/types'
+import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
+import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import Link from 'next/link'
 
 function formatDate(iso: string) {
@@ -49,6 +49,9 @@ export async function ReviewerDashboard({ userId }: Props) {
     const subjectLabel = doc.subject_matter
       ? (EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter)
       : null
+    const licenseLabel = doc.creative_commons_license
+      ? (CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license)
+      : null
 
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -61,6 +64,17 @@ export async function ReviewerDashboard({ userId }: Props) {
             {subjectLabel && (
               <p className="text-xs text-slate-500 mt-0.5">
                 <span className="font-medium">Subject:</span> {subjectLabel}
+              </p>
+            )}
+            {licenseLabel && (
+              <p className="text-xs text-slate-500 mt-0.5">
+                <span className="font-medium">License:</span> {licenseLabel}
+              </p>
+            )}
+            {doc.third_party_content_disclosure && (
+              <p className="text-xs text-slate-500 mt-0.5">
+                <span className="font-medium">Third-Party Content:</span>{' '}
+                {doc.third_party_content_disclosure}
               </p>
             )}
             {rubrics.length > 0 ? (

@@ -6,11 +6,12 @@ import type { Tables, TablesInsert, TablesUpdate, Enums } from './database.types
 
 // ─── Enum aliases ─────────────────────────────────────────────────────────────
 
-export type UserRole       = Enums<'user_role'>
-export type ExpertDomain   = Enums<'expert_domain'>
-export type FileType       = Enums<'file_type'>
-export type ReviewStatus   = Enums<'review_status'>
-export type CriterionScore = Enums<'criterion_score'>
+export type UserRole                = Enums<'user_role'>
+export type ExpertDomain            = Enums<'expert_domain'>
+export type FileType                = Enums<'file_type'>
+export type ReviewStatus            = Enums<'review_status'>
+export type CriterionScore          = Enums<'criterion_score'>
+export type CreativeCommonsLicense  = Enums<'creative_commons_license'>
 export type HighlightTag   = 'general' | 'action_item' | 'quick_fix'
 
 // ─── Table row types ──────────────────────────────────────────────────────────
@@ -152,4 +153,22 @@ export const CRITERION_SCORE_LABELS: Record<CriterionScore, string> = {
   does_not_meet: 'Does Not Meet',
   exemplifies:   'Exemplifies',
   exceeds:       'Exceeds',
+}
+
+export const CC_LICENSE_LABELS: Record<CreativeCommonsLicense, string> = {
+  cc_by:        'CC BY',
+  cc_by_sa:     'CC BY-SA',
+  cc_by_nd:     'CC BY-ND',
+  cc_by_nc:     'CC BY-NC',
+  cc_by_nc_sa:  'CC BY-NC-SA',
+  cc_by_nc_nd:  'CC BY-NC-ND',
+}
+
+export const CC_LICENSE_DESCRIPTIONS: Record<CreativeCommonsLicense, string> = {
+  cc_by:        'Attribution — Others may distribute, remix, and build upon, even commercially, with credit.',
+  cc_by_sa:     'Attribution-ShareAlike — Same as CC BY, but derivatives must use the same license.',
+  cc_by_nd:     'Attribution-NoDerivatives — Redistribution allowed, even commercially, but no modifications.',
+  cc_by_nc:     'Attribution-NonCommercial — Remix and build upon, but not for commercial purposes.',
+  cc_by_nc_sa:  'Attribution-NonCommercial-ShareAlike — Non-commercial, derivatives must use the same license.',
+  cc_by_nc_nd:  'Attribution-NonCommercial-NoDerivatives — Most restrictive; download and share with credit only.',
 }

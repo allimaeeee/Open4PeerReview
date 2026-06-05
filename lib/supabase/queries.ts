@@ -4,7 +4,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database.types'
-import type { FileType, RubricWithItems } from '@/types'
+import type { FileType, RubricWithItems, CreativeCommonsLicense } from '@/types'
 
 type Client = SupabaseClient<Database>
 
@@ -86,6 +86,8 @@ export async function uploadDocument(
   fileType: FileType,
   authors: string,
   subjectMatter: string,
+  creativeCommonsLicense: CreativeCommonsLicense,
+  thirdPartyContentDisclosure: string | null,
 ) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -118,6 +120,8 @@ export async function uploadDocument(
       file_type: fileType,
       authors,
       subject_matter: subjectMatter,
+      creative_commons_license: creativeCommonsLicense,
+      third_party_content_disclosure: thirdPartyContentDisclosure || null,
     })
     .select()
     .single()
@@ -169,6 +173,7 @@ export async function getMyDocumentsWithStats(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, created_at, authors, subject_matter,
+      creative_commons_license, third_party_content_disclosure,
       document_rubrics ( rubric:rubrics ( id, title ) ),
       reviews ( id, status, submitted_at )
     `)
@@ -228,6 +233,7 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, created_at, subject_matter,
+      creative_commons_license, third_party_content_disclosure,
       author:users!author_id ( display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title ) ),
       reviews ( id, status, reviewer_id )
