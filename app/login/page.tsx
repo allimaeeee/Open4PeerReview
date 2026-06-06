@@ -103,12 +103,12 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
-          {error && <Alert variant="error" message={error} />}
-          {message && <Alert variant="success" message={message} />}
-
           <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
             {mode === 'login' ? 'Sign In' : 'Create Account'}
           </Button>
+
+          {error && <Alert variant="error" message={error} />}
+          {message && <Alert variant="success" message={message} />}
         </form>
 
         <p className="text-center text-body-md font-body text-text-muted">
