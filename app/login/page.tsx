@@ -67,15 +67,12 @@ export default function LoginPage() {
             OER thrive when experts collaborate. Open4PeerReview brings together scholarly collaborators to ensure OER meets the highest standards of quality.
           </p>
         </div>
-        <div className="p-8 flex-1">
-        <h1 className="mb-2 text-heading-sm font-semibold font-heading text-text-primary">
+        <div className="p-8 flex-1 flex flex-col gap-6">
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">
           {mode === 'login' ? 'Log In' : 'Sign Up'}
         </h1>
-        <p className="mb-6 text-body-md font-body text-text-muted">
-          {mode === 'login' ? 'Welcome back — log in to continue.' : 'Create your account to get started.'}
-        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {mode === 'signup' && (
             <Input
               type="text"
@@ -114,7 +111,7 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-4 text-center text-body-md font-body text-text-muted">
+        <p className="text-center text-body-md font-body text-text-muted">
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <Button
             type="button"
