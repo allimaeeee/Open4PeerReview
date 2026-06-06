@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { uploadDocument, assignRubrics } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
+import { Select } from '@/components/ui/Select'
 
 interface RubricOption {
   id: string
@@ -122,17 +123,15 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
 
       {/* Subject matter */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          Subject Matter <span className="text-red-500">*</span>
-        </label>
-        <select
+        <Select
+          label="Subject matter"
+          required
           value={subjectMatter}
           onChange={e => {
             setSubjectMatter(e.target.value)
             if (e.target.value !== OTHER_SENTINEL) setCustomSubject('')
           }}
           disabled={loading}
-          className={inputBase}
         >
           <option value="">Select a subject area…</option>
 
@@ -153,7 +152,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
           )}
 
           <option value={OTHER_SENTINEL}>Other (specify below)…</option>
-        </select>
+        </Select>
 
         {isOther && (
           <input
@@ -170,20 +169,18 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
 
       {/* Creative Commons License */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-          Creative Commons License <span className="text-red-500">*</span>
-        </label>
-        <select
+        <Select
+          label="Creative Commons license"
+          required
           value={ccLicense}
           onChange={e => setCcLicense(e.target.value as CreativeCommonsLicense | '')}
           disabled={loading}
-          className={inputBase}
         >
           <option value="">Select a license…</option>
           {(Object.entries(CC_LICENSE_LABELS) as [CreativeCommonsLicense, string][]).map(([key, label]) => (
             <option key={key} value={key}>{label}</option>
           ))}
-        </select>
+        </Select>
         {ccLicense && (
           <p className="mt-1 text-xs text-slate-400">{CC_LICENSE_DESCRIPTIONS[ccLicense]}</p>
         )}

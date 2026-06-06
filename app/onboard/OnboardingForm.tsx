@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
+import { Select } from '@/components/ui/Select'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -16,11 +17,6 @@ const REVIEWER_TYPE_OPTIONS = [
   { value: 'academic_peer', label: 'Academic Peer', description: 'Researcher or faculty evaluating scholarly content' },
   { value: 'industry_expert', label: 'Industry Expert', description: 'Practitioner with domain expertise outside academia' },
 ] as const
-
-const inputBase =
-  'w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 ' +
-  'placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 ' +
-  'focus:border-[#1e3a5f] transition-colors bg-white disabled:bg-slate-50 disabled:cursor-not-allowed'
 
 interface Props {
   userId: string
@@ -234,22 +230,20 @@ export function OnboardingForm({
 
           {/* Primary discipline */}
           <div>
-            <label htmlFor="discipline" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Primary discipline <span className="text-red-500">*</span>
-            </label>
-            <select
+            <Select
               id="discipline"
+              label="Primary discipline"
+              required
               value={discipline}
               onChange={e => { setDiscipline(e.target.value); clearError('discipline'); clearError('disciplineOther') }}
               disabled={loading}
-              className={inputBase}
+              error={errors.discipline}
             >
               <option value="">Select a discipline…</option>
               {DISCIPLINE_OPTIONS.map(d => (
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
-            </select>
-            {errors.discipline && <Alert variant="error" message={errors.discipline} className="mt-1" />}
+            </Select>
             {discipline === 'other' && (
               <Input
                 type="text"
@@ -265,22 +259,20 @@ export function OnboardingForm({
 
           {/* Profession */}
           <div>
-            <label htmlFor="profession" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Profession <span className="text-red-500">*</span>
-            </label>
-            <select
+            <Select
               id="profession"
+              label="Profession"
+              required
               value={profession}
               onChange={e => { setProfession(e.target.value); clearError('profession'); clearError('professionOther') }}
               disabled={loading}
-              className={inputBase}
+              error={errors.profession}
             >
               <option value="">Select your profession…</option>
               {PROFESSION_OPTIONS.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
-            </select>
-            {errors.profession && <Alert variant="error" message={errors.profession} className="mt-1" />}
+            </Select>
             {profession === 'other' && (
               <Input
                 type="text"
