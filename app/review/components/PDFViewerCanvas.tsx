@@ -7,8 +7,9 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
+import { Select } from '@/components/ui/Select'
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
 export interface TextSelection {
   text: string
@@ -288,21 +289,18 @@ export default function PDFViewerCanvas({
 
             {/* Criterion selector */}
             <div className="mb-2.5">
-              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                Criterion <span className="text-red-400">*</span>
-              </label>
-              <select
+              <Select
+                size="compact"
+                label="Criterion"
+                required
                 value={selectedCriterionId}
                 onChange={(e) => { setSelectedCriterionId(e.target.value); setSaveError(null) }}
-                className="w-full text-xs rounded border border-slate-200 px-2.5 py-1.5
-                  focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]
-                  text-slate-700 bg-white"
               >
                 <option value="">No criterion</option>
                 {rubricItems.map((item) => (
                   <option key={item.id} value={item.id}>{item.label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Tag selector */}
