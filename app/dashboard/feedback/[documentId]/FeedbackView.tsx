@@ -17,8 +17,8 @@ interface RubricItem {
 
 interface ReviewScore {
   id: string
-  score: CriterionScore
-  comment: string
+  score: CriterionScore | null
+  comment: string | null
   rubric_item: RubricItem | null
 }
 
@@ -124,9 +124,11 @@ export function FeedbackView({ document, reviews }: Props) {
                           <p className="text-sm font-medium text-slate-800">
                             {score.rubric_item?.label ?? 'Criterion'}
                           </p>
-                          <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${SCORE_STYLES[score.score]}`}>
-                            {CRITERION_SCORE_LABELS[score.score]}
-                          </span>
+                          {score.score && (
+                            <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${SCORE_STYLES[score.score]}`}>
+                              {CRITERION_SCORE_LABELS[score.score]}
+                            </span>
+                          )}
                         </div>
                         {score.comment && (
                           <p className="mt-2 text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{score.comment}</p>
