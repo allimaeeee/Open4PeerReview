@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { UploadDocumentForm } from './UploadDocumentForm'
-import { EXPERT_DOMAIN_LABELS } from '@/types'
-import type { ExpertDomain } from '@/types'
+import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
+import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 
 interface RubricRow {
   id: string
@@ -17,6 +17,8 @@ interface DocumentRow {
   title: string
   authors: string
   subject_matter: string
+  creative_commons_license: string
+  third_party_content_disclosure: string | null
   file_type: string
   created_at: string
   document_rubrics: { rubric: { id: string; title: string } | null }[]
@@ -116,6 +118,18 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
                       <p className="text-xs text-slate-500 mt-0.5">
                         <span className="font-medium">Subject:</span>{' '}
                         {EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter}
+                      </p>
+                    )}
+                    {doc.creative_commons_license && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-medium">License:</span>{' '}
+                        {CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license}
+                      </p>
+                    )}
+                    {doc.third_party_content_disclosure && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-medium">Third-Party Content:</span>{' '}
+                        {doc.third_party_content_disclosure}
                       </p>
                     )}
 

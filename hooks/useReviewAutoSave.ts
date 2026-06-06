@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json } from '@/types/database.types'
-import type { CriterionScore } from '@/types'
+import type { CriterionScore, HighlightTag } from '@/types'
 import type { PdfTextAnchor } from '@/lib/supabase/types'
 
 export interface ScoreDraft {
@@ -30,11 +30,14 @@ export interface ScoreDraft {
 
 export interface AnnotationDraft {
   id?: string           // present on existing annotations
-  reviewScoreId: string
+  reviewId: string
+  rubricItemId: string | null   // null = Free Notes
   anchor: PdfTextAnchor | Json
   body: string
+  tag: HighlightTag | null
 }
 
+export type { CriterionScore }
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -58,6 +61,9 @@ export function useReviewAutoSave({
   const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   // Tracks the last save per rubricItemId to avoid redundant requests
   const lastSaved = useRef<Map<string, string>>(new Map())
+  // Notes debounce
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedNotes = useRef<string | null>(null)
 
   // ── Core upsert ────────────────────────────────────────────────────────────
 
@@ -76,7 +82,7 @@ export function useReviewAutoSave({
             review_id: reviewId,
             rubric_item_id: draft.rubricItemId,
             score: draft.score,
-            comment: draft.comment,
+            comment: draft.comment.trim() || null,
           },
           { onConflict: 'review_id,rubric_item_id' }
         )
@@ -115,6 +121,26 @@ export function useReviewAutoSave({
     [upsertScore, debounceMs]
   )
 
+  // ── Auto-save: debounced notes ────────────────────────────────────────────
+
+  const onNotesChange = useCallback(
+    (notes: string) => {
+      if (notesTimer.current) clearTimeout(notesTimer.current)
+      setSaveStatus('saving')
+      notesTimer.current = setTimeout(async () => {
+        if (lastSavedNotes.current === notes) { setSaveStatus('saved'); return }
+        const { error } = await supabase
+          .from('reviews')
+          .update({ notes })
+          .eq('id', reviewId)
+        if (error) { setSaveStatus('error'); return }
+        lastSavedNotes.current = notes
+        setSaveStatus('saved')
+      }, debounceMs)
+    },
+    [supabase, reviewId, debounceMs]
+  )
+
   // ── Auto-save: immediate annotation operations ─────────────────────────────
 
   const saveAnnotation = useCallback(
@@ -140,9 +166,11 @@ export function useReviewAutoSave({
         const { data, error } = await supabase
           .from('annotations')
           .insert({
-            review_score_id: annotation.reviewScoreId,
+            review_id: annotation.reviewId,
+            rubric_item_id: annotation.rubricItemId,
             anchor: annotation.anchor as Json,
             body: annotation.body,
+            tag: annotation.tag,
           })
           .select('id')
           .single()
@@ -200,6 +228,7 @@ export function useReviewAutoSave({
   useEffect(() => {
     return () => {
       debounceTimers.current.forEach((timer) => clearTimeout(timer))
+      if (notesTimer.current) clearTimeout(notesTimer.current)
     }
   }, [])
 
@@ -211,11 +240,57 @@ export function useReviewAutoSave({
     return () => clearTimeout(t)
   }, [saveStatus])
 
+  // ── Score comments (immediate — no debounce) ──────────────────────────────
+
+  const addScoreComment = useCallback(
+    async (
+      reviewId: string,
+      rubricItemId: string,
+      scoreLevel: 'does_not_meet' | 'exceeds',
+      body: string,
+    ): Promise<string | null> => {
+      setSaveStatus('saving')
+      const { data, error } = await supabase
+        .from('score_comments')
+        .insert({ review_id: reviewId, rubric_item_id: rubricItemId, score_level: scoreLevel, body })
+        .select('id')
+        .single()
+      if (error) {
+        console.error('[useReviewAutoSave] addScoreComment error:', error)
+        setSaveStatus('error')
+        return null
+      }
+      setSaveStatus('saved')
+      return data.id
+    },
+    [supabase]
+  )
+
+  const deleteScoreComment = useCallback(
+    async (commentId: string): Promise<void> => {
+      setSaveStatus('saving')
+      const { error } = await supabase
+        .from('score_comments')
+        .delete()
+        .eq('id', commentId)
+      if (error) {
+        console.error('[useReviewAutoSave] deleteScoreComment error:', error)
+        setSaveStatus('error')
+        return
+      }
+      setSaveStatus('saved')
+    },
+    [supabase]
+  )
+
   return {
     saveStatus,
     onScoreChange,
+    onNotesChange,
     saveAnnotation,
     deleteAnnotation,
+    addScoreComment,
+    deleteScoreComment,
     saveDraft,
   }
 }

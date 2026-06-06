@@ -18,7 +18,9 @@ export type Database = {
           body: string
           created_at: string
           id: string
-          review_score_id: string
+          review_id: string
+          rubric_item_id: string | null
+          tag: string | null
           updated_at: string
         }
         Insert: {
@@ -26,7 +28,9 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
-          review_score_id: string
+          review_id: string
+          rubric_item_id?: string | null
+          tag?: string | null
           updated_at?: string
         }
         Update: {
@@ -34,15 +38,66 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
-          review_score_id?: string
+          review_id?: string
+          rubric_item_id?: string
+          tag?: string | null
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "annotations_review_score_id_fkey"
-            columns: ["review_score_id"]
+            foreignKeyName: "annotations_review_id_fkey"
+            columns: ["review_id"]
             isOneToOne: false
-            referencedRelation: "review_scores"
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "annotations_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "rubric_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      score_comments: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          review_id?: string
+          rubric_item_id?: string
+          score_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "score_comments_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "score_comments_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "rubric_items"
             referencedColumns: ["id"]
           },
         ]
@@ -85,33 +140,39 @@ export type Database = {
           author_id: string
           authors: string
           created_at: string
+          creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
           storage_path: string
           subject_matter: string
+          third_party_content_disclosure: string | null
           title: string
         }
         Insert: {
           author_id: string
           authors?: string
           created_at?: string
+          creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
           storage_path: string
           subject_matter?: string
+          third_party_content_disclosure?: string | null
           title: string
         }
         Update: {
           author_id?: string
           authors?: string
           created_at?: string
+          creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
           storage_path?: string
           subject_matter?: string
+          third_party_content_disclosure?: string | null
           title?: string
         }
         Relationships: [
@@ -144,25 +205,25 @@ export type Database = {
       }
       review_scores: {
         Row: {
-          comment: string
+          comment: string | null
           created_at: string
           id: string
           review_id: string
           rubric_item_id: string
-          score: Database["public"]["Enums"]["criterion_score"]
+          score: Database["public"]["Enums"]["criterion_score"] | null
           updated_at: string
         }
         Insert: {
-          comment: string
+          comment?: string | null
           created_at?: string
           id?: string
           review_id: string
           rubric_item_id: string
-          score: Database["public"]["Enums"]["criterion_score"]
+          score?: Database["public"]["Enums"]["criterion_score"] | null
           updated_at?: string
         }
         Update: {
-          comment?: string
+          comment?: string | null
           created_at?: string
           id?: string
           review_id?: string
@@ -193,6 +254,7 @@ export type Database = {
           document_id: string
           id: string
           last_saved_at: string | null
+          notes: string | null
           overall_comment: string | null
           reviewer_id: string
           rubric_id: string
@@ -205,6 +267,7 @@ export type Database = {
           document_id: string
           id?: string
           last_saved_at?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id: string
           rubric_id: string
@@ -217,6 +280,7 @@ export type Database = {
           document_id?: string
           id?: string
           last_saved_at?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id?: string
           rubric_id?: string
@@ -370,6 +434,7 @@ export type Database = {
     }
     Enums: {
       anchor_type: "text-range" | "dom-range" | "bbox" | "timestamp"
+      creative_commons_license: "cc_by" | "cc_by_sa" | "cc_by_nd" | "cc_by_nc" | "cc_by_nc_sa" | "cc_by_nc_nd"
       criterion_score: "does_not_meet" | "exemplifies" | "exceeds"
       expert_domain:
         | "agriculture"
@@ -419,6 +484,7 @@ export type Enums<T extends keyof DefaultSchema["Enums"]> =
 
 export const Constants = {
   Enums: {
+    creative_commons_license: ["cc_by", "cc_by_sa", "cc_by_nd", "cc_by_nc", "cc_by_nc_sa", "cc_by_nc_nd"] as const,
     criterion_score:  ["does_not_meet", "exemplifies", "exceeds"] as const,
     expert_domain:    ["agriculture", "arts_and_humanities", "biology", "business",
                        "chemistry", "computer_science", "economics", "education",
