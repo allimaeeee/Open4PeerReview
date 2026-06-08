@@ -2,7 +2,7 @@
 
 import { type ButtonHTMLAttributes, type ReactNode } from 'react'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'toggle' | 'pill' | 'icon' | 'text'
+export type ButtonVariant = 'primary' | 'secondary' | 'toggle' | 'icon' | 'text'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -56,7 +56,7 @@ export function Button({
     <button
       disabled={isDisabled}
       aria-busy={loading || undefined}
-      aria-pressed={variant === 'toggle' || variant === 'pill' ? active : undefined}
+      aria-pressed={variant === 'toggle' ? active : undefined}
       className={cx(
         // ── Layout ────────────────────────────────────────────────────────
         variant === 'toggle'
@@ -91,14 +91,6 @@ export function Button({
             : 'border-border bg-surface-card text-text-primary hover:border-border-strong',
         ),
 
-        variant === 'pill' && cx(
-          'rounded-full border',
-          'disabled:cursor-not-allowed',
-          active
-            ? 'border-primary bg-primary text-on-primary'
-            : 'border-border bg-surface-card text-text-secondary hover:border-border-strong',
-        ),
-
         variant === 'icon' && cx(
           'rounded-md text-text-muted',
           'hover:text-text-primary hover:bg-surface-container',
@@ -115,21 +107,18 @@ export function Button({
         size === 'sm' && variant === 'primary'   && 'px-3 py-1.5 text-xs',
         size === 'sm' && variant === 'secondary' && 'px-3 py-1.5 text-xs',
         size === 'sm' && variant === 'toggle'    && 'px-3 py-2 text-xs',
-        size === 'sm' && variant === 'pill'      && 'px-2.5 py-0.5 text-xs',
         size === 'sm' && variant === 'icon'      && 'p-1',
         size === 'sm' && variant === 'text'      && 'text-xs',
 
         size === 'md' && variant === 'primary'   && 'px-3.5 py-2 text-sm',
         size === 'md' && variant === 'secondary' && 'px-3.5 py-2 text-sm',
         size === 'md' && variant === 'toggle'    && 'px-4 py-3 text-sm',
-        size === 'md' && variant === 'pill'      && 'px-3 py-1 text-xs',
         size === 'md' && variant === 'icon'      && 'p-1.5',
         size === 'md' && variant === 'text'      && 'text-sm',
 
         size === 'lg' && variant === 'primary'   && 'px-5 py-2.5 text-sm',
         size === 'lg' && variant === 'secondary' && 'px-5 py-2.5 text-sm',
         size === 'lg' && variant === 'toggle'    && 'px-5 py-3.5 text-sm',
-        size === 'lg' && variant === 'pill'      && 'px-4 py-1.5 text-sm',
         size === 'lg' && variant === 'icon'      && 'p-2',
         size === 'lg' && variant === 'text'      && 'text-base',
 
