@@ -315,7 +315,7 @@ export function OnboardingForm({
     // Panel 1 — Welcome
     if (mainStep === 1) return (
       <>
-        <h1 className="text-display-sm font-display">Welcome to Open4PeerReview</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Welcome to Open4PeerReview</h1>
         <p className="text-body-md text-text-muted mt-2">
           Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.
         </p>
@@ -330,7 +330,7 @@ export function OnboardingForm({
     // Panel 2 — Personal info
     if (mainStep === 2) return (
       <>
-        <h1 className="text-display-sm font-display">Tell us about yourself</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
         <p className="text-body-md text-text-muted mt-2">
           This helps match you with the right tasks and gives reviewers and authors helpful context.
         </p>
@@ -435,7 +435,7 @@ export function OnboardingForm({
     // Panel 3 — Role selection
     if (mainStep === 3 && sub === 0) return (
       <>
-        <h1 className="text-display-sm font-display">How do you participate in OER?</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">How do you participate in OER?</h1>
         <p className="text-body-md text-text-muted mt-2">
           Pick all that apply — many people both create and review. You can always add roles later from your profile settings.
         </p>
@@ -492,7 +492,7 @@ export function OnboardingForm({
     if (mainStep === 3 && sub === 1) return (
       <>
         <ReviewerEyebrow n={1} />
-        <h1 className="text-display-sm font-display">What kind of reviewer are you?</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What kind of reviewer are you?</h1>
         <p className="text-body-md text-text-muted mt-2">
           This is shown alongside your feedback so authors understand your perspective. It doesn't limit which rubrics you can apply.
         </p>
@@ -533,7 +533,7 @@ export function OnboardingForm({
     if (mainStep === 3 && sub === 2) return (
       <>
         <ReviewerEyebrow n={2} />
-        <h1 className="text-display-sm font-display">What are your areas of expertise?</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What are your areas of expertise?</h1>
         <p className="text-body-md text-text-muted mt-2">
           These tags surface tasks that match your knowledge. Add at least two — you can always update them in Settings.
         </p>
@@ -616,7 +616,7 @@ export function OnboardingForm({
     if (mainStep === 3 && sub === 3) return (
       <>
         <ReviewerEyebrow n={3} />
-        <h1 className="text-display-sm font-display">Which rubrics are you qualified to apply?</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Which rubrics are you qualified to apply?</h1>
         <p className="text-body-md text-text-muted mt-2">
           Only tasks using your selected rubrics will appear in your Task Pool. You can update this in Settings.
         </p>
@@ -650,7 +650,7 @@ export function OnboardingForm({
     // Panel 4 — Finish
     if (mainStep === 4) return (
       <>
-        <h1 className="text-display-sm font-display">You're all set, {displayName}!</h1>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">You're all set, {displayName}!</h1>
         <p className="text-body-md text-text-muted mt-2">
           We found tasks that match your expertise. Take a look whenever you're ready.
         </p>
@@ -659,7 +659,7 @@ export function OnboardingForm({
           {roles.has('reviewer') && (
             <Button
               type="button"
-              variant="secondary"
+              variant={roles.has('author') ? 'secondary' : 'primary'}
               onClick={() => router.push('/dashboard?view=reviewer')}
             >
               Go to Reviewer dashboard →
@@ -683,12 +683,12 @@ export function OnboardingForm({
 
   // ── Shell ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-surface-warm py-12 px-4">
+    <div className="min-h-screen bg-surface py-12 px-4">
       <div className="max-w-[600px] mx-auto">
-        <p className="text-label-sm font-label uppercase tracking-widest text-text-muted">
+        <p className="text-heading-lg font-semibold font-heading text-text-primary">
           Onboarding
         </p>
-        <div className="mt-3 mb-6">
+        <div className="mt-6 mb-10">
           <StepIndicator
             steps={['Welcome', 'Personal Info', 'Role(s)', 'Finish']}
             currentStep={mainStep}
