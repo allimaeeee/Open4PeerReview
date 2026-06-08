@@ -7,6 +7,7 @@ import { uploadDocument, assignRubrics } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { Select } from '@/components/ui/Select'
+import { SelectionCard } from '@/components/ui/SelectionCard'
 
 interface RubricOption {
   id: string
@@ -238,29 +239,15 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, onCancel }: 
           <p className="text-xs text-slate-500 mb-3">Select the rubrics reviewers should use for this document.</p>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
             {rubrics.map(r => (
-              <label
+              <SelectionCard
                 key={r.id}
-                className={[
-                  'flex items-start gap-3 rounded-lg border-2 px-3.5 py-2.5 cursor-pointer transition-all',
-                  selectedRubrics.has(r.id)
-                    ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                    : 'border-slate-200 hover:border-slate-300',
-                ].join(' ')}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-[#1e3a5f]"
-                  checked={selectedRubrics.has(r.id)}
-                  onChange={() => toggleRubric(r.id)}
-                  disabled={loading}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-slate-800">{r.title}</span>
-                  {r.description && (
-                    <span className="block text-xs text-slate-500 mt-0.5">{r.description}</span>
-                  )}
-                </span>
-              </label>
+                selectionMode="checkbox"
+                isSelected={selectedRubrics.has(r.id)}
+                onChange={() => toggleRubric(r.id)}
+                disabled={loading}
+                title={r.title}
+                description={r.description ?? undefined}
+              />
             ))}
           </div>
         </div>

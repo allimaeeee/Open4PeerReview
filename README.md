@@ -59,7 +59,6 @@ git push origin testing
 │      ├── 📄 PDFViewerCanvas.tsx
 │      ├── 📄 ReviewerApp.tsx
 │      ├── 📄 ReviewerConsole.tsx
-│      ├── 📄 RubricPicker.tsx
 │      ├── 📄 SubmitButton.tsx
 │    ├── 📄 page.tsx
 │  ├── 📄 page.tsx
