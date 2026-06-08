@@ -77,9 +77,6 @@ export interface RubricWithItems extends Rubric {
 /** Document fields loaded for the review UI */
 export type OERDocument = Pick<Document, 'id' | 'title' | 'file_url' | 'storage_path'>
 
-/** Rubric fields shown in the rubric picker */
-export type RubricPickerItem = Pick<Rubric, 'id' | 'title' | 'description' | 'operational_definition'>
-
 /** Rubric item fields loaded in the annotation panel */
 export type RubricItemSummary = Pick<RubricItem, 'id' | 'label' | 'description' | 'sort_order'>
 

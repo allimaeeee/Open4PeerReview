@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
 import { Select } from '@/components/ui/Select'
+import { SelectionCard } from '@/components/ui/SelectionCard'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
@@ -296,23 +297,15 @@ export function OnboardingForm({
             <p className="text-xs text-slate-500 mb-3">Select all that apply. You must choose at least one.</p>
             <div className="grid grid-cols-2 gap-3">
               {(['author', 'reviewer'] as const).map(role => (
-                <Button
+                <SelectionCard
                   key={role}
-                  type="button"
-                  variant="toggle"
-                  active={roles.has(role)}
-                  onClick={() => toggleRole(role)}
+                  selectionMode="checkbox"
+                  isSelected={roles.has(role)}
+                  onChange={() => toggleRole(role)}
                   disabled={loading}
-                >
-                  <span className="text-sm font-semibold capitalize">
-                    {role === 'author' ? 'Author' : 'Reviewer'}
-                  </span>
-                  <span className="mt-0.5 text-xs text-slate-500">
-                    {role === 'author'
-                      ? 'Submit work for peer review'
-                      : 'Review and evaluate submissions'}
-                  </span>
-                </Button>
+                  title={role === 'author' ? 'Author' : 'Reviewer'}
+                  description={role === 'author' ? 'Submit work for peer review' : 'Review and evaluate submissions'}
+                />
               ))}
             </div>
             {errors.roles && <Alert variant="error" message={errors.roles} className="mt-1.5" />}
@@ -329,17 +322,15 @@ export function OnboardingForm({
                 </p>
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   {REVIEWER_TYPE_OPTIONS.map(opt => (
-                    <Button
+                    <SelectionCard
                       key={opt.value}
-                      type="button"
-                      variant="toggle"
-                      active={reviewerType === opt.value}
-                      onClick={() => { setReviewerType(opt.value); clearError('reviewerType') }}
+                      selectionMode="radio"
+                      isSelected={reviewerType === opt.value}
+                      onChange={() => { setReviewerType(opt.value); clearError('reviewerType') }}
                       disabled={loading}
-                    >
-                      <span className="text-sm font-semibold">{opt.label}</span>
-                      <span className="mt-0.5 text-xs text-slate-500">{opt.description}</span>
-                    </Button>
+                      title={opt.label}
+                      description={opt.description}
+                    />
                   ))}
                 </div>
                 {errors.reviewerType && <Alert variant="error" message={errors.reviewerType} className="mt-1.5" />}
@@ -421,34 +412,15 @@ export function OnboardingForm({
                 <p className="text-xs text-slate-500 mb-3">Choose at least one rubric you are qualified to apply.</p>
                 <div className="space-y-2">
                   {rubrics.map(r => (
-                    <Button
+                    <SelectionCard
                       key={r.id}
-                      type="button"
-                      variant="toggle"
-                      active={rubricSpecs.has(r.id)}
-                      onClick={() => toggleRubric(r.id)}
+                      selectionMode="checkbox"
+                      size="compact"
+                      isSelected={rubricSpecs.has(r.id)}
+                      onChange={() => toggleRubric(r.id)}
                       disabled={loading}
-                      className="!flex-row !items-center gap-3 !py-2.5"
-                    >
-                      <span className={[
-                        'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors',
-                        rubricSpecs.has(r.id)
-                          ? 'border-[#1e3a5f] bg-[#1e3a5f]'
-                          : 'border-slate-300 bg-white',
-                      ].join(' ')}>
-                        {rubricSpecs.has(r.id) && (
-                          <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 10 8" fill="none">
-                            <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </span>
-                      <span className={[
-                        'text-sm font-medium',
-                        rubricSpecs.has(r.id) ? 'text-[#1e3a5f]' : 'text-slate-700',
-                      ].join(' ')}>
-                        {r.title}
-                      </span>
-                    </Button>
+                      title={r.title}
+                    />
                   ))}
                 </div>
                 {errors.rubricSpecs && <Alert variant="error" message={errors.rubricSpecs} className="mt-1.5" />}
