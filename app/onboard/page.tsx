@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { OnboardingForm } from './OnboardingForm'
@@ -27,19 +28,21 @@ export default async function OnboardPage() {
     ''
 
   return (
-    <OnboardingForm
-      userId={user.id}
-      email={user.email ?? ''}
-      defaultDisplayName={displayNameFallback}
-      defaultInstitution={profile?.institution ?? ''}
-      defaultDiscipline={profile?.primary_discipline ?? ''}
-      defaultProfession={profile?.profession ?? ''}
-      defaultRoles={(profile?.roles ?? []) as ('author' | 'reviewer')[]}
-      defaultReviewerType={profile?.reviewer_type ?? ''}
-      defaultExpertiseTags={profile?.expertise_tags ?? []}
-      defaultRubricSpecializations={profile?.rubric_specializations ?? []}
-      institutions={(institutions ?? []).map((i) => i.name)}
-      rubrics={(rubrics ?? []).map((r) => ({ id: r.id, title: r.title }))}
-    />
+    <Suspense fallback={<div className="min-h-screen bg-surface-warm" />}>
+      <OnboardingForm
+        userId={user.id}
+        email={user.email ?? ''}
+        defaultDisplayName={displayNameFallback}
+        defaultInstitution={profile?.institution ?? ''}
+        defaultDiscipline={profile?.primary_discipline ?? ''}
+        defaultProfession={profile?.profession ?? ''}
+        defaultRoles={(profile?.roles ?? []) as ('author' | 'reviewer')[]}
+        defaultReviewerType={profile?.reviewer_type ?? ''}
+        defaultExpertiseTags={profile?.expertise_tags ?? []}
+        defaultRubricSpecializations={profile?.rubric_specializations ?? []}
+        institutions={(institutions ?? []).map((i) => i.name)}
+        rubrics={(rubrics ?? []).map((r) => ({ id: r.id, title: r.title }))}
+      />
+    </Suspense>
   )
 }
