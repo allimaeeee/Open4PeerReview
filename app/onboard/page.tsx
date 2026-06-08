@@ -28,7 +28,7 @@ export default async function OnboardPage() {
     ''
 
   return (
-    <Suspense fallback={<div className="min-h-screen bg-surface-warm" />}>
+    <Suspense fallback={<div className="min-h-screen bg-surface" />}>
       <OnboardingForm
         userId={user.id}
         email={user.email ?? ''}

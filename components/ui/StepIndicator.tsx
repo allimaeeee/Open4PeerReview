@@ -39,7 +39,7 @@ export function StepIndicator({ steps, currentStep }: StepIndicatorProps) {
               <div
                 className={cx(
                   'w-7 h-7 rounded-full flex items-center justify-center text-label-sm font-label font-bold transition-colors',
-                  completed && 'bg-secondary text-on-secondary',
+                  completed && 'bg-secondary text-white',
                   active    && 'bg-primary text-on-primary',
                   !completed && !active && 'bg-surface-container-high text-text-muted',
                 )}
