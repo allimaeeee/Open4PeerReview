@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { Chip } from '@/components/ui/Chip'
+import { ChipGroup } from '@/components/ui/ChipGroup'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
@@ -350,44 +352,41 @@ export function OnboardingForm({
                   <span className="ml-1.5 text-xs font-normal text-slate-400">optional</span>
                 </p>
                 <p className="text-xs text-slate-500 mb-3">Select disciplines you can review, or add your own.</p>
-                <div className="flex flex-wrap gap-2">
+                <ChipGroup label="Discipline suggestions">
                   {DISCIPLINE_OPTIONS.map(d => (
-                    <Button
-                      key={d.value}
-                      type="button"
-                      variant="pill"
-                      active={expertiseTags.has(d.value)}
-                      onClick={() => toggleExpertiseTag(d.value)}
-                      disabled={loading}
-                    >
-                      {d.label}
-                    </Button>
+                    expertiseTags.has(d.value) ? (
+                      <Chip
+                        key={d.value}
+                        label={d.label}
+                        variant="selected"
+                        onRemove={() => toggleExpertiseTag(d.value)}
+                        disabled={loading}
+                      />
+                    ) : (
+                      <Chip
+                        key={d.value}
+                        label={d.label}
+                        variant="suggestion"
+                        onClick={() => toggleExpertiseTag(d.value)}
+                        disabled={loading}
+                      />
+                    )
                   ))}
-                </div>
+                </ChipGroup>
 
                 {/* Custom tags */}
                 {customTags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <ChipGroup label="Selected expertise tags" className="mt-2">
                     {customTags.map(tag => (
-                      <span
+                      <Chip
                         key={tag}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#1e3a5f] bg-[#1e3a5f] px-3 py-1 text-xs font-medium text-white"
-                      >
-                        {tag}
-                        <Button
-                          type="button"
-                          variant="icon"
-                          size="sm"
-                          onClick={() => removeTag(tag)}
-                          disabled={loading}
-                          className="ml-0.5"
-                          aria-label={`Remove ${tag}`}
-                        >
-                          ×
-                        </Button>
-                      </span>
+                        label={tag}
+                        variant="selected"
+                        onRemove={() => removeTag(tag)}
+                        disabled={loading}
+                      />
                     ))}
-                  </div>
+                  </ChipGroup>
                 )}
 
                 <div className="flex gap-2 mt-3">
