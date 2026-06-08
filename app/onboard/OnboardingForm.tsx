@@ -1,25 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EXPERT_DOMAIN_LABELS, PROFESSION_LABELS } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { ChipGroup } from '@/components/ui/ChipGroup'
 import { Input } from '@/components/ui/Input'
-import { Card } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
 import { Select } from '@/components/ui/Select'
 import { SelectionCard } from '@/components/ui/SelectionCard'
+import { StepIndicator } from '@/components/ui/StepIndicator'
 
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
-
-const REVIEWER_TYPE_OPTIONS = [
-  { value: 'academic_peer', label: 'Academic Peer', description: 'Researcher or faculty evaluating scholarly content' },
-  { value: 'industry_expert', label: 'Industry Expert', description: 'Practitioner with domain expertise outside academia' },
-] as const
 
 interface Props {
   userId: string
@@ -35,6 +30,112 @@ interface Props {
   institutions: string[]
   rubrics: { id: string; title: string }[]
 }
+
+// ── Icons ──────────────────────────────────────────────────────────────────
+
+function AuthorIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <path d="M4 4a2 2 0 012-2h5.5L16 6.5V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M10 2v5h5M7 10h6M7 13h4"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ReviewerIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12.5 12.5L17 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function CoordinatorIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <circle cx="10" cy="3.5" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="3.5" cy="16" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="16.5" cy="16" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M10 5v5M10 10L4 14.5M10 10l6 4.5"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function AcademicIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <path d="M10 2L1.5 7 10 12l8.5-5L10 2z"
+        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M5 9.5V14c0 1.933 2.239 3.5 5 3.5s5-1.567 5-3.5V9.5"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M18.5 7v4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IndustryIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <rect x="1.5" y="7" width="17" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M1.5 12h17" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  )
+}
+
+// ── Shared panel sub-components ────────────────────────────────────────────
+
+function ReviewerEyebrow({ n }: { n: number }) {
+  return (
+    <p className="text-label-sm font-label uppercase tracking-widest text-text-muted mb-2">
+      Reviewer Setup · {n} of 3
+    </p>
+  )
+}
+
+function PanelFooter({
+  onBack,
+  onContinue,
+  continueLabel = 'Continue',
+  continueDisabled = false,
+  loading = false,
+}: {
+  onBack?: () => void
+  onContinue?: () => void
+  continueLabel?: string
+  continueDisabled?: boolean
+  loading?: boolean
+}) {
+  return (
+    <div className="flex justify-between items-center mt-8 pt-6 border-t border-border">
+      {onBack ? (
+        <Button type="button" variant="text" onClick={onBack} disabled={loading}>
+          ← Back
+        </Button>
+      ) : (
+        <span />
+      )}
+      {onContinue && (
+        <Button
+          type="button"
+          variant="primary"
+          onClick={onContinue}
+          disabled={continueDisabled || loading}
+          loading={loading}
+        >
+          {continueLabel}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
 
 export function OnboardingForm({
   userId,
@@ -53,6 +154,7 @@ export function OnboardingForm({
   const isKnownDiscipline = DISCIPLINE_OPTIONS.some(d => d.value === defaultDiscipline)
   const isKnownProfession = PROFESSION_OPTIONS.some(p => p.value === defaultProfession)
 
+  // ── State (preserved exactly) ──────────────────────────────────────────
   const [displayName, setDisplayName]         = useState(defaultDisplayName)
   const [institution, setInstitution]         = useState(defaultInstitution)
   const [discipline, setDiscipline]           = useState(isKnownDiscipline ? defaultDiscipline : (defaultDiscipline ? 'other' : ''))
@@ -69,9 +171,22 @@ export function OnboardingForm({
   const [loading, setLoading]                 = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  const mainStep = parseInt(searchParams.get('step') ?? '1', 10)
+  const sub      = parseInt(searchParams.get('sub')  ?? '0', 10)
   const isReviewer = roles.has('reviewer')
 
+  // ── Navigation ─────────────────────────────────────────────────────────
+  function navigate(step: number, subStep?: number) {
+    const params = new URLSearchParams()
+    params.set('step', String(step))
+    if (subStep !== undefined) params.set('sub', String(subStep))
+    router.push(`/onboard?${params.toString()}`, { scroll: false })
+  }
+
+  // ── Event handlers (preserved exactly) ────────────────────────────────
   function clearError(key: string) {
     setErrors(prev => { const next = { ...prev }; delete next[key]; return next })
   }
@@ -120,6 +235,7 @@ export function OnboardingForm({
     clearError('rubricSpecs')
   }
 
+  // ── Validation (preserved exactly) ────────────────────────────────────
   function validate() {
     const errs: Record<string, string> = {}
     if (!displayName.trim())    errs.displayName     = 'Display name is required.'
@@ -138,8 +254,8 @@ export function OnboardingForm({
     return Object.keys(errs).length === 0
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  // ── Submission (preserved sequence, triggered by button click) ─────────
+  async function submit() {
     if (!validate()) return
 
     setLoading(true)
@@ -179,27 +295,47 @@ export function OnboardingForm({
       return
     }
 
-    router.push('/dashboard')
-    router.refresh()
+    navigate(4)
   }
 
-  // Custom tags are those not in the predefined discipline list
+  // ── Derived values ─────────────────────────────────────────────────────
   const predefinedTagValues = new Set(DISCIPLINE_OPTIONS.map(d => d.value))
   const customTags = Array.from(expertiseTags).filter(t => !predefinedTagValues.has(t))
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12">
-      <Card variant="elevated" className="w-full max-w-lg p-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">Welcome!</h1>
-          <p className="mt-1.5 text-sm text-slate-500">
-            Tell us a bit about yourself to get started.
-          </p>
-        </div>
+  const canContinuePanel2 =
+    !!displayName.trim() &&
+    !!discipline &&
+    (discipline !== 'other' || !!disciplineOther.trim()) &&
+    !!profession &&
+    (profession !== 'other' || !!professionOther.trim())
 
-        <form onSubmit={handleSubmit} noValidate className="space-y-5">
+  // ── Panel renderer ─────────────────────────────────────────────────────
+  function renderPanel() {
 
-          {/* Display name */}
+    // Panel 1 — Welcome
+    if (mainStep === 1) return (
+      <>
+        <h1 className="text-display-sm font-display">Welcome to Open4PeerReview</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.
+        </p>
+        <p className="text-body-md text-text-muted mt-1">This takes about 3 minutes.</p>
+        <PanelFooter
+          onContinue={() => navigate(2)}
+          continueLabel="Get started →"
+        />
+      </>
+    )
+
+    // Panel 2 — Personal info
+    if (mainStep === 2) return (
+      <>
+        <h1 className="text-display-sm font-display">Tell us about yourself</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          This helps match you with the right tasks and gives reviewers and authors helpful context.
+        </p>
+
+        <div className="space-y-5 mt-6">
           <Input
             id="displayName"
             type="text"
@@ -213,7 +349,6 @@ export function OnboardingForm({
             error={errors.displayName}
           />
 
-          {/* Institution */}
           <div>
             <Input
               id="institution"
@@ -231,7 +366,6 @@ export function OnboardingForm({
             </datalist>
           </div>
 
-          {/* Primary discipline */}
           <div>
             <Select
               id="discipline"
@@ -260,7 +394,6 @@ export function OnboardingForm({
             )}
           </div>
 
-          {/* Profession */}
           <div>
             <Select
               id="profession"
@@ -288,162 +421,283 @@ export function OnboardingForm({
               />
             )}
           </div>
+        </div>
 
-          {/* Role */}
-          <div>
-            <p className="block text-sm font-medium text-slate-700 mb-1">
-              Role <span className="text-red-500">*</span>
-            </p>
-            <p className="text-xs text-slate-500 mb-3">Select all that apply. You must choose at least one.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(['author', 'reviewer'] as const).map(role => (
-                <SelectionCard
-                  key={role}
-                  selectionMode="checkbox"
-                  isSelected={roles.has(role)}
-                  onChange={() => toggleRole(role)}
+        <PanelFooter
+          onBack={() => navigate(1)}
+          onContinue={() => navigate(3)}
+          continueDisabled={!canContinuePanel2}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 3 — Role selection
+    if (mainStep === 3 && sub === 0) return (
+      <>
+        <h1 className="text-display-sm font-display">How do you participate in OER?</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          Pick all that apply — many people both create and review. You can always add roles later from your profile settings.
+        </p>
+
+        <div className="space-y-3 mt-6">
+          <SelectionCard
+            selectionMode="checkbox"
+            isSelected={roles.has('author')}
+            onChange={() => toggleRole('author')}
+            disabled={loading}
+            icon={<AuthorIcon />}
+            title="Author"
+            description="You create Open Educational Resources and want structured expert feedback to improve your work and pursue certification."
+          />
+          <SelectionCard
+            selectionMode="checkbox"
+            isSelected={roles.has('reviewer')}
+            onChange={() => toggleRole('reviewer')}
+            disabled={loading}
+            icon={<ReviewerIcon />}
+            title="Reviewer"
+            description="You're a subject-matter expert who evaluates OERs against professional rubrics and provides evidence-based feedback."
+          />
+          <SelectionCard
+            selectionMode="checkbox"
+            isSelected={false}
+            onChange={() => {}}
+            comingSoon
+            icon={<CoordinatorIcon />}
+            title="Coordinator"
+            description="You oversee review pipelines, match reviewers to resources, and ensure feedback quality before it reaches authors."
+          />
+        </div>
+
+        {errors.roles && <Alert variant="error" message={errors.roles} className="mt-3" />}
+        {serverError && <Alert variant="error" message={serverError} className="mt-3" />}
+
+        <PanelFooter
+          onBack={() => navigate(2)}
+          onContinue={async () => {
+            if (roles.has('reviewer')) {
+              navigate(3, 1)
+            } else {
+              await submit()
+            }
+          }}
+          continueDisabled={roles.size === 0}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 3.1 — Reviewer type
+    if (mainStep === 3 && sub === 1) return (
+      <>
+        <ReviewerEyebrow n={1} />
+        <h1 className="text-display-sm font-display">What kind of reviewer are you?</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          This is shown alongside your feedback so authors understand your perspective. It doesn't limit which rubrics you can apply.
+        </p>
+
+        <div className="space-y-3 mt-6">
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={reviewerType === 'academic_peer'}
+            onChange={() => { setReviewerType('academic_peer'); clearError('reviewerType') }}
+            disabled={loading}
+            icon={<AcademicIcon />}
+            title="Academic Peer"
+            description="You're faculty, a researcher, or an academic expert evaluating OERs for scholarly rigor, disciplinary accuracy, and pedagogical quality."
+          />
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={reviewerType === 'industry_expert'}
+            onChange={() => { setReviewerType('industry_expert'); clearError('reviewerType') }}
+            disabled={loading}
+            icon={<IndustryIcon />}
+            title="Industry Expert"
+            description="You bring workforce and industry perspective — evaluating whether OERs prepare learners for real-world professional contexts."
+          />
+        </div>
+
+        {errors.reviewerType && <Alert variant="error" message={errors.reviewerType} className="mt-3" />}
+
+        <PanelFooter
+          onBack={() => navigate(3)}
+          onContinue={() => navigate(3, 2)}
+          continueDisabled={!reviewerType}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 3.2 — Expertise tags
+    if (mainStep === 3 && sub === 2) return (
+      <>
+        <ReviewerEyebrow n={2} />
+        <h1 className="text-display-sm font-display">What are your areas of expertise?</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          These tags surface tasks that match your knowledge. Add at least two — you can always update them in Settings.
+        </p>
+
+        <div className="mt-6">
+          <p className="text-sm font-medium text-text-primary mb-1">
+            Expertise tags
+            <span className="ml-1.5 text-xs font-normal text-text-muted">(minimum 2)</span>
+          </p>
+          <ChipGroup label="Discipline suggestions">
+            {DISCIPLINE_OPTIONS.map(d => (
+              expertiseTags.has(d.value) ? (
+                <Chip
+                  key={d.value}
+                  label={d.label}
+                  variant="selected"
+                  onRemove={() => toggleExpertiseTag(d.value)}
                   disabled={loading}
-                  title={role === 'author' ? 'Author' : 'Reviewer'}
-                  description={role === 'author' ? 'Submit work for peer review' : 'Review and evaluate submissions'}
+                />
+              ) : (
+                <Chip
+                  key={d.value}
+                  label={d.label}
+                  variant="suggestion"
+                  onClick={() => toggleExpertiseTag(d.value)}
+                  disabled={loading}
+                />
+              )
+            ))}
+          </ChipGroup>
+
+          {customTags.length > 0 && (
+            <ChipGroup label="Selected expertise tags" className="mt-2">
+              {customTags.map(tag => (
+                <Chip
+                  key={tag}
+                  label={tag}
+                  variant="selected"
+                  onRemove={() => removeTag(tag)}
+                  disabled={loading}
                 />
               ))}
-            </div>
-            {errors.roles && <Alert variant="error" message={errors.roles} className="mt-1.5" />}
-          </div>
-
-          {/* ── Reviewer-specific fields ── */}
-          {isReviewer && (
-            <div className="space-y-5 rounded-xl border border-[#1e3a5f]/20 bg-[#1e3a5f]/[0.03] px-5 py-5">
-
-              {/* Reviewer type */}
-              <div>
-                <p className="block text-sm font-medium text-slate-700 mb-1">
-                  Reviewer type <span className="text-red-500">*</span>
-                </p>
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                  {REVIEWER_TYPE_OPTIONS.map(opt => (
-                    <SelectionCard
-                      key={opt.value}
-                      selectionMode="radio"
-                      isSelected={reviewerType === opt.value}
-                      onChange={() => { setReviewerType(opt.value); clearError('reviewerType') }}
-                      disabled={loading}
-                      title={opt.label}
-                      description={opt.description}
-                    />
-                  ))}
-                </div>
-                {errors.reviewerType && <Alert variant="error" message={errors.reviewerType} className="mt-1.5" />}
-              </div>
-
-              {/* Expertise tags */}
-              <div>
-                <p className="block text-sm font-medium text-slate-700 mb-1">
-                  Expertise tags
-                  <span className="ml-1.5 text-xs font-normal text-slate-400">optional</span>
-                </p>
-                <p className="text-xs text-slate-500 mb-3">Select disciplines you can review, or add your own.</p>
-                <ChipGroup label="Discipline suggestions">
-                  {DISCIPLINE_OPTIONS.map(d => (
-                    expertiseTags.has(d.value) ? (
-                      <Chip
-                        key={d.value}
-                        label={d.label}
-                        variant="selected"
-                        onRemove={() => toggleExpertiseTag(d.value)}
-                        disabled={loading}
-                      />
-                    ) : (
-                      <Chip
-                        key={d.value}
-                        label={d.label}
-                        variant="suggestion"
-                        onClick={() => toggleExpertiseTag(d.value)}
-                        disabled={loading}
-                      />
-                    )
-                  ))}
-                </ChipGroup>
-
-                {/* Custom tags */}
-                {customTags.length > 0 && (
-                  <ChipGroup label="Selected expertise tags" className="mt-2">
-                    {customTags.map(tag => (
-                      <Chip
-                        key={tag}
-                        label={tag}
-                        variant="selected"
-                        onRemove={() => removeTag(tag)}
-                        disabled={loading}
-                      />
-                    ))}
-                  </ChipGroup>
-                )}
-
-                <div className="flex gap-2 mt-3">
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      type="text"
-                      placeholder="Add a custom tag…"
-                      value={tagInput}
-                      onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
-                      disabled={loading}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="lg"
-                    onClick={addCustomTag}
-                    disabled={loading || !tagInput.trim()}
-                    className="shrink-0"
-                  >
-                    Add
-                  </Button>
-                </div>
-              </div>
-
-              {/* Rubric specialization */}
-              <div>
-                <p className="block text-sm font-medium text-slate-700 mb-1">
-                  Rubric specialization <span className="text-red-500">*</span>
-                </p>
-                <p className="text-xs text-slate-500 mb-3">Choose at least one rubric you are qualified to apply.</p>
-                <div className="space-y-2">
-                  {rubrics.map(r => (
-                    <SelectionCard
-                      key={r.id}
-                      selectionMode="checkbox"
-                      size="compact"
-                      isSelected={rubricSpecs.has(r.id)}
-                      onChange={() => toggleRubric(r.id)}
-                      disabled={loading}
-                      title={r.title}
-                    />
-                  ))}
-                </div>
-                {errors.rubricSpecs && <Alert variant="error" message={errors.rubricSpecs} className="mt-1.5" />}
-              </div>
-
-            </div>
+            </ChipGroup>
           )}
 
-          {serverError && <Alert variant="error" message={serverError} />}
+          <div className="flex gap-2 mt-3">
+            <div className="flex-1 min-w-0">
+              <Input
+                type="text"
+                placeholder="Add a custom tag…"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
+                disabled={loading}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={addCustomTag}
+              disabled={loading || !tagInput.trim()}
+              className="shrink-0"
+            >
+              Add
+            </Button>
+          </div>
+        </div>
 
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={loading}
-            className="mt-2"
-          >
-            Get started
-          </Button>
+        <PanelFooter
+          onBack={() => navigate(3, 1)}
+          onContinue={() => navigate(3, 3)}
+          continueDisabled={expertiseTags.size < 2}
+          loading={loading}
+        />
+      </>
+    )
 
+    // Panel 3.3 — Rubric specialization
+    if (mainStep === 3 && sub === 3) return (
+      <>
+        <ReviewerEyebrow n={3} />
+        <h1 className="text-display-sm font-display">Which rubrics are you qualified to apply?</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          Only tasks using your selected rubrics will appear in your Task Pool. You can update this in Settings.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3 mt-6">
+          {rubrics.map(r => (
+            <SelectionCard
+              key={r.id}
+              selectionMode="checkbox"
+              size="compact"
+              isSelected={rubricSpecs.has(r.id)}
+              onChange={() => toggleRubric(r.id)}
+              disabled={loading}
+              title={r.title}
+            />
+          ))}
+        </div>
+
+        {errors.rubricSpecs && <Alert variant="error" message={errors.rubricSpecs} className="mt-3" />}
+        {serverError && <Alert variant="error" message={serverError} className="mt-3" />}
+
+        <PanelFooter
+          onBack={() => navigate(3, 2)}
+          onContinue={async () => { await submit() }}
+          continueDisabled={rubricSpecs.size === 0}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 4 — Finish
+    if (mainStep === 4) return (
+      <>
+        <h1 className="text-display-sm font-display">You're all set, {displayName}!</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          We found tasks that match your expertise. Take a look whenever you're ready.
+        </p>
+
+        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-border">
+          {roles.has('reviewer') && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => router.push('/dashboard?view=reviewer')}
+            >
+              Go to Reviewer dashboard →
+            </Button>
+          )}
+          {roles.has('author') && (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => router.push('/dashboard?view=author')}
+            >
+              Go to Author dashboard →
+            </Button>
+          )}
+        </div>
+      </>
+    )
+
+    return null
+  }
+
+  // ── Shell ──────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-surface-warm py-12 px-4">
+      <div className="max-w-[600px] mx-auto">
+        <p className="text-label-sm font-label uppercase tracking-widest text-text-muted">
+          Onboarding
+        </p>
+        <div className="mt-3 mb-6">
+          <StepIndicator
+            steps={['Welcome', 'Personal Info', 'Role(s)', 'Finish']}
+            currentStep={mainStep}
+          />
+        </div>
+        <form noValidate onSubmit={e => e.preventDefault()} className="bg-white rounded-lg shadow-1 p-8">
+          {renderPanel()}
         </form>
-      </Card>
-    </main>
+      </div>
+    </div>
   )
 }
