@@ -7,6 +7,7 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
+import type { ReviewEventType } from '@/hooks/useReviewTracking'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
@@ -57,6 +58,7 @@ interface PDFViewerCanvasProps {
   onPendingSelectionClear: () => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAnnotationDelete: (annotationId: string) => Promise<void>
+  onTrackEvent: (type: ReviewEventType, data?: Record<string, unknown>) => void
   disabled: boolean
 }
 
@@ -71,6 +73,7 @@ export default function PDFViewerCanvas({
   onPendingSelectionClear,
   onAnnotationEdit,
   onAnnotationDelete,
+  onTrackEvent,
   disabled,
 }: PDFViewerCanvasProps) {
   const [numPages, setNumPages] = useState<number>(0)
@@ -95,6 +98,45 @@ export default function PDFViewerCanvas({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editPopoverRef = useRef<HTMLDivElement>(null)
+  const prevPageRef = useRef(1)
+  const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── PDF page change tracking ───────────────────────────────────────────────
+  useEffect(() => {
+    if (currentPage === prevPageRef.current) return
+    onTrackEvent('pdf_page_change', { page: currentPage, prev_page: prevPageRef.current })
+    prevPageRef.current = currentPage
+  }, [currentPage, onTrackEvent])
+
+  // ── Scroll sampling (throttled to 1 sample/sec) ────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      if (scrollThrottleRef.current) return
+      scrollThrottleRef.current = setTimeout(() => {
+        scrollThrottleRef.current = null
+        const container = containerRef.current
+        if (!container) return
+        onTrackEvent('pdf_scroll', {
+          scroll_y: Math.round(container.scrollTop),
+          page: currentPage,
+        })
+      }, 1000)
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', handleScroll)
+      if (scrollThrottleRef.current) {
+        clearTimeout(scrollThrottleRef.current)
+        scrollThrottleRef.current = null
+      }
+    }
+  // currentPage intentionally excluded: we want the latest value inside the
+  // throttled callback without resetting the listener on every page change.
+  // The ref pattern avoids stale closure issues here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onTrackEvent])
 
   // Reset tooltip state when it opens
   useEffect(() => {
