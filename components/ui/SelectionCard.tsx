@@ -62,7 +62,7 @@ export function SelectionCard({
       {/* Text block */}
       <div className={cx('flex-1 min-w-0', disabled && !comingSoon && 'opacity-40')}>
         <p className="text-body-md font-medium text-text-primary leading-snug">{title}</p>
-        {description && size !== 'compact' && (
+        {description && (
           <p className="text-body-sm text-text-muted mt-0.5 leading-relaxed">{description}</p>
         )}
       </div>
