@@ -191,7 +191,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id')
+    .select('id, title, author_id, storage_path')
     .eq('id', documentId)
     .single()
 
@@ -206,8 +206,9 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
       rubric:rubrics ( id, title ),
       review_scores (
         id, score, comment,
-        rubric_item:rubric_items ( id, label, sort_order )
-      )
+        rubric_item:rubric_items ( id, label, sort_order, description )
+      ),
+      annotations ( id, body, tag, rubric_item_id, anchor )
     `)
     .eq('document_id', documentId)
     .eq('status', 'submitted')
