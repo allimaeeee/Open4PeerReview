@@ -16,6 +16,15 @@ import { StepIndicator } from '@/components/ui/StepIndicator'
 const PROFESSION_OPTIONS = Object.entries(PROFESSION_LABELS).map(([value, label]) => ({ value, label }))
 const DISCIPLINE_OPTIONS = Object.entries(EXPERT_DOMAIN_LABELS).map(([value, label]) => ({ value, label }))
 
+const RUBRIC_DESCRIPTIONS: Record<string, string> = {
+  'Accessibility': 'Evaluate whether OER content is perceivable, operable, and usable by all learners, including those who rely on assistive technologies.',
+  'Copy Editing': 'Review grammar, spelling, punctuation, formatting consistency, and clarity throughout the material.',
+  'Copyright Review': 'Examine whether all content is properly licensed, attributed, and legally authorized for open reuse.',
+  'Disciplinary Appropriateness': 'Assess whether the OER demonstrates scholarly rigor, factual accuracy, and currency within its academic field.',
+  'eLearning': 'Evaluate the functionality, reliability, and pedagogical effectiveness of digital tools and technologies embedded in the OER.',
+  'Universal Design for Learning (UDL)': 'Review whether the OER offers multiple pathways for engagement, representation, and expression to support diverse learners.',
+}
+
 interface Props {
   userId: string
   email: string
@@ -112,10 +121,10 @@ function PanelFooter({
   loading?: boolean
 }) {
   return (
-    <div className="flex justify-between items-center mt-8 pt-6 border-t border-border">
+    <div className="flex justify-between items-center mt-8">
       {onBack ? (
-        <Button type="button" variant="text" onClick={onBack} disabled={loading}>
-          ← Back
+        <Button type="button" variant="secondary" onClick={onBack} disabled={loading}>
+          Back
         </Button>
       ) : (
         <span />
@@ -315,6 +324,7 @@ export function OnboardingForm({
     // Panel 1 — Welcome
     if (mainStep === 1) return (
       <>
+        <img src="/welcome-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Welcome to Open4PeerReview</h1>
         <p className="text-body-md text-text-muted mt-2">
           Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.
@@ -322,7 +332,7 @@ export function OnboardingForm({
         <p className="text-body-md text-text-muted mt-1">This takes about 3 minutes.</p>
         <PanelFooter
           onContinue={() => navigate(2)}
-          continueLabel="Get started →"
+          continueLabel="Get started"
         />
       </>
     )
@@ -593,7 +603,7 @@ export function OnboardingForm({
             <Button
               type="button"
               variant="secondary"
-              size="lg"
+              size="sm"
               onClick={addCustomTag}
               disabled={loading || !tagInput.trim()}
               className="shrink-0"
@@ -631,6 +641,7 @@ export function OnboardingForm({
               onChange={() => toggleRubric(r.id)}
               disabled={loading}
               title={r.title}
+              description={RUBRIC_DESCRIPTIONS[r.title]}
             />
           ))}
         </div>
@@ -650,19 +661,20 @@ export function OnboardingForm({
     // Panel 4 — Finish
     if (mainStep === 4) return (
       <>
+        <img src="/celebration-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">You're all set, {displayName}!</h1>
         <p className="text-body-md text-text-muted mt-2">
-          We found tasks that match your expertise. Take a look whenever you're ready.
+          You're ready to go. Explore your dashboard to see what's waiting for you — and if anything changes, you can always update your profile in Settings.
         </p>
 
-        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-border">
+        <div className="flex justify-end gap-3 mt-8">
           {roles.has('reviewer') && (
             <Button
               type="button"
               variant={roles.has('author') ? 'secondary' : 'primary'}
               onClick={() => router.push('/dashboard?view=reviewer')}
             >
-              Go to Reviewer dashboard →
+              Go to reviewer dashboard
             </Button>
           )}
           {roles.has('author') && (
@@ -671,7 +683,7 @@ export function OnboardingForm({
               variant="primary"
               onClick={() => router.push('/dashboard?view=author')}
             >
-              Go to Author dashboard →
+              Go to author dashboard
             </Button>
           )}
         </div>
@@ -685,8 +697,11 @@ export function OnboardingForm({
   return (
     <div className="min-h-screen bg-surface py-12 px-4">
       <div className="max-w-[600px] mx-auto">
+        <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-secondary">
+          Getting started
+        </p>
         <p className="text-heading-lg font-semibold font-heading text-text-primary">
-          Onboarding
+          New User Onboarding
         </p>
         <div className="mt-6 mb-10">
           <StepIndicator
