@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
+import type { HighlightTag } from '@/types'
 import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import { AnnotationPanel } from './AnnotationPanel'
@@ -111,7 +112,7 @@ export function ReviewerConsole({
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
-    saveStatus, onScoreChange, saveAnnotation, deleteAnnotation,
+    saveStatus, onScoreChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
 
@@ -210,6 +211,80 @@ export function ReviewerConsole({
       }))
     },
     [deleteAnnotation]
+  )
+
+  // Called from PDF highlight click — deletes without knowing rubric item
+  const handleAnnotationDeleteFromPDF = useCallback(
+    async (annotationId: string) => {
+      await deleteAnnotation(annotationId)
+      setScores((prev) => {
+        const next = { ...prev }
+        for (const rubricItemId of Object.keys(next)) {
+          if (next[rubricItemId].annotations.some((a) => a.id === annotationId)) {
+            next[rubricItemId] = {
+              ...next[rubricItemId],
+              annotations: next[rubricItemId].annotations.filter((a) => a.id !== annotationId),
+            }
+            break
+          }
+        }
+        return next
+      })
+      setGeneralAnnotations((prev) => prev.filter((a) => a.id !== annotationId))
+    },
+    [deleteAnnotation]
+  )
+
+  // Called from PDF highlight click — edits body/tag without knowing rubric item
+  const handleAnnotationEditFromPDF = useCallback(
+    async (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => {
+      await updateAnnotation(annotationId, changes)
+      setScores((prev) => {
+        const next = { ...prev }
+        for (const rubricItemId of Object.keys(next)) {
+          const idx = next[rubricItemId].annotations.findIndex((a) => a.id === annotationId)
+          if (idx !== -1) {
+            const updated = [...next[rubricItemId].annotations]
+            updated[idx] = { ...updated[idx], ...changes }
+            next[rubricItemId] = { ...next[rubricItemId], annotations: updated }
+            break
+          }
+        }
+        return next
+      })
+      setGeneralAnnotations((prev) =>
+        prev.map((a) => (a.id === annotationId ? { ...a, ...changes } : a))
+      )
+    },
+    [updateAnnotation]
+  )
+
+  const handleEditFreeNote = useCallback(
+    async (annotationId: string, changes: { body: string; rubricItemId: string | null }) => {
+      await updateAnnotation(annotationId, { body: changes.body, rubricItemId: changes.rubricItemId })
+      if (changes.rubricItemId && scores[changes.rubricItemId]) {
+        // Move from free notes into a criterion
+        const note = generalAnnotations.find((a) => a.id === annotationId)
+        if (note) {
+          setGeneralAnnotations((prev) => prev.filter((a) => a.id !== annotationId))
+          setScores((prev) => ({
+            ...prev,
+            [changes.rubricItemId!]: {
+              ...prev[changes.rubricItemId!],
+              annotations: [
+                ...prev[changes.rubricItemId!].annotations,
+                { id: annotationId, anchor: note.anchor, body: changes.body, tag: note.tag },
+              ],
+            },
+          }))
+        }
+      } else {
+        setGeneralAnnotations((prev) =>
+          prev.map((a) => (a.id === annotationId ? { ...a, body: changes.body } : a))
+        )
+      }
+    },
+    [updateAnnotation, scores, generalAnnotations]
   )
 
   // ── Score comments ────────────────────────────────────────────────────────
@@ -339,6 +414,8 @@ export function ReviewerConsole({
             onTextSelected={handleTextSelected}
             onAnnotationConfirm={handleAnnotationConfirm}
             onPendingSelectionClear={() => setPendingSelection(null)}
+            onAnnotationEdit={handleAnnotationEditFromPDF}
+            onAnnotationDelete={handleAnnotationDeleteFromPDF}
             disabled={isSubmitted}
           />
         </div>
@@ -354,6 +431,8 @@ export function ReviewerConsole({
             onActiveItemChange={setActiveItemId}
             onScoreChange={handleScoreChange}
             onAnnotationDelete={handleAnnotationDelete}
+            onAnnotationEdit={handleAnnotationEditFromPDF}
+            onEditFreeNote={handleEditFreeNote}
             onAddGeneralNote={handleAddGeneralNote}
             onDeleteGeneralAnnotation={handleDeleteGeneralAnnotation}
             onAddScoreComment={handleAddScoreComment}
