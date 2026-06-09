@@ -39,7 +39,7 @@ export type Database = {
           created_at?: string
           id?: string
           review_id?: string
-          rubric_item_id?: string
+          rubric_item_id?: string | null
           tag?: string | null
           updated_at?: string
         }
