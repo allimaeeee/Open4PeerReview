@@ -5,7 +5,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
-import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
+import type { CriterionScore, SaveStatus } from '../../../hooks/useReviewAutoSave'
 import type { HighlightTag } from '@/types'
 
 // ─── Sub-criteria parser ──────────────────────────────────────────────────────
@@ -26,6 +26,63 @@ const TAG_LABELS: Record<HighlightTag, { label: string; bg: string; text: string
   quick_fix:   { label: 'Quick Fix',   bg: 'bg-blue-50',    text: 'text-blue-700',  ring: 'ring-blue-400' },
 }
 
+// ─── Panel save indicator ─────────────────────────────────────────────────────
+function formatRelativeTime(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 10) return 'just now'
+  if (diff < 60) return `${diff}s ago`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function PanelSaveStatus({ status, lastSavedAt }: { status: SaveStatus; lastSavedAt?: string | null }) {
+  const [relativeTime, setRelativeTime] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!lastSavedAt) return
+    const update = () => setRelativeTime(formatRelativeTime(lastSavedAt))
+    update()
+    const id = setInterval(update, 30_000)
+    return () => clearInterval(id)
+  }, [lastSavedAt])
+
+  if (status === 'saving') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-slate-400">
+        <svg className="animate-spin h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        Saving…
+      </span>
+    )
+  }
+  if (status === 'saved') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-emerald-500">
+        <svg className="h-3 w-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        </svg>
+        Saved
+      </span>
+    )
+  }
+  if (status === 'error') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-red-500">
+        <svg className="h-3 w-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+        </svg>
+        Save failed
+      </span>
+    )
+  }
+  if (lastSavedAt && relativeTime) {
+    return <span className="text-[11px] text-slate-400">Saved {relativeTime}</span>
+  }
+  return null
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface GeneralAnnotation {
   id: string
@@ -39,6 +96,8 @@ interface AnnotationPanelProps {
   scores: Record<string, LocalScore>
   activeItemId: string | null
   isSubmitted: boolean
+  saveStatus: SaveStatus
+  lastSavedAt?: string | null
   generalAnnotations: GeneralAnnotation[]
   onActiveItemChange: (id: string) => void
   onScoreChange: (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => void
@@ -464,6 +523,8 @@ export function AnnotationPanel({
   scores,
   activeItemId,
   isSubmitted,
+  saveStatus,
+  lastSavedAt,
   generalAnnotations,
   onActiveItemChange,
   onScoreChange,
@@ -543,12 +604,15 @@ export function AnnotationPanel({
       {/* Panel header */}
       <div className="flex-shrink-0 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Criteria</p>
-        <span className={[
-          'text-[11px] font-semibold px-2 py-0.5 rounded-full',
-          scoredCount === rubricItems.length ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500',
-        ].join(' ')}>
-          {scoredCount} / {rubricItems.length} rated
-        </span>
+        <div className="flex items-center gap-3">
+          <PanelSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
+          <span className={[
+            'text-[11px] font-semibold px-2 py-0.5 rounded-full',
+            scoredCount === rubricItems.length ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500',
+          ].join(' ')}>
+            {scoredCount} / {rubricItems.length} rated
+          </span>
+        </div>
       </div>
 
       {/* Scrollable list grouped by rubric */}

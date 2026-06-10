@@ -1,0 +1,515 @@
+'use client'
+
+import { useState, useRef, useCallback, useEffect } from 'react'
+import type { HighlightTag } from '@/types'
+import type { ReviewEventType } from '@/hooks/useReviewTracking'
+import { selectionToAnchor, applyHighlights } from '@/lib/anchoring/html'
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
+export interface HtmlTextSelection {
+  type: 'html'
+  text: string
+  start: number
+  end: number
+}
+
+export interface AnnotationConfirmPayload {
+  body: string
+  rubricItemId: string | null
+  tag: HighlightTag | null
+}
+
+export interface SavedAnnotation {
+  id: string
+  rubricItemId: string | null
+  anchor: Record<string, unknown>
+  body: string
+  tag: string | null
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const TAG_OPTIONS: { value: HighlightTag; label: string; bg: string; text: string; ring: string }[] = [
+  { value: 'action_item', label: 'Action Item', bg: 'bg-orange-50', text: 'text-orange-700', ring: 'ring-orange-400' },
+  { value: 'quick_fix',   label: 'Quick Fix',   bg: 'bg-blue-50',   text: 'text-blue-700',  ring: 'ring-blue-400' },
+]
+
+interface TooltipPos { x: number; y: number }
+
+interface HtmlViewerCanvasProps {
+  snapshotSrc: string
+  rubricItems: { id: string; label: string }[]
+  activeItemId: string | null
+  pendingSelection: HtmlTextSelection | null
+  savedAnnotations: SavedAnnotation[]
+  onTextSelected: (sel: HtmlTextSelection) => void
+  onAnnotationConfirm: (payload: AnnotationConfirmPayload) => Promise<string | null | undefined>
+  onPendingSelectionClear: () => void
+  onAnnotationEdit: (id: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
+  onAnnotationDelete: (id: string) => Promise<void>
+  onTrackEvent: (type: ReviewEventType, data?: Record<string, unknown>) => void
+  disabled: boolean
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export default function HtmlViewerCanvas({
+  snapshotSrc,
+  rubricItems,
+  activeItemId,
+  pendingSelection,
+  savedAnnotations,
+  onTextSelected,
+  onAnnotationConfirm,
+  onPendingSelectionClear,
+  onAnnotationEdit,
+  onAnnotationDelete,
+  onTrackEvent,
+  disabled,
+}: HtmlViewerCanvasProps) {
+
+  // ── New-annotation tooltip state ───────────────────────────────────────────
+  const [tooltipPos,        setTooltipPos]        = useState<TooltipPos | null>(null)
+  const [annotationBody,    setAnnotationBody]    = useState('')
+  const [selectedCriterion, setSelectedCriterion] = useState('')
+  const [selectedTag,       setSelectedTag]       = useState<HighlightTag | null>(null)
+  const [saveError,         setSaveError]         = useState<string | null>(null)
+  const [isSaving,          setIsSaving]          = useState(false)
+
+  // ── Edit-popover state ─────────────────────────────────────────────────────
+  const [editingAnnotation, setEditingAnnotation] = useState<SavedAnnotation | null>(null)
+  const [editTooltipPos,    setEditTooltipPos]    = useState<TooltipPos | null>(null)
+  const [editBody,          setEditBody]          = useState('')
+  const [editTag,           setEditTag]           = useState<HighlightTag | null>(null)
+  const [editSaving,        setEditSaving]        = useState(false)
+  const [editDeleting,      setEditDeleting]      = useState(false)
+
+  // ── Hover-tooltip state ────────────────────────────────────────────────────
+  const [hoverAnnotation, setHoverAnnotation] = useState<SavedAnnotation | null>(null)
+  const [hoverPos,        setHoverPos]        = useState<TooltipPos | null>(null)
+
+  // True once the iframe has loaded and originalHtmlRef is populated
+  const [iframeReady, setIframeReady] = useState(false)
+
+  // ── Refs ───────────────────────────────────────────────────────────────────
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const iframeRef       = useRef<HTMLIFrameElement>(null)
+  const editPopoverRef  = useRef<HTMLDivElement>(null)
+  const originalHtmlRef = useRef<string | null>(null)   // clean snapshot before any marks
+
+  // Stable callback refs — updated every render so mark handlers never go stale
+  const onMarkClickRef = useRef<(id: string, x: number, y: number) => void>(() => {})
+  const onMarkHoverRef = useRef<(id: string | null, x: number, y: number) => void>(() => {})
+
+  // ── Coord conversion: iframe viewport → container-relative ────────────────
+  const iframeToContainer = useCallback((iframeX: number, iframeY: number): TooltipPos => {
+    const iframe    = iframeRef.current
+    const container = containerRef.current
+    if (!iframe || !container) return { x: iframeX, y: iframeY }
+    const ir = iframe.getBoundingClientRect()
+    const cr = container.getBoundingClientRect()
+    return { x: iframeX + ir.left - cr.left, y: iframeY + ir.top - cr.top }
+  }, [])
+
+  // ── Update stable refs every render ───────────────────────────────────────
+  onMarkClickRef.current = (annId, clientX, clientY) => {
+    if (disabled) return
+    const ann = savedAnnotations.find(a => a.id === annId)
+    if (!ann) return
+    onPendingSelectionClear()
+    setTooltipPos(null)
+    setHoverAnnotation(null)
+    setEditingAnnotation(ann)
+    setEditBody(ann.body)
+    setEditTag(ann.tag as HighlightTag | null)
+    setEditTooltipPos(iframeToContainer(clientX, clientY))
+  }
+
+  onMarkHoverRef.current = (annId, clientX, clientY) => {
+    if (annId === null) { setHoverAnnotation(null); return }
+    if (editingAnnotation || pendingSelection) return
+    const ann = savedAnnotations.find(a => a.id === annId)
+    if (ann) { setHoverAnnotation(ann); setHoverPos(iframeToContainer(clientX, clientY)) }
+  }
+
+  // ── Re-inject highlights when annotations change or iframe first loads ───────
+  useEffect(() => {
+    if (!iframeReady) return
+    const doc = iframeRef.current?.contentDocument
+    if (!doc || originalHtmlRef.current === null) return
+
+    // Preserve scroll position across DOM restoration
+    const scrollX = doc.defaultView?.scrollX ?? 0
+    const scrollY = doc.defaultView?.scrollY ?? 0
+
+    doc.body.innerHTML = originalHtmlRef.current
+
+    const htmlAnns = savedAnnotations
+      .filter(a => (a.anchor as any)?.type === 'html-char-offset')
+      .map(a => ({
+        id:    a.id,
+        start: (a.anchor as any).start as number,
+        end:   (a.anchor as any).end   as number,
+        tag:   a.tag,
+        body:  a.body,
+      }))
+
+    if (htmlAnns.length > 0) {
+      applyHighlights(
+        doc,
+        htmlAnns,
+        (id, x, y) => onMarkClickRef.current(id, x, y),
+        (id, x, y) => onMarkHoverRef.current(id, x, y),
+      )
+    }
+
+    doc.defaultView?.scrollTo(scrollX, scrollY)
+  }, [savedAnnotations, iframeReady])
+
+  // ── Wire up iframe after load ──────────────────────────────────────────────
+  const handleIframeLoad = useCallback(() => {
+    const iframe = iframeRef.current
+    const doc    = iframe?.contentDocument
+    if (!doc) return
+
+    // Snapshot clean HTML and signal the highlights effect to run
+    originalHtmlRef.current = doc.body.innerHTML
+    setIframeReady(true)
+
+    const handleMouseUp = () => {
+      if (disabled) return
+      const win = iframe.contentWindow
+      if (!win) return
+
+      const anchor = selectionToAnchor(win)
+      if (!anchor) return
+
+      // Position tooltip above the last selection rect
+      const sel = win.getSelection()
+      if (!sel || sel.isCollapsed) return
+      const range = sel.getRangeAt(0)
+      const rects = Array.from(range.getClientRects())
+      const last  = rects[rects.length - 1]
+      if (last) {
+        const pos = iframeToContainer(last.left + (last.right - last.left) / 2, last.top)
+        setTooltipPos({ x: pos.x, y: pos.y - 8 })
+      }
+
+      onTextSelected({ type: 'html', text: anchor.text, start: anchor.start, end: anchor.end })
+      onTrackEvent('html_text_select', {
+        text_length:  anchor.text.length,
+        text_preview: anchor.text.slice(0, 80),
+      })
+    }
+
+    doc.addEventListener('mouseup', handleMouseUp)
+    return () => doc.removeEventListener('mouseup', handleMouseUp)
+  }, [disabled, iframeToContainer, onTextSelected, onTrackEvent])
+
+  // ── Reset tooltip form when it opens ──────────────────────────────────────
+  useEffect(() => {
+    if (!tooltipPos) return
+    setAnnotationBody('')
+    setSelectedTag(null)
+    setSaveError(null)
+    setSelectedCriterion(activeItemId ?? rubricItems[0]?.id ?? '')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tooltipPos])
+
+  // ── Close edit popover on outside click ───────────────────────────────────
+  useEffect(() => {
+    if (!editingAnnotation) return
+    const handler = (e: MouseEvent) => {
+      if (editPopoverRef.current && !editPopoverRef.current.contains(e.target as Node)) {
+        setEditingAnnotation(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [editingAnnotation])
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleConfirm = async () => {
+    if (!annotationBody.trim()) return
+    setIsSaving(true)
+    setSaveError(null)
+    const err = await onAnnotationConfirm({
+      body:        annotationBody.trim(),
+      rubricItemId: selectedCriterion || null,
+      tag:         selectedTag,
+    })
+    setIsSaving(false)
+    if (err) { setSaveError(err); return }
+    setAnnotationBody('')
+    setTooltipPos(null)
+    iframeRef.current?.contentWindow?.getSelection()?.removeAllRanges()
+  }
+
+  const handleCancelTooltip = () => {
+    onPendingSelectionClear()
+    setTooltipPos(null)
+    setAnnotationBody('')
+    setSaveError(null)
+    iframeRef.current?.contentWindow?.getSelection()?.removeAllRanges()
+  }
+
+  const handleEditConfirm = async () => {
+    if (!editingAnnotation || !editBody.trim()) return
+    setEditSaving(true)
+    await onAnnotationEdit(editingAnnotation.id, { body: editBody.trim(), tag: editTag })
+    setEditSaving(false)
+    setEditingAnnotation(null)
+  }
+
+  const handleEditDelete = async () => {
+    if (!editingAnnotation) return
+    setEditDeleting(true)
+    await onAnnotationDelete(editingAnnotation.id)
+    setEditDeleting(false)
+    setEditingAnnotation(null)
+  }
+
+  const activeItemLabel = rubricItems.find(r => r.id === activeItemId)?.label ?? null
+  const containerWidth  = containerRef.current?.clientWidth ?? 600
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="h-full flex flex-col bg-slate-100">
+
+      {/* ── Header bar ───────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200">
+        {disabled ? (
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+            Review submitted
+          </span>
+        ) : activeItemLabel ? (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-[#1e3a5f] animate-pulse" />
+            Active: <span className="font-medium text-slate-700">{activeItemLabel}</span>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">Select text to annotate</p>
+        )}
+      </div>
+
+      {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
+      <div ref={containerRef} className="flex-1 relative overflow-hidden">
+        <iframe
+          ref={iframeRef}
+          src={snapshotSrc}
+          className="w-full h-full border-0"
+          title="OpenStax content"
+          sandbox="allow-same-origin allow-popups"
+          onLoad={handleIframeLoad}
+        />
+
+        {/* Hover tooltip */}
+        {hoverAnnotation && hoverPos && !editingAnnotation && !pendingSelection && (
+          <div
+            className="absolute z-40 pointer-events-none bg-white rounded-lg shadow-lg border border-slate-200 px-3 py-2.5 w-72"
+            style={{
+              left:      Math.max(8, Math.min(hoverPos.x - 144, containerWidth - 296)),
+              top:       hoverPos.y,
+              transform: 'translateY(calc(-100% - 8px))',
+            }}
+          >
+            {hoverAnnotation.tag && (() => {
+              const opt = TAG_OPTIONS.find(o => o.value === hoverAnnotation.tag)
+              return opt ? (
+                <span className={`inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide mb-1.5 ${opt.bg} ${opt.text}`}>
+                  {opt.label}
+                </span>
+              ) : null
+            })()}
+            <p className="text-[11px] text-slate-700 leading-snug">{hoverAnnotation.body}</p>
+            {(hoverAnnotation.anchor as any)?.text && (
+              <p className="mt-1 text-[10px] text-slate-400 italic line-clamp-2">
+                &ldquo;{(hoverAnnotation.anchor as any).text}&rdquo;
+              </p>
+            )}
+            {!disabled && <p className="mt-1.5 text-[9px] text-slate-300">Click to edit</p>}
+          </div>
+        )}
+
+        {/* Edit popover */}
+        {editingAnnotation && editTooltipPos && !disabled && (
+          <div
+            ref={editPopoverRef}
+            className="absolute z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-3 w-80"
+            style={{
+              left: Math.max(8, Math.min(editTooltipPos.x - 160, containerWidth - 328)),
+              top:  Math.max(8, editTooltipPos.y - 200),
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-700">Edit annotation</p>
+              <button onClick={() => setEditingAnnotation(null)} className="text-slate-400 hover:text-slate-600 p-0.5">
+                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {(editingAnnotation.anchor as any)?.text && (
+              <p className="text-[11px] text-slate-400 bg-slate-50 rounded px-2 py-1 mb-3 line-clamp-2 italic">
+                &ldquo;{((editingAnnotation.anchor as any).text as string).slice(0, 80)}&rdquo;
+              </p>
+            )}
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Tag</label>
+              <div className="flex gap-1.5">
+                {TAG_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setEditTag(prev => prev === opt.value ? null : opt.value)}
+                    className={[
+                      'flex-1 py-1 text-[10px] font-semibold rounded-lg border transition-all duration-100',
+                      editTag === opt.value
+                        ? `${opt.bg} ${opt.text} ring-2 ${opt.ring} border-transparent`
+                        : 'border-slate-200 text-slate-500 bg-white hover:border-slate-300',
+                    ].join(' ')}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Evidence comment</label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={editBody}
+                onChange={e => setEditBody(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleEditConfirm()
+                  if (e.key === 'Escape') setEditingAnnotation(null)
+                }}
+                className="w-full text-xs rounded border border-slate-200 px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]"
+              />
+            </div>
+
+            <div className="flex justify-between items-center">
+              <button
+                onClick={handleEditDelete}
+                disabled={editDeleting}
+                className="text-xs px-2.5 py-1.5 rounded-lg text-red-500 border border-red-200 hover:bg-red-50 disabled:opacity-40 transition-colors"
+              >
+                {editDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400">⌘↵ to save</span>
+                <button
+                  onClick={handleEditConfirm}
+                  disabled={!editBody.trim() || editSaving}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white font-medium disabled:opacity-40 hover:bg-[#162d4a] transition-colors"
+                >
+                  {editSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* New-annotation tooltip */}
+        {pendingSelection && tooltipPos && !disabled && (
+          <div
+            className="absolute z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-3 w-80"
+            style={{
+              left: Math.max(8, Math.min(tooltipPos.x - 160, containerWidth - 328)),
+              top:  Math.max(8, tooltipPos.y - 200),
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-700">Link evidence</p>
+              <button onClick={handleCancelTooltip} className="text-slate-400 hover:text-slate-600 p-0.5">
+                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-400 bg-slate-50 rounded px-2 py-1 mb-3 line-clamp-2 italic">
+              &ldquo;{pendingSelection.text.slice(0, 80)}{pendingSelection.text.length > 80 ? '…' : ''}&rdquo;
+            </p>
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Criterion
+              </label>
+              <select
+                value={selectedCriterion}
+                onChange={e => { setSelectedCriterion(e.target.value); setSaveError(null) }}
+                className="w-full text-xs rounded border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f] text-slate-700 bg-white"
+              >
+                <option value="">No criterion</option>
+                {rubricItems.map(item => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Tag</label>
+              <div className="flex gap-1.5">
+                {TAG_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSelectedTag(prev => prev === opt.value ? null : opt.value)}
+                    className={[
+                      'flex-1 py-1 text-[10px] font-semibold rounded-lg border transition-all duration-100',
+                      selectedTag === opt.value
+                        ? `${opt.bg} ${opt.text} ring-2 ${opt.ring} border-transparent`
+                        : 'border-slate-200 text-slate-500 bg-white hover:border-slate-300',
+                    ].join(' ')}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Evidence comment <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                placeholder="Describe how this passage supports or contradicts the criterion…"
+                value={annotationBody}
+                onChange={e => { setAnnotationBody(e.target.value); setSaveError(null) }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleConfirm()
+                  if (e.key === 'Escape') handleCancelTooltip()
+                }}
+                className="w-full text-xs rounded border border-slate-200 px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]"
+              />
+            </div>
+
+            {saveError && <p className="text-[10px] text-red-500 mb-2">{saveError}</p>}
+
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] text-slate-400">⌘↵ to save</span>
+              <button
+                onClick={handleConfirm}
+                disabled={!annotationBody.trim() || isSaving}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white font-medium disabled:opacity-40 hover:bg-[#162d4a] transition-colors"
+              >
+                {isSaving ? 'Saving…' : 'Save evidence'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

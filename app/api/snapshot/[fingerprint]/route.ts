@@ -7,7 +7,7 @@ function rewriteHtml(html: string): string {
   // Strip all <script> tags — the OpenStax React app boots, hydrates over the
   // SSR content, and renders blank when it can't initialize in an iframe context.
   // The SSR'd HTML already contains the full readable content; no JS needed.
-  let out = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gis, '')
+  let out = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
 
   // Inject <base> tag so relative URLs for CSS/images resolve against openstax.org
   const baseTag = `<base href="${OPENSTAX_ORIGIN}/">`

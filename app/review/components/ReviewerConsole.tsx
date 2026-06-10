@@ -11,9 +11,12 @@ import { useReviewTracking } from '../../../hooks/useReviewTracking'
 import type { HighlightTag } from '@/types'
 import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
+import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
 import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
+
+type AnyTextSelection = TextSelection | HtmlTextSelection
 
 interface ReviewerConsoleProps {
   supabase: SupabaseClient
@@ -49,7 +52,7 @@ export function ReviewerConsole({
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
   const [scores, setScores] = useState<Record<string, LocalScore>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
-  const [pendingSelection, setPendingSelection] = useState<TextSelection | null>(null)
+  const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
   const [generalAnnotations, setGeneralAnnotations] = useState<
@@ -169,21 +172,21 @@ export function ReviewerConsole({
     [onScoreChange, track]
   )
 
-  // ── Annotation from PDF text selection ────────────────────────────────────
-  const handleTextSelected = useCallback((selection: TextSelection) => {
+  // ── Annotation from text selection (PDF or HTML) ─────────────────────────
+  const handleTextSelected = useCallback((selection: AnyTextSelection) => {
     if (isSubmitted || rubricItems.length === 0) return
-    track('pdf_text_select', {
-      page: selection.page,
-      text_length: selection.text.length,
-      text_preview: selection.text.slice(0, 80),
-    })
+    if ('page' in selection) {
+      track('pdf_text_select', { page: selection.page, text_length: selection.text.length, text_preview: selection.text.slice(0, 80) })
+    } else {
+      track('html_text_select', { text_length: selection.text.length, text_preview: selection.text.slice(0, 80) })
+    }
     setPendingSelection(selection)
   }, [isSubmitted, rubricItems.length, track])
 
   const handlePendingSelectionClear = useCallback(() => {
     if (pendingSelection) {
       track('annotation_abandoned', {
-        page: pendingSelection.page,
+        ...('page' in pendingSelection ? { page: pendingSelection.page } : {}),
         text_length: pendingSelection.text.length,
       })
     }
@@ -195,11 +198,9 @@ export function ReviewerConsole({
       if (!pendingSelection) return
       const { body, rubricItemId, tag } = payload
 
-      const anchor = {
-        page: pendingSelection.page,
-        text: pendingSelection.text,
-        rects: pendingSelection.rects,
-      }
+      const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
+        ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
+        : { page: (pendingSelection as TextSelection).page, text: pendingSelection.text, rects: (pendingSelection as TextSelection).rects }
 
       if (!rubricItemId || !scores[rubricItemId]) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
@@ -459,20 +460,28 @@ export function ReviewerConsole({
         {/* Content viewer — left 60% */}
         <div className="w-[60%] border-r border-slate-200 overflow-hidden">
           {document.file_type === 'html' && document.content_fingerprint ? (
-            <iframe
-              src={`/api/snapshot/${document.content_fingerprint}`}
-              className="w-full h-full border-0"
-              title={document.title}
-              sandbox="allow-same-origin allow-popups"
+            <HtmlViewerCanvas
+              snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+              rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
+              activeItemId={activeItemId}
+              pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}
+              savedAnnotations={savedAnnotations}
+              onTextSelected={handleTextSelected as (sel: HtmlTextSelection) => void}
+              onAnnotationConfirm={handleAnnotationConfirm}
+              onPendingSelectionClear={handlePendingSelectionClear}
+              onAnnotationEdit={handleAnnotationEditFromPDF}
+              onAnnotationDelete={handleAnnotationDeleteFromPDF}
+              onTrackEvent={track}
+              disabled={isSubmitted}
             />
           ) : (
             <PDFViewer
               fileUrl={document.file_url}
               rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
               activeItemId={activeItemId}
-              pendingSelection={pendingSelection}
+              pendingSelection={pendingSelection && 'page' in pendingSelection ? pendingSelection : null}
               savedAnnotations={savedAnnotations}
-              onTextSelected={handleTextSelected}
+              onTextSelected={handleTextSelected as (sel: TextSelection) => void}
               onAnnotationConfirm={handleAnnotationConfirm}
               onPendingSelectionClear={handlePendingSelectionClear}
               onAnnotationEdit={handleAnnotationEditFromPDF}
@@ -490,6 +499,8 @@ export function ReviewerConsole({
             scores={scores}
             activeItemId={activeItemId}
             isSubmitted={isSubmitted}
+            saveStatus={saveStatus}
+            lastSavedAt={lastSavedAt}
             generalAnnotations={generalAnnotations}
             onActiveItemChange={setActiveItemId}
             onScoreChange={handleScoreChange}
