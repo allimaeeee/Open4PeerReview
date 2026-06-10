@@ -139,11 +139,13 @@ export type Database = {
         Row: {
           author_id: string
           authors: string
+          content_fingerprint: string | null
           created_at: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
+          source_url: string | null
           storage_path: string
           subject_matter: string
           third_party_content_disclosure: string | null
@@ -152,11 +154,13 @@ export type Database = {
         Insert: {
           author_id: string
           authors?: string
+          content_fingerprint?: string | null
           created_at?: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
+          source_url?: string | null
           storage_path: string
           subject_matter?: string
           third_party_content_disclosure?: string | null
@@ -165,11 +169,13 @@ export type Database = {
         Update: {
           author_id?: string
           authors?: string
+          content_fingerprint?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
+          source_url?: string | null
           storage_path?: string
           subject_matter?: string
           third_party_content_disclosure?: string | null

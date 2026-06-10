@@ -47,7 +47,7 @@ interface Review {
 }
 
 interface Props {
-  document: { id: string; title: string }
+  document: { id: string; title: string; file_type?: string; content_fingerprint?: string | null }
   reviews: Review[]
   pdfUrl: string | null
 }
@@ -319,11 +319,16 @@ function ReviewerSection({
 export function FeedbackView({ document, reviews, pdfUrl }: Props) {
   const [focusAnnotationId, setFocusAnnotationId] = useState<string | null>(null)
 
+  const isHtml = document.file_type === 'html'
+  const snapshotSrc = isHtml && document.content_fingerprint
+    ? `/api/snapshot/${document.content_fingerprint}`
+    : null
+
   const allAnnotations: ReadOnlyAnnotation[] = reviews.flatMap(r =>
     r.annotations.map(a => ({ id: a.id, anchor: a.anchor, tag: a.tag, body: a.body }))
   )
 
-  const onViewAnnotation = pdfUrl
+  const onViewAnnotation = (pdfUrl || snapshotSrc)
     ? (annId: string) => setFocusAnnotationId(annId)
     : null
 
@@ -368,8 +373,8 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
         </div>
       )}
 
-      {/* PDF annotation modal */}
-      {pdfUrl && focusAnnotationId && (
+      {/* Content annotation modal */}
+      {focusAnnotationId && (pdfUrl || snapshotSrc) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50"
           onClick={e => { if (e.target === e.currentTarget) setFocusAnnotationId(null) }}
@@ -377,7 +382,9 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style={{ height: '90vh' }}>
             <div className="flex items-start justify-between gap-4 px-5 py-3 border-b border-slate-200 flex-shrink-0">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-700">Annotation in PDF</p>
+                <p className="text-sm font-semibold text-slate-700">
+                  {isHtml ? 'Annotation in OpenStax content' : 'Annotation in PDF'}
+                </p>
                 {focusedAnnotation && (
                   <p className="text-xs text-slate-500 mt-0.5 truncate">{focusedAnnotation.body}</p>
                 )}
@@ -393,11 +400,20 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
               </button>
             </div>
             <div className="flex-1 min-h-0">
-              <PDFViewerReadOnly
-                fileUrl={pdfUrl}
-                annotations={allAnnotations}
-                focusAnnotationId={focusAnnotationId}
-              />
+              {isHtml && snapshotSrc ? (
+                <iframe
+                  src={snapshotSrc}
+                  className="w-full h-full border-0"
+                  title={document.title}
+                  sandbox="allow-scripts allow-same-origin allow-popups"
+                />
+              ) : pdfUrl ? (
+                <PDFViewerReadOnly
+                  fileUrl={pdfUrl}
+                  annotations={allAnnotations}
+                  focusAnnotationId={focusAnnotationId}
+                />
+              ) : null}
             </div>
           </div>
         </div>
