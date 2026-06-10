@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${lato.variable} ${newsreader.variable}`}>
-      <body>
+      <body className="bg-surface">
         <Navbar />
         {children}
       </body>
