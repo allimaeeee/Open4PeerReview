@@ -43,7 +43,7 @@ export function UserMenu({ displayName }: Props) {
     <DropdownMenu>
       <DropdownMenuTrigger
         showChevron={false}
-        className="rounded-full w-8 h-8 bg-primary text-on-primary text-label-sm font-semibold flex items-center justify-center normal-case tracking-normal hover:opacity-90"
+        className="rounded-full w-8 h-8 bg-primary !text-on-primary text-label-sm font-semibold flex items-center justify-center normal-case tracking-normal hover:opacity-90"
       >
         {initials}
       </DropdownMenuTrigger>
