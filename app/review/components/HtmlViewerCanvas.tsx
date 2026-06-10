@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
+import type { Json } from '@/types/database.types'
 import { selectionToAnchor, applyHighlights } from '@/lib/anchoring/html'
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ interface HtmlViewerCanvasProps {
   onPendingSelectionClear: () => void
   onAnnotationEdit: (id: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAnnotationDelete: (id: string) => Promise<void>
-  onTrackEvent: (type: ReviewEventType, data?: Record<string, unknown>) => void
+  onTrackEvent: (type: ReviewEventType, data?: Json) => void
   disabled: boolean
 }
 
