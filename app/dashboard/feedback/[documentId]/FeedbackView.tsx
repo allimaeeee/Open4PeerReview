@@ -324,9 +324,18 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
     ? `/api/snapshot/${document.content_fingerprint}`
     : null
 
-  const allAnnotations: ReadOnlyAnnotation[] = reviews.flatMap(r =>
-    r.annotations.map(a => ({ id: a.id, anchor: a.anchor, tag: a.tag, body: a.body }))
-  )
+  const allAnnotations: ReadOnlyAnnotation[] = reviews.flatMap(r => {
+    const itemLabelById = Object.fromEntries(
+      r.review_scores.map(s => [s.rubric_item?.id, s.rubric_item?.label ?? null])
+    )
+    return r.annotations.map(a => ({
+      id: a.id,
+      anchor: a.anchor,
+      tag: a.tag,
+      body: a.body,
+      rubricItemLabel: a.rubric_item_id ? (itemLabelById[a.rubric_item_id] ?? null) : null,
+    }))
+  })
 
   const onViewAnnotation = (pdfUrl || snapshotSrc)
     ? (annId: string) => setFocusAnnotationId(annId)
@@ -336,8 +345,10 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
     ? allAnnotations.find(a => a.id === focusAnnotationId) ?? null
     : null
 
+  const panelOpen = !!(focusAnnotationId && (pdfUrl || snapshotSrc))
+
   return (
-    <div>
+    <div className={panelOpen ? 'w-1/2 px-6 py-10' : 'mx-auto max-w-4xl px-6 py-10'}>
       <div className="mb-8">
         <Link
           href="/dashboard"
@@ -373,48 +384,43 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
         </div>
       )}
 
-      {/* Content annotation modal */}
-      {focusAnnotationId && (pdfUrl || snapshotSrc) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/50"
-          onClick={e => { if (e.target === e.currentTarget) setFocusAnnotationId(null) }}
-        >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden" style={{ height: '90vh' }}>
-            <div className="flex items-start justify-between gap-4 px-5 py-3 border-b border-slate-200 flex-shrink-0">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-700">
-                  {isHtml ? 'Annotation in OpenStax content' : 'Annotation in PDF'}
-                </p>
-                {focusedAnnotation && (
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">{focusedAnnotation.body}</p>
-                )}
-              </div>
-              <button
-                onClick={() => setFocusAnnotationId(null)}
-                className="shrink-0 p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-                aria-label="Close"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
+      {/* Side-by-side canvas panel */}
+      {panelOpen && (
+        <div className="fixed right-0 top-0 bottom-0 w-1/2 z-40 bg-white border-l border-slate-200 shadow-2xl flex flex-col">
+          <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-200 flex-shrink-0">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700">
+                {isHtml ? 'Annotation in OpenStax content' : 'Annotation in PDF'}
+              </p>
+              {focusedAnnotation && (
+                <p className="text-xs text-slate-500 mt-0.5 truncate">{focusedAnnotation.body}</p>
+              )}
             </div>
-            <div className="flex-1 min-h-0">
-              {isHtml && snapshotSrc ? (
-                <iframe
-                  src={snapshotSrc}
-                  className="w-full h-full border-0"
-                  title={document.title}
-                  sandbox="allow-scripts allow-same-origin allow-popups"
-                />
-              ) : pdfUrl ? (
-                <PDFViewerReadOnly
-                  fileUrl={pdfUrl}
-                  annotations={allAnnotations}
-                  focusAnnotationId={focusAnnotationId}
-                />
-              ) : null}
-            </div>
+            <button
+              onClick={() => setFocusAnnotationId(null)}
+              className="shrink-0 p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              aria-label="Close panel"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            {isHtml && snapshotSrc ? (
+              <iframe
+                src={snapshotSrc}
+                className="w-full h-full border-0"
+                title={document.title}
+                sandbox="allow-scripts allow-same-origin allow-popups"
+              />
+            ) : pdfUrl ? (
+              <PDFViewerReadOnly
+                fileUrl={pdfUrl}
+                annotations={allAnnotations}
+                focusAnnotationId={focusAnnotationId}
+              />
+            ) : null}
           </div>
         </div>
       )}
