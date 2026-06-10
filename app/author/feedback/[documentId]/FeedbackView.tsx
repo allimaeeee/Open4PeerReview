@@ -53,7 +53,7 @@ export function FeedbackView({ document, reviews }: Props) {
       {/* Header */}
       <div className="mb-8">
         <Link
-          href="/dashboard"
+          href="/author"
           className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

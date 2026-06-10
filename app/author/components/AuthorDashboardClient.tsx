@@ -174,7 +174,7 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
                     {/* View feedback */}
                     {reviewsDone > 0 && (
                       <Link
-                        href={`/dashboard/feedback/${doc.id}`}
+                        href={`/author/feedback/${doc.id}`}
                         className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] transition-colors shadow-sm"
                       >
                         View Feedback

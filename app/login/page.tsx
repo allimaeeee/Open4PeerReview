@@ -32,7 +32,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message.endsWith('.') ? error.message : error.message + '.')
       } else {
-        router.push('/dashboard')
+        router.push('/author')
         router.refresh()
       }
 
