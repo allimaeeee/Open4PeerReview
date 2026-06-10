@@ -209,6 +209,51 @@ export type Database = {
         }
         Relationships: []
       }
+      review_events: {
+        Row: {
+          id: string
+          review_id: string
+          reviewer_id: string
+          session_id: string
+          event_type: string
+          data: Json | null
+          occurred_at: string
+        }
+        Insert: {
+          id?: string
+          review_id: string
+          reviewer_id: string
+          session_id: string
+          event_type: string
+          data?: Json | null
+          occurred_at?: string
+        }
+        Update: {
+          id?: string
+          review_id?: string
+          reviewer_id?: string
+          session_id?: string
+          event_type?: string
+          data?: Json | null
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_events_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_events_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_scores: {
         Row: {
           comment: string | null
