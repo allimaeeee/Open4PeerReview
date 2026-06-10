@@ -16,85 +16,103 @@ git commit -m ''
 
 git push origin dev / git push origin testing
 
-
-**DIRECTORY**
-```markdown
-. 📂 Open4PeerReview
-├── 📄 AGENTS.md
-├── 📄 CLAUDE.md
-├── 📄 README.md
-└── 📂 app/
-│  └── 📂 auth/
-│    └── 📂 callback/
-│      ├── 📄 route.ts
-│  └── 📂 dashboard/
-│    └── 📂 components/
-│      ├── 📄 AuthorDashboard.tsx
-│      ├── 📄 AuthorDashboardClient.tsx
-│      ├── 📄 CoordinatorDashboard.tsx
-│      ├── 📄 ReviewerDashboard.tsx
-│      ├── 📄 RoleToggle.tsx
-│      ├── 📄 UploadDocumentForm.tsx
-│    └── 📂 feedback/
-│      └── 📂 [documentId]/
-│        ├── 📄 FeedbackView.tsx
-│        ├── 📄 page.tsx
-│    ├── 📄 page.tsx
-│    └── 📂 settings/
-│      ├── 📄 SettingsForm.tsx
-│      ├── 📄 page.tsx
-│  ├── 📄 favicon.ico
-│  ├── 📄 globals.css
-│  ├── 📄 layout.tsx
-│  └── 📂 login/
-│    ├── 📄 page.tsx
-│  └── 📂 onboard/
-│    ├── 📄 OnboardingForm.tsx
-│    ├── 📄 page.tsx
-│  ├── 📄 page.tsx
-│  └── 📂 review/
-│    └── 📂 components/
-│      ├── 📄 AnnotationPanel.tsx
-│      ├── 📄 PDFViewer.tsx
-│      ├── 📄 PDFViewerCanvas.tsx
-│      ├── 📄 ReviewerApp.tsx
-│      ├── 📄 ReviewerConsole.tsx
-│      ├── 📄 RubricPicker.tsx
-│      ├── 📄 SubmitButton.tsx
-│    ├── 📄 page.tsx
-│  └── 📂 upload/
-└── 📂 components/
-│  ├── 📄 Navbar.tsx
-│  ├── 📄 SaveStatusIndicator.tsx
-│  └── 📂 auth/
-│    ├── 📄 ProfileForm.tsx
-│    ├── 📄 SignupForm.tsx
-│  └── 📂 document/
-│  └── 📂 ui/
-├── 📄 eslint.config.mjs
-└── 📂 hooks/
-│  ├── 📄 useReviewAutoSave.ts
-└── 📂 lib/
-│  └── 📂 supabase/
-│    ├── 📄 client.ts
-│    ├── 📄 index.ts
-│    ├── 📄 queries.ts
-│    ├── 📄 server.ts
-│    ├── 📄 types.ts
-│    ├── 📄 useUser.ts
-├── 📄 next.config.ts
-├── 📄 package-lock.json
-├── 📄 package.json
-├── 📄 postcss.config.mjs
-├── 📄 proxy.ts
-└── 📂 public/
-│  ├── 📄 file.svg
-│  ├── 📄 globe.svg
-│  ├── 📄 next.svg
-│  ├── 📄 vercel.svg
-│  ├── 📄 window.svg
-├── 📄 tsconfig.json
-└── 📂 types/
-│  ├── 📄 database.types.ts
-│  └── 📄 index.ts
-```
+Open4PeerReview/
+├─ .archiver_shadow/
+│  ├─ app/
+│  │  ├─ api/
+│  │  │  └─ snapshot/
+│  │  │     └─ [fingerprint]/
+│  │  ├─ auth/
+│  │  │  └─ callback/
+│  │  ├─ dashboard/
+│  │  │  ├─ components/
+│  │  │  ├─ feedback/
+│  │  │  │  └─ [documentId]/
+│  │  │  └─ settings/
+│  │  ├─ login/
+│  │  ├─ onboard/
+│  │  └─ review/
+│  │     └─ components/
+│  ├─ components/
+│  │  └─ auth/
+│  ├─ hooks/
+│  ├─ lib/
+│  │  └─ supabase/
+│  └─ types/
+├─ .claude/
+├─ .cursor/
+├─ .next/
+│  └─ dev/
+│     ├─ build/
+│     │  └─ chunks/
+│     ├─ cache/
+│     │  └─ turbopack/
+│     │     └─ c573e8c4f/
+│     ├─ logs/
+│     ├─ server/
+│     │  ├─ app/
+│     │  │  ├─ _not-found/
+│     │  │  │  └─ page/
+│     │  │  ├─ api/
+│     │  │  │  └─ snapshot/
+│     │  │  │     ├─ [fingerprint]/
+│     │  │  │     │  └─ route/
+│     │  │  │     └─ route/
+│     │  │  ├─ auth/
+│     │  │  │  └─ callback/
+│     │  │  │     └─ route/
+│     │  │  ├─ dashboard/
+│     │  │  │  ├─ feedback/
+│     │  │  │  │  └─ [documentId]/
+│     │  │  │  │     └─ page/
+│     │  │  │  ├─ page/
+│     │  │  │  └─ settings/
+│     │  │  │     └─ page/
+│     │  │  ├─ login/
+│     │  │  │  └─ page/
+│     │  │  ├─ onboard/
+│     │  │  │  └─ page/
+│     │  │  ├─ page/
+│     │  │  └─ review/
+│     │  │     └─ page/
+│     │  ├─ chunks/
+│     │  │  └─ ssr/
+│     │  ├─ middleware/
+│     │  └─ pages/
+│     │     ├─ _app/
+│     │     ├─ _document/
+│     │     └─ _error/
+│     ├─ static/
+│     │  ├─ chunks/
+│     │  │  └─ pages/
+│     │  ├─ development/
+│     │  └─ media/
+│     └─ types/
+├─ .snapshots/
+├─ .vscode/
+├─ app/
+│  ├─ api/
+│  │  └─ snapshot/
+│  │     └─ [fingerprint]/
+│  ├─ auth/
+│  │  └─ callback/
+│  ├─ dashboard/
+│  │  ├─ components/
+│  │  ├─ feedback/
+│  │  │  └─ [documentId]/
+│  │  └─ settings/
+│  ├─ login/
+│  ├─ onboard/
+│  ├─ review/
+│  │  └─ components/
+│  └─ upload/
+├─ components/
+│  ├─ auth/
+│  ├─ document/
+│  └─ ui/
+├─ hooks/
+├─ lib/
+│  ├─ anchoring/
+│  └─ supabase/
+├─ public/
+└─ types/

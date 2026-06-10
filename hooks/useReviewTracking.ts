@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database.types'
+import type { Database, Json } from '@/types/database.types'
 
 export type ReviewEventType =
   | 'session_start'
@@ -28,7 +28,7 @@ export type ReviewEventType =
 
 interface EventRecord {
   event_type: string
-  data: Record<string, unknown> | null
+  data: Json | null
   occurred_at: string
 }
 
@@ -70,7 +70,7 @@ export function useReviewTracking({
   }, [])
 
   const track = useCallback(
-    (eventType: ReviewEventType, data?: Record<string, unknown>): void => {
+    (eventType: ReviewEventType, data?: Json): void => {
       buffer.current.push({
         event_type: eventType,
         data: data ?? null,
