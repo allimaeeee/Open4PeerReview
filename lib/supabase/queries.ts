@@ -130,6 +130,51 @@ export async function uploadDocument(
   return data
 }
 
+/** Snapshot an OpenStax link: insert a document row with file_type 'html' */
+export async function submitOpenStaxLink(
+  supabase: Client,
+  opts: {
+    url: string
+    storagePath: string
+    fingerprint: string
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: CreativeCommonsLicense
+    thirdPartyDisclosure: string | null
+    rubricIds: string[]
+  }
+) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      author_id: user.id,
+      title: opts.title,
+      file_url: opts.url,
+      storage_path: opts.storagePath,
+      file_type: 'html',
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      source_url: opts.url,
+      content_fingerprint: opts.fingerprint,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+
+  if (opts.rubricIds.length > 0) {
+    await assignRubrics(supabase, data.id, opts.rubricIds)
+  }
+
+  return data
+}
+
 /** Assign rubrics to a document (replaces existing assignments) */
 export async function assignRubrics(
   supabase: Client,
@@ -191,7 +236,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id, storage_path')
+    .select('id, title, author_id, storage_path, file_type, content_fingerprint')
     .eq('id', documentId)
     .single()
 

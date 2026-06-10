@@ -456,22 +456,31 @@ export function ReviewerConsole({
 
       {/* ── Split pane ───────────────────────────────────────────────────────── */}
       <div className="flex-1 flex min-h-0">
-        {/* PDF viewer — left 60% */}
+        {/* Content viewer — left 60% */}
         <div className="w-[60%] border-r border-slate-200 overflow-hidden">
-          <PDFViewer
-            fileUrl={document.file_url}
-            rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
-            activeItemId={activeItemId}
-            pendingSelection={pendingSelection}
-            savedAnnotations={savedAnnotations}
-            onTextSelected={handleTextSelected}
-            onAnnotationConfirm={handleAnnotationConfirm}
-            onPendingSelectionClear={handlePendingSelectionClear}
-            onAnnotationEdit={handleAnnotationEditFromPDF}
-            onAnnotationDelete={handleAnnotationDeleteFromPDF}
-            onTrackEvent={track}
-            disabled={isSubmitted}
-          />
+          {document.file_type === 'html' && document.content_fingerprint ? (
+            <iframe
+              src={`/api/snapshot/${document.content_fingerprint}`}
+              className="w-full h-full border-0"
+              title={document.title}
+              sandbox="allow-same-origin allow-popups"
+            />
+          ) : (
+            <PDFViewer
+              fileUrl={document.file_url}
+              rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
+              activeItemId={activeItemId}
+              pendingSelection={pendingSelection}
+              savedAnnotations={savedAnnotations}
+              onTextSelected={handleTextSelected}
+              onAnnotationConfirm={handleAnnotationConfirm}
+              onPendingSelectionClear={handlePendingSelectionClear}
+              onAnnotationEdit={handleAnnotationEditFromPDF}
+              onAnnotationDelete={handleAnnotationDeleteFromPDF}
+              onTrackEvent={track}
+              disabled={isSubmitted}
+            />
+          )}
         </div>
 
         {/* Annotation panel — right 40% */}
