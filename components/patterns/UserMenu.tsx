@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -9,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/DropdownMenu'
+import { SettingsModal } from '@/components/patterns/SettingsModal'
 
 interface Props {
   displayName: string
@@ -26,6 +28,7 @@ function getInitials(displayName: string): string {
 export function UserMenu({ displayName }: Props) {
   const router = useRouter()
   const supabase = createClient()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -36,6 +39,7 @@ export function UserMenu({ displayName }: Props) {
   const initials = getInitials(displayName)
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger
         showChevron={false}
@@ -44,7 +48,7 @@ export function UserMenu({ displayName }: Props) {
         {initials}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="right">
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setSettingsOpen(true)}>
           <span className="flex items-center gap-2">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="w-4 h-4 flex-shrink-0">
               <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -74,6 +78,8 @@ export function UserMenu({ displayName }: Props) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   )
 }
 
