@@ -8,6 +8,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
+import type { Json } from '@/types/database.types'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
@@ -58,7 +59,7 @@ interface PDFViewerCanvasProps {
   onPendingSelectionClear: () => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAnnotationDelete: (annotationId: string) => Promise<void>
-  onTrackEvent: (type: ReviewEventType, data?: Record<string, unknown>) => void
+  onTrackEvent: (type: ReviewEventType, data?: Json) => void
   disabled: boolean
 }
 
