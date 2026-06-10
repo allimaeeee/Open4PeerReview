@@ -21,7 +21,7 @@ export default async function FeedbackPage({
       ? null
       : await getSignedUrl(supabase, data.document.storage_path)
     return (
-      <main className="mx-auto max-w-4xl px-6 py-10">
+      <main>
         <FeedbackView
           document={data.document}
           reviews={data.reviews}

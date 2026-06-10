@@ -192,7 +192,7 @@ function CriterionCard({
               {(score?.niComments ?? []).length > 0 && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                  Needs Improvement
+                  Does Not Meet
                 </span>
               )}
               {score?.score === 'exemplifies' && (
@@ -242,10 +242,10 @@ function CriterionCard({
           )}
 
           <div className="space-y-2">
-            {/* Needs Improvement */}
+            {/* Does Not Meet */}
             <div>
               <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-1">
-                Needs Improvement
+                Does Not Meet
               </p>
               {(score?.niComments ?? []).length > 0 && (
                 <div className="space-y-1 mb-1.5">
@@ -271,7 +271,7 @@ function CriterionCard({
                 <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="text"
-                    placeholder="Add needs improvement comment…"
+                    placeholder="Add does not meet comment…"
                     value={niDraft}
                     onChange={(e) => setNiDraft(e.target.value)}
                     onKeyDown={(e) => {

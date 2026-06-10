@@ -198,9 +198,10 @@ export function ReviewerConsole({
       if (!pendingSelection) return
       const { body, rubricItemId, tag } = payload
 
+      const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
         ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
-        : { page: (pendingSelection as TextSelection).page, text: pendingSelection.text, rects: (pendingSelection as TextSelection).rects }
+        : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
 
       if (!rubricItemId || !scores[rubricItemId]) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })

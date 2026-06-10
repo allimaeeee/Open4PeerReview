@@ -2,13 +2,14 @@
 
 // Renders the OER PDF (client-only — react-pdf requires browser APIs like DOMMatrix).
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
 import type { Json } from '@/types/database.types'
+import { scaleRect, type PdfRect, ZOOM_LEVELS, DEFAULT_ZOOM } from '@/lib/pdf-coords'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
@@ -16,6 +17,8 @@ export interface TextSelection {
   text: string
   page: number
   rects: { x1: number; y1: number; x2: number; y2: number }[]
+  pageWidth: number
+  containerWidth: number
 }
 
 export interface AnnotationConfirmPayload {
@@ -97,10 +100,37 @@ export default function PDFViewerCanvas({
   const [hoverAnnotation, setHoverAnnotation] = useState<SavedAnnotation | null>(null)
   const [hoverPos, setHoverPos] = useState<TooltipPosition | null>(null)
 
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM)
+  const [containerWidth, setContainerWidth] = useState(800)
+
   const containerRef = useRef<HTMLDivElement>(null)
   const editPopoverRef = useRef<HTMLDivElement>(null)
   const prevPageRef = useRef(1)
   const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track container width for coordinate scaling
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    setContainerWidth(el.clientWidth)
+    const obs = new ResizeObserver((entries) => setContainerWidth((entries[0].target as HTMLElement).clientWidth))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const renderPageWidth = Math.min(containerWidth - 32, 900) * zoom
+
+  // Pre-scale all annotation rects to the current render space for hit-testing and rendering
+  const scaledAnnotations = useMemo(() =>
+    savedAnnotations.map((ann) => ({
+      ...ann,
+      scaledRects: ((ann.anchor as any)?.rects ?? []).map(
+        (r: { x1: number; y1: number; x2: number; y2: number }) =>
+          scaleRect(r, ann.anchor as any, renderPageWidth, containerWidth)
+      ),
+    })),
+    [savedAnnotations, renderPageWidth, containerWidth]
+  )
 
   // ── PDF page change tracking ───────────────────────────────────────────────
   useEffect(() => {
@@ -172,12 +202,13 @@ export default function PDFViewerCanvas({
     setEditingAnnotation(ann)
     setEditBody(ann.body)
     setEditTag(ann.tag as HighlightTag | null)
-    const rects: { x1: number; y1: number; x2: number; y2: number }[] = (ann.anchor as any)?.rects ?? []
-    const lastRect = rects[rects.length - 1]
-    if (lastRect) {
-      setEditTooltipPos({ x: (lastRect.x1 + lastRect.x2) / 2, y: lastRect.y2 + 8 })
+    const rawRects: { x1: number; y1: number; x2: number; y2: number }[] = (ann.anchor as any)?.rects ?? []
+    const lastRaw = rawRects[rawRects.length - 1]
+    if (lastRaw) {
+      const scaled = scaleRect(lastRaw, ann.anchor as any, renderPageWidth, containerWidth)
+      setEditTooltipPos({ x: (scaled.x1 + scaled.x2) / 2, y: scaled.y2 + 8 })
     }
-  }, [disabled, onPendingSelectionClear])
+  }, [disabled, onPendingSelectionClear, renderPageWidth, containerWidth])
 
   const handleEditConfirm = async () => {
     if (!editingAnnotation || !editBody.trim()) return
@@ -227,8 +258,14 @@ export default function PDFViewerCanvas({
       y: last.top  - containerRect.top - 8,
     })
 
-    onTextSelected({ text, page: currentPage, rects })
-  }, [disabled, currentPage, onTextSelected])
+    onTextSelected({
+      text,
+      page: currentPage,
+      rects,
+      pageWidth: renderPageWidth,
+      containerWidth,
+    })
+  }, [disabled, currentPage, onTextSelected, renderPageWidth, containerWidth])
 
   const handleConfirm = async () => {
     if (!annotationBody.trim()) return
@@ -290,6 +327,41 @@ export default function PDFViewerCanvas({
                 clipRule="evenodd" />
             </svg>
           </button>
+
+          <span className="w-px h-4 bg-slate-200 mx-1" />
+
+          {/* Zoom controls */}
+          <button
+            onClick={() => setZoom((z) => {
+              const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
+              return idx > 0 ? ZOOM_LEVELS[idx - 1] : z
+            })}
+            disabled={zoom <= ZOOM_LEVELS[0]}
+            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Zoom out"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              <path d="M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
+            </svg>
+          </button>
+          <span className="text-xs text-slate-500 tabular-nums w-8 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            onClick={() => setZoom((z) => {
+              const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
+              return idx < ZOOM_LEVELS.length - 1 ? ZOOM_LEVELS[idx + 1] : z
+            })}
+            disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Zoom in"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              <path d="M8 5v6M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
         {activeItemLabel && !disabled && (
@@ -325,9 +397,9 @@ export default function PDFViewerCanvas({
           const cr = el.getBoundingClientRect()
           const mx = e.clientX - cr.left + el.scrollLeft
           const my = e.clientY - cr.top  + el.scrollTop
-          for (const ann of savedAnnotations) {
+          for (const ann of scaledAnnotations) {
             if ((ann.anchor as any)?.page !== currentPage) continue
-            for (const r of ((ann.anchor as any)?.rects ?? []) as { x1: number; y1: number; x2: number; y2: number }[]) {
+            for (const r of ann.scaledRects) {
               if (mx >= r.x1 && mx <= r.x2 && my >= r.y1 && my <= r.y2) {
                 setHoverAnnotation(ann)
                 setHoverPos({ x: (r.x1 + r.x2) / 2, y: r.y1 })
@@ -358,19 +430,16 @@ export default function PDFViewerCanvas({
               renderTextLayer
               renderAnnotationLayer={false}
               className="shadow-lg rounded"
-              width={Math.min(
-                (containerRef.current?.clientWidth ?? 800) - 32,
-                900
-              )}
+              width={renderPageWidth}
             />
           </Document>
         )}
 
         {/* Saved annotation highlights */}
-        {savedAnnotations
+        {scaledAnnotations
           .filter((ann) => (ann.anchor as any)?.page === currentPage)
           .flatMap((ann) =>
-            ((ann.anchor as any)?.rects ?? []).map((rect: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
+            ann.scaledRects.map((rect: PdfRect, i: number) => (
               <div
                 key={`${ann.id}-${i}`}
                 className={[
