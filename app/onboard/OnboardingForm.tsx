@@ -631,7 +631,7 @@ export function OnboardingForm({
           Only tasks using your selected rubrics will appear in your Task Pool. You can update this in Settings.
         </p>
 
-        <div className="space-y-3 mt-6">
+        <div className="grid grid-cols-2 gap-3 mt-6">
           {rubrics.map(r => (
             <SelectionCard
               key={r.id}
