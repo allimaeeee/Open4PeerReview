@@ -19,6 +19,13 @@ export interface DomRangeAnchor {
   endOffset: number
 }
 
+export interface HtmlCharOffsetAnchor {
+  type: 'html-char-offset'
+  start: number
+  end: number
+  text: string
+}
+
 export interface BboxAnchor {
   type: 'bbox'
   x: number
@@ -34,7 +41,7 @@ export interface TimestampAnchor {
 }
 
 /** Stored as JSON in annotations.anchor */
-export type Anchor = TextRangeAnchor | DomRangeAnchor | BboxAnchor | TimestampAnchor
+export type Anchor = TextRangeAnchor | DomRangeAnchor | HtmlCharOffsetAnchor | BboxAnchor | TimestampAnchor
 
 /** PDF text-selection anchor shape used by the review UI */
 export interface PdfTextAnchor {

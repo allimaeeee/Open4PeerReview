@@ -22,6 +22,7 @@ export type ReviewEventType =
   | 'pdf_page_change'
   | 'pdf_text_select'
   | 'pdf_scroll'
+  | 'html_text_select'
   | 'draft_save'
   | 'submit'
 
