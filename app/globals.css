@@ -63,8 +63,8 @@
   --color-role-coordinator:         #5e0831;
 
   /* ── Font families ── */
-  --font-display:   'Newsreader', Georgia, 'Iowan Old Style', serif;
-  --font-heading:   'Newsreader', Georgia, 'Iowan Old Style', serif;
+  --font-display:   var(--font-newsreader), Georgia, 'Iowan Old Style', serif;
+  --font-heading:   var(--font-newsreader), Georgia, 'Iowan Old Style', serif;
   --font-body:      var(--font-lato), system-ui, -apple-system, sans-serif;
   --font-label:     var(--font-lato), system-ui, -apple-system, sans-serif;
   --font-code:      'JetBrains Mono', ui-monospace, monospace;

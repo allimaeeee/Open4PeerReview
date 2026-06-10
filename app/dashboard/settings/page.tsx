@@ -21,7 +21,7 @@ export default async function SettingsPage() {
     <main className="mx-auto max-w-2xl px-6 py-10">
       <div className="mb-8">
         <a
-          href="/dashboard"
+          href="/author"
           className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4"
         >
           <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

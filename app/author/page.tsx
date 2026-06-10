@@ -1,15 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { RoleToggle } from './components/RoleToggle'
 import { AuthorDashboard } from './components/AuthorDashboard'
-import { ReviewerDashboard } from './components/ReviewerDashboard'
-import { CoordinatorDashboard } from './components/CoordinatorDashboard'
 
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string }>
-}) {
+export default async function AuthorPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -23,26 +16,7 @@ export default async function DashboardPage({
   if (!profile?.onboarding_completed) redirect('/onboard')
 
   const roles: string[] = profile.roles ?? []
-  const isCoordinator = profile.role === 'admin'
-  const isAuthor = roles.includes('author')
-  const isReviewer = roles.includes('reviewer')
-
-  const availableViews = [
-    ...(isAuthor ? ['author'] : []),
-    ...(isReviewer ? ['reviewer'] : []),
-    ...(isCoordinator ? ['coordinator'] : []),
-  ]
-
-  if (availableViews.length === 0) {
-    return (
-      <main className="mx-auto max-w-5xl px-6 py-10">
-        <p className="text-sm text-slate-500">No role assigned to your account. Please contact an administrator.</p>
-      </main>
-    )
-  }
-
-  const { view: viewParam } = await searchParams
-  const activeView = availableViews.includes(viewParam ?? '') ? (viewParam as string) : availableViews[0]
+  if (!roles.includes('author')) redirect('/reviewer')
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -54,9 +28,6 @@ export default async function DashboardPage({
           <p className="text-sm text-slate-400 mt-0.5">{user.email}</p>
         </div>
         <div className="flex items-center gap-3">
-          {availableViews.length > 1 && (
-            <RoleToggle currentView={activeView} availableViews={availableViews} />
-          )}
           <a
             href="/dashboard/settings"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors"
@@ -70,9 +41,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {activeView === 'author' && <AuthorDashboard />}
-      {activeView === 'reviewer' && <ReviewerDashboard userId={user.id} />}
-      {activeView === 'coordinator' && <CoordinatorDashboard />}
+      <AuthorDashboard />
     </main>
   )
 }

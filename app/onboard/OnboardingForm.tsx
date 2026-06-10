@@ -631,7 +631,7 @@ export function OnboardingForm({
           Only tasks using your selected rubrics will appear in your Task Pool. You can update this in Settings.
         </p>
 
-        <div className="grid grid-cols-2 gap-3 mt-6">
+        <div className="space-y-3 mt-6">
           {rubrics.map(r => (
             <SelectionCard
               key={r.id}
@@ -672,7 +672,7 @@ export function OnboardingForm({
             <Button
               type="button"
               variant={roles.has('author') ? 'secondary' : 'primary'}
-              onClick={() => router.push('/dashboard?view=reviewer')}
+              onClick={() => router.push('/reviewer')}
             >
               Go to reviewer dashboard
             </Button>
@@ -681,7 +681,7 @@ export function OnboardingForm({
             <Button
               type="button"
               variant="primary"
-              onClick={() => router.push('/dashboard?view=author')}
+              onClick={() => router.push('/author')}
             >
               Go to author dashboard
             </Button>
