@@ -46,16 +46,18 @@
   --color-annotation-active:        rgba(254, 214, 91, 0.75);
 
   /* ── Status (pipeline) ── */
-  --color-status-draft-bg:          #ebe8e1;
-  --color-status-draft-fg:          #44474c;
-  --color-status-submitted-bg:      #ebe8e1;
-  --color-status-submitted-fg:      #44474c;
-  --color-status-in-review-bg:      #242d64;
-  --color-status-in-review-fg:      #ffffff;
-  --color-status-revision-bg:       #fed65b;
-  --color-status-revision-fg:       #735c00;
-  --color-status-certified-bg:      #d4f0d4;
-  --color-status-certified-fg:      #1a5c1a;
+  --color-status-draft-bg:            #ebe8e1;
+  --color-status-draft-text:          #44474c;
+  --color-status-unassigned-bg:       #f1eee7;
+  --color-status-unassigned-text:     #44474c;
+  --color-status-assigned-bg:         rgba(210, 228, 251, 0.4);
+  --color-status-assigned-text:       #041627;
+  --color-status-under-review-bg:     rgba(210, 228, 251, 0.4);
+  --color-status-under-review-text:   #041627;
+  --color-status-feedback-ready-bg:   rgba(254, 214, 91, 0.6);
+  --color-status-feedback-ready-text: #735c00;
+  --color-status-certified-bg:        #d4f0d4;
+  --color-status-certified-text:      #1a5c1a;
 
   /* ── Role accents ── */
   --color-role-author:              #0c3b1a;
