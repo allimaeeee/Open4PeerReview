@@ -3,7 +3,11 @@ import { getMyDocumentsWithStats, getRubrics, getDistinctSubjectMatters } from '
 import { EXPERT_DOMAIN_LABELS } from '@/types'
 import { AuthorDashboardClient } from './AuthorDashboardClient'
 
-export async function AuthorDashboard() {
+interface Props {
+  displayName: string
+}
+
+export async function AuthorDashboard({ displayName }: Props) {
   const supabase = await createClient()
   const [documents, rubrics, allSubjectMatters] = await Promise.all([
     getMyDocumentsWithStats(supabase),
@@ -16,6 +20,7 @@ export async function AuthorDashboard() {
 
   return (
     <AuthorDashboardClient
+      displayName={displayName}
       documents={documents}
       rubrics={rubrics}
       customSubjectMatters={customSubjectMatters}
