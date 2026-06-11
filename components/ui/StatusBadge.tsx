@@ -2,7 +2,7 @@ function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ')
 }
 
-type Variant = 'draft' | 'unassigned' | 'assigned' | 'under-review' | 'feedback-ready' | 'certified'
+type Variant = 'draft' | 'unassigned' | 'assigned' | 'under-review' | 'feedback-ready' | 'certified' | 'not-started' | 'in-progress' | 'completed'
 
 interface StatusBadgeProps {
   variant: Variant
@@ -17,6 +17,9 @@ const VARIANTS: Record<Variant, { label: string; bg: string; text: string }> = {
   'under-review':   { label: 'Under Review',   bg: 'var(--color-status-under-review-bg)',     text: 'var(--color-status-under-review-text)' },
   'feedback-ready': { label: 'Feedback Ready', bg: 'var(--color-status-feedback-ready-bg)',   text: 'var(--color-status-feedback-ready-text)' },
   certified:        { label: 'Certified',      bg: 'var(--color-status-certified-bg)',        text: 'var(--color-status-certified-text)' },
+  'not-started':    { label: 'Not Started',    bg: 'var(--color-status-not-started-bg)',      text: 'var(--color-status-not-started-text)' },
+  'in-progress':    { label: 'In Progress',    bg: 'var(--color-status-in-progress-bg)',      text: 'var(--color-status-in-progress-text)' },
+  completed:        { label: 'Completed',      bg: 'var(--color-status-completed-bg)',        text: 'var(--color-status-completed-text)' },
 }
 
 export function StatusBadge({ variant, size = 'default', className }: StatusBadgeProps) {

@@ -58,6 +58,12 @@
   --color-status-feedback-ready-text: #735c00;
   --color-status-certified-bg:        #d4f0d4;
   --color-status-certified-text:      #1a5c1a;
+  --color-status-not-started-bg:      #f1eee7;
+  --color-status-not-started-text:    #44474c;
+  --color-status-in-progress-bg:      rgba(254, 214, 91, 0.6);
+  --color-status-in-progress-text:    #735c00;
+  --color-status-completed-bg:        #d4f0d4;
+  --color-status-completed-text:      #1a5c1a;
 
   /* ── Role accents ── */
   --color-role-author:              #0c3b1a;
