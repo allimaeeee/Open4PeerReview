@@ -92,7 +92,7 @@ export function DocumentCard({
         {allCertified && (
           <Button
             variant="secondary"
-            size="sm"
+            size="md"
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             Download Stamp
