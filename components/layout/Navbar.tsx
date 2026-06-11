@@ -91,7 +91,7 @@ export default function Navbar() {
           <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
             <LogoIcon />
           </div>
-          Open4PeerReview
+          O4PR Certification Hub
         </Link>
         {showRightSide && (
           <div className="flex items-center gap-4">
