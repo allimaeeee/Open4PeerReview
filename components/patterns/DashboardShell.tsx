@@ -14,7 +14,7 @@ interface DashboardShellProps {
 export function DashboardShell({ sidebar, children, rightPanel, className }: DashboardShellProps) {
   return (
     <div className={cx('flex min-h-screen w-full', className)}>
-      <aside className="w-60 shrink-0 bg-[var(--color-surface-container)]">
+      <aside className="w-60 shrink-0 bg-[var(--color-surface-card)] border-r border-[var(--color-border)]">
         {sidebar}
       </aside>
       <main className="flex-1 min-w-0">

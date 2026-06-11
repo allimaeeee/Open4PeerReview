@@ -112,31 +112,28 @@ export function DocumentCard({
     <Accordion trigger={trigger}>
 
       {/* Section 1 — Rubric rows */}
-      <div>
+      <div className="-mb-3">
         {rubrics.map(rubric => (
           <div
             key={rubric.rubricId}
             className="flex items-center justify-between gap-4 py-3 border-t border-[var(--color-border)]"
           >
-            <span className="text-body-md text-text-primary font-medium shrink-0">
-              {rubric.rubricTitle}
-            </span>
-
-            <div className="flex items-center gap-4">
-              <StepIndicator
-                steps={PIPELINE_STEPS}
-                currentStep={STATUS_TO_STEP[rubric.status]}
-                size="compact"
-              />
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-body-md text-text-primary font-medium shrink-0">
+                {rubric.rubricTitle}
+              </span>
               {rubric.status === 'feedback-ready' && (
-                <button
-                  type="button"
-                  className="shrink-0 text-label-sm font-label font-semibold uppercase tracking-widest text-[var(--color-secondary)] hover:text-[var(--color-primary)] transition-colors"
-                >
-                  View Feedback →
-                </button>
+                <Button variant="secondary" size="sm">
+                  View Feedback
+                </Button>
               )}
             </div>
+
+            <StepIndicator
+              steps={PIPELINE_STEPS}
+              currentStep={STATUS_TO_STEP[rubric.status]}
+              size="compact-labeled"
+            />
           </div>
         ))}
       </div>

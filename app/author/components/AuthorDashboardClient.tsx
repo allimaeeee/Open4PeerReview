@@ -1,7 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
+import { DashboardShell } from '@/components/patterns/DashboardShell'
+import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
+import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
+import { DocumentCard } from '@/components/patterns/DocumentCard'
+import type { DocumentCardProps, RubricReview } from '@/components/patterns/DocumentCard'
+import { Card } from '@/components/ui/Card'
+import { Modal, ModalContent } from '@/components/ui/Modal'
 import { UploadDocumentForm } from './UploadDocumentForm'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
@@ -26,167 +32,184 @@ interface DocumentRow {
 }
 
 interface Props {
+  displayName: string
   documents: DocumentRow[]
   rubrics: RubricRow[]
   customSubjectMatters: string[]
 }
 
-const FILE_TYPE_LABEL: Record<string, string> = {
-  pdf: 'PDF',
-  html: 'HTML',
-  image: 'Image',
-  audio: 'Audio',
+// INTERIM mapping — per-rubric status not yet available from backend.
+// All rubrics on a document share the same status derived from the reviews array.
+// This will be replaced once reviews.rubric_id is available in the query.
+function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
+  const hasSubmitted = doc.reviews.some(r => r.status === 'submitted')
+  const hasInProgress = doc.reviews.some(r => r.status === 'in_progress')
+
+  const interimStatus: RubricReview['status'] =
+    hasSubmitted ? 'feedback-ready' :
+    hasInProgress ? 'under-review' :
+    'unassigned'
+
+  const rubrics: RubricReview[] = doc.document_rubrics
+    .map(dr => dr.rubric)
+    .filter((r): r is { id: string; title: string } => r !== null)
+    .map(r => ({
+      rubricId: r.id,
+      rubricTitle: r.title,
+      status: interimStatus,
+    }))
+
+  return {
+    id: doc.id,
+    title: doc.title,
+    platform: doc.file_type === 'pdf' ? 'PDF'
+      : doc.file_type === 'html' ? 'Web URL'
+      : doc.file_type.toUpperCase(),
+    authors: doc.authors ?? '',
+    discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
+    ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
+    description: doc.third_party_content_disclosure ?? '',
+    submittedAt: doc.created_at,
+    rubrics,
+  }
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters }: Props) {
+export function AuthorDashboardClient({ displayName, documents, rubrics, customSubjectMatters }: Props) {
+  const [activeTab, setActiveTab] = useState('active')
+  const [activeFilter, setActiveFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900">My Documents</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Upload OER documents and assign rubrics for peer review.</p>
+  const allCards = documents.map(mapDocumentToCardProps)
+
+  // Tab split — "completed" = all rubrics certified; "active" = everything else
+  // NOTE: with interim status mapping, completed will always be empty until
+  // backend supports per-rubric certified status.
+  const activeCards = allCards.filter(c => !c.rubrics.every(r => r.status === 'certified'))
+  const completedCards = allCards.filter(c => c.rubrics.length > 0 && c.rubrics.every(r => r.status === 'certified'))
+
+  const tabCards = activeTab === 'active' ? activeCards : completedCards
+
+  const getPriorityStatus = (card: DocumentCardProps): RubricReview['status'] => {
+    const PRIORITY: RubricReview['status'][] = ['feedback-ready', 'under-review', 'assigned', 'unassigned']
+    const allCertified = card.rubrics.length > 0 && card.rubrics.every(r => r.status === 'certified')
+    if (allCertified) return 'certified'
+    return PRIORITY.find(s => card.rubrics.some(r => r.status === s)) ?? 'unassigned'
+  }
+
+  const filterOptions = activeTab === 'active'
+    ? [
+        { value: 'all',            label: 'All',           count: tabCards.length },
+        { value: 'needs-revision', label: 'Needs Revision', count: tabCards.filter(c => getPriorityStatus(c) === 'feedback-ready').length },
+        { value: 'under-review',   label: 'Under Review',  count: tabCards.filter(c => getPriorityStatus(c) === 'under-review').length },
+        { value: 'assigned',       label: 'Assigned',      count: tabCards.filter(c => getPriorityStatus(c) === 'assigned').length },
+        { value: 'unassigned',     label: 'Unassigned',    count: tabCards.filter(c => getPriorityStatus(c) === 'unassigned').length },
+      ]
+    : [
+        { value: 'all',       label: 'All',       count: tabCards.length },
+        { value: 'certified', label: 'Certified', count: tabCards.length },
+      ]
+
+  const filteredCards = activeFilter === 'all'
+    ? tabCards
+    : tabCards.filter(c => {
+        const s = getPriorityStatus(c)
+        if (activeFilter === 'needs-revision') return s === 'feedback-ready'
+        return s === activeFilter
+      })
+
+  const sidebarItems = [
+    { id: 'active',    label: 'Active Submissions', count: activeCards.length },
+    { id: 'completed', label: 'Completed',          count: completedCards.length },
+  ]
+
+  const handleTabChange = (id: string) => {
+    setActiveTab(id)
+    setActiveFilter('all')
+  }
+
+  const rightPanel = (
+    <div className="p-4">
+      <Card>
+        <div className="p-4">
+          <h3 className="font-heading text-title-sm text-text-primary mb-2">Recent Activity</h3>
+          <p className="text-body-sm text-text-muted">Activity feed coming soon.</p>
         </div>
-        {!showUpload && (
-          <button
-            onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#162d4a] transition-colors shadow-sm"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Upload Document
-          </button>
-        )}
-      </div>
-
-      {showUpload && (
-        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-900 mb-5">Upload a New Document</h3>
-          <UploadDocumentForm rubrics={rubrics} customSubjectMatters={customSubjectMatters} onCancel={() => setShowUpload(false)} />
-        </div>
-      )}
-
-      {documents.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 py-16 text-center">
-          <svg className="mx-auto h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="mt-3 text-sm font-medium text-slate-600">No documents yet</p>
-          <p className="mt-1 text-xs text-slate-400">Upload your first document to get started.</p>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#162d4a] transition-colors"
-          >
-            Upload Document
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {documents.map(doc => {
-            const rubricList = doc.document_rubrics
-              .map(dr => dr.rubric)
-              .filter(Boolean) as { id: string; title: string }[]
-            const reviewsDone = doc.reviews.filter(r => r.status === 'submitted').length
-            const reviewsTotal = doc.reviews.length
-
-            const reviewsInProgress = doc.reviews.filter(r => r.status === 'in_progress').length
-
-            return (
-              <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold text-slate-900 truncate">{doc.title}</h3>
-                      <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                        {FILE_TYPE_LABEL[doc.file_type] ?? doc.file_type}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">Uploaded {formatDate(doc.created_at)}</p>
-
-                    {doc.authors && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        <span className="font-medium">Authors:</span> {doc.authors}
-                      </p>
-                    )}
-                    {doc.subject_matter && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        <span className="font-medium">Subject:</span>{' '}
-                        {EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter}
-                      </p>
-                    )}
-                    {doc.creative_commons_license && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        <span className="font-medium">License:</span>{' '}
-                        {CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license}
-                      </p>
-                    )}
-                    {doc.third_party_content_disclosure && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        <span className="font-medium">Third-Party Content:</span>{' '}
-                        {doc.third_party_content_disclosure}
-                      </p>
-                    )}
-
-                    {rubricList.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {rubricList.map(r => (
-                          <span key={r.id} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                            {r.title}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 flex flex-col items-end gap-2">
-                    {/* Status badges */}
-                    {reviewsTotal === 0 ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
-                        No reviews yet
-                      </span>
-                    ) : (
-                      <>
-                        {reviewsInProgress > 0 && (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                            </svg>
-                            {reviewsInProgress} under review
-                          </span>
-                        )}
-                        {reviewsDone > 0 && (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-100">
-                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            {reviewsDone} {reviewsDone === 1 ? 'review' : 'reviews'} submitted
-                          </span>
-                        )}
-                      </>
-                    )}
-
-                    {/* View feedback */}
-                    {reviewsDone > 0 && (
-                      <Link
-                        href={`/author/feedback/${doc.id}`}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] transition-colors shadow-sm"
-                      >
-                        View Feedback
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      </Card>
     </div>
+  )
+
+  const sidebar = (
+    <DashboardSidebar
+      title="My Workspace"
+      activeItem={activeTab}
+      items={sidebarItems}
+      onNavigate={handleTabChange}
+      ctaLabel="+ New Submission"
+      onCtaClick={() => setShowUpload(true)}
+    />
+  )
+
+  return (
+    <>
+      <DashboardShell sidebar={sidebar} rightPanel={rightPanel}>
+        <div className="px-8 py-8">
+
+          {/* Page header */}
+          <div className="mb-6">
+            <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-secondary mb-2">
+              Author Workspace
+            </p>
+            <h1 className="text-heading-lg font-semibold font-heading text-text-primary">
+              {activeTab === 'active' ? 'Active Submissions' : 'Completed Submissions'}
+            </h1>
+            <p className="text-body-md text-text-secondary mt-1">
+              {activeTab === 'active'
+                ? 'Track your submissions through the certification pipeline.'
+                : 'Review your certified OER submissions.'}
+            </p>
+          </div>
+
+          {/* Filter pills */}
+          <FilterPillGroup
+            options={filterOptions}
+            value={activeFilter}
+            onChange={setActiveFilter}
+          />
+
+          {/* Document list */}
+          <div className="mt-6 space-y-4">
+            {filteredCards.length === 0 ? (
+              <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
+                <p className="text-body-md font-medium text-text-secondary">No submissions here yet.</p>
+                <p className="text-body-sm text-text-muted mt-1">
+                  {activeTab === 'active'
+                    ? 'Use the sidebar to submit a new OER for review.'
+                    : 'Completed submissions will appear here once all rubrics are certified.'}
+                </p>
+              </div>
+            ) : (
+              filteredCards.map(card => (
+                <DocumentCard key={card.id} {...card} />
+              ))
+            )}
+          </div>
+
+        </div>
+      </DashboardShell>
+
+      {/* Upload modal */}
+      <Modal open={showUpload} onClose={() => setShowUpload(false)}>
+        <ModalContent>
+          <div className="p-6 overflow-y-auto h-full">
+            <h2 className="font-heading text-title-lg text-text-primary mb-5">New Submission</h2>
+            <UploadDocumentForm
+              rubrics={rubrics}
+              customSubjectMatters={customSubjectMatters}
+              onCancel={() => setShowUpload(false)}
+            />
+          </div>
+        </ModalContent>
+      </Modal>
+    </>
   )
 }

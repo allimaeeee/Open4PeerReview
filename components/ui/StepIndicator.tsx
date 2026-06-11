@@ -3,7 +3,7 @@
 export interface StepIndicatorProps {
   steps: string[]
   currentStep: number
-  size?: 'default' | 'compact'
+  size?: 'default' | 'compact' | 'compact-labeled'
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -26,6 +26,52 @@ function CheckIcon({ compact }: { compact?: boolean }) {
 
 export function StepIndicator({ steps, currentStep, size = 'default' }: StepIndicatorProps) {
   const compact = size === 'compact'
+  const compactLabeled = size === 'compact-labeled'
+
+  if (compactLabeled) {
+    return (
+      <div className="flex flex-col">
+        {/* Row 1 — circles + connectors */}
+        <div className="flex items-center gap-0">
+          {steps.map((label, i) => {
+            const num = i + 1
+            const completed = currentStep > num
+            const active = currentStep === num
+            return (
+              <div key={label} className="flex items-center flex-1 last:flex-none">
+                <div
+                  className={cx(
+                    'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-label font-bold transition-colors',
+                    completed && 'bg-secondary text-white',
+                    active    && 'bg-primary text-on-primary',
+                    !completed && !active && 'bg-surface-container-high text-text-muted',
+                  )}
+                >
+                  {completed ? <CheckIcon compact /> : num}
+                </div>
+                {i < steps.length - 1 && (
+                  <div className="flex-1 h-px bg-[var(--color-border)] mx-2" />
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {/* Row 2 — labels aligned below circles */}
+        <div className="flex items-start mt-1.5">
+          {steps.map((label, i) => (
+            <div key={label} className="flex-1 last:flex-none flex justify-center">
+              <span
+                className="text-[9px] font-label uppercase tracking-wide leading-tight text-center"
+                style={{ color: currentStep > i + 1 || currentStep === i + 1 ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-0">
