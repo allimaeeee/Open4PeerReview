@@ -6,22 +6,24 @@ interface FilterPillProps {
   label: string
   count?: number
   selected?: boolean
+  size?: 'default' | 'sm'
   onClick?: () => void
   className?: string
 }
 
-export function FilterPill({ label, count, selected = false, onClick, className }: FilterPillProps) {
+export function FilterPill({ label, count, selected = false, size = 'default', onClick, className }: FilterPillProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 border',
-        'text-label-sm font-label font-semibold uppercase tracking-widest',
+        'inline-flex items-center gap-1.5 rounded-full border cursor-pointer',
+        'font-label font-semibold uppercase tracking-widest',
         'transition-colors duration-150',
+        size === 'sm' ? 'px-3 py-1 text-xs' : 'px-3.5 py-1.5 text-label-sm',
         selected
           ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
-          : 'bg-[var(--color-surface-container)] text-[var(--color-text-secondary)] border-[var(--color-border)]',
+          : 'bg-[var(--color-surface-container)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:bg-[var(--color-surface-container-high)]',
         className
       )}
     >

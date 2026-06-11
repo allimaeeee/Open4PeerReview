@@ -39,14 +39,12 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
 
   // Task Pool filters
   const [poolRubricFilter, setPoolRubricFilter] = useState('all')
-  const [poolFormatFilter, setPoolFormatFilter] = useState('all')
 
   const handleTabChange = (id: string) => {
     setActiveTab(id as typeof activeTab)
     setActiveFilter('all')
     setCompletedFilter('all')
     setPoolRubricFilter('all')
-    setPoolFormatFilter('all')
   }
 
   // ── My Reviews ──────────────────────────────────────────────────────────────
@@ -83,34 +81,17 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   // ── Task Pool ────────────────────────────────────────────────────────────────
 
   const poolRubrics = ['all', ...Array.from(new Set(taskCards.flatMap(c => c.rubrics.map(r => r.rubricTitle))))]
-  const poolFormats = [...new Set(taskCards.map(c => c.platform))]
 
   const filteredTaskCards = taskCards
     .filter(c => poolRubricFilter === 'all' || c.rubrics.some(r => r.rubricTitle === poolRubricFilter))
-    .filter(c => poolFormatFilter === 'all' || c.platform === poolFormatFilter)
 
   const poolRubricOptions = poolRubrics.map(rubric => ({
     value: rubric,
     label: rubric === 'all' ? 'All' : rubric,
     count: rubric === 'all'
-      ? taskCards.filter(c => poolFormatFilter === 'all' || c.platform === poolFormatFilter).length
-      : taskCards.filter(c =>
-          c.rubrics.some(r => r.rubricTitle === rubric) &&
-          (poolFormatFilter === 'all' || c.platform === poolFormatFilter)
-        ).length,
+      ? taskCards.length
+      : taskCards.filter(c => c.rubrics.some(r => r.rubricTitle === rubric)).length,
   }))
-
-  const poolFormatOptions = [
-    { value: 'all', label: 'All Formats', count: taskCards.filter(c => poolRubricFilter === 'all' || c.rubrics.some(r => r.rubricTitle === poolRubricFilter)).length },
-    ...poolFormats.map(fmt => ({
-      value: fmt,
-      label: fmt,
-      count: taskCards.filter(c =>
-        c.platform === fmt &&
-        (poolRubricFilter === 'all' || c.rubrics.some(r => r.rubricTitle === poolRubricFilter))
-      ).length,
-    })),
-  ]
 
   // ── Sidebar / layout ─────────────────────────────────────────────────────────
 
@@ -168,7 +149,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         {/* My Reviews tab */}
         {activeTab === 'my-reviews' && (
           <>
-            <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} />
+            <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} size="sm" />
             <div className="mt-6 space-y-4">
               {filteredActiveCards.length === 0 ? (
                 <EmptyState message="No active reviews." sub="Check the Task Pool to find new assignments." />
@@ -183,7 +164,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         {activeTab === 'completed' && (
           <>
             {completedCards.length > 0 && (
-              <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} />
+              <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
             )}
             <div className="mt-6 space-y-4">
               {completedCards.length === 0 ? (
@@ -199,12 +180,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         {activeTab === 'task-pool' && (
           <>
             {taskCards.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} />
-                {poolFormats.length >= 2 && (
-                  <FilterPillGroup options={poolFormatOptions} value={poolFormatFilter} onChange={setPoolFormatFilter} />
-                )}
-              </div>
+              <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} size="sm" />
             )}
             <div className="mt-6 space-y-4">
               {taskCards.length === 0 ? (

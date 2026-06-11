@@ -5,7 +5,7 @@ import { Accordion } from '@/components/ui/Accordion'
 import { Select } from '@/components/ui/Select'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { RubricTag } from '@/components/ui/RubricTag'
+import { RubricTagList } from '@/components/ui/RubricTagList'
 
 export interface TaskPoolCardProps {
   id: string
@@ -58,20 +58,13 @@ export function TaskPoolCard({
       {/* Left column (full width — no right column) */}
       <div className="flex-1 min-w-0">
 
-        {/* Row 1: rubric name chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {rubrics.map(r => (
-            <RubricTag key={r.rubricId} label={r.rubricTitle} variant="filled" />
-          ))}
-        </div>
-
         {/* Row 2: title */}
-        <h2 className="font-heading text-title-lg text-text-primary leading-snug mt-2 truncate">
+        <h2 className="font-heading text-title-lg text-text-primary leading-snug truncate">
           {title}
         </h2>
 
         {/* Row 3: metadata */}
-        <div className="flex items-center gap-4 mt-1 text-body-sm text-text-secondary flex-wrap">
+        <div className="flex items-center gap-4 mt-2 text-body-sm text-text-secondary flex-wrap">
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M8 7a3 3 0 100-6 3 3 0 000 6zM2 14a6 6 0 0112 0" />
@@ -91,8 +84,17 @@ export function TaskPoolCard({
             </svg>
             {platform}
           </span>
-          <span>Submitted: {formattedDate}</span>
+          <span className="flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="12" height="10" rx="1" />
+              <path d="M2 8h12M6 2v4M10 2v4" />
+            </svg>
+            Submitted: {formattedDate}
+          </span>
         </div>
+
+        {/* Row 4: rubric tags */}
+        <RubricTagList rubrics={rubrics} variant="outlined" className="mt-2" />
 
       </div>
 
