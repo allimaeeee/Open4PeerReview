@@ -13,7 +13,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const supabase = await createClient()
   const documents = await getAllDocumentsWithRubrics(supabase)
 
-  type ReviewRow = { id: string; status: string; reviewer_id: string }
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null }
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
@@ -101,6 +101,8 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
 
   const completedCards = completedReviews.map(doc => {
     const author = doc.author as AuthorRow
+    const reviews = (doc.reviews ?? []) as ReviewRow[]
+    const myReview = reviews.find(r => r.reviewer_id === userId)
     return {
       id: doc.id,
       title: doc.title,
@@ -108,7 +110,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       authorName: author?.display_name ?? author?.email ?? 'Unknown',
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
-      completedAt: doc.created_at, // stub — submitted_at not in query yet
+      completedAt: myReview?.submitted_at ?? doc.created_at,
       reviewUrl: `/review?document=${doc.id}`,
     }
   })

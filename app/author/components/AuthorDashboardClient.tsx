@@ -174,6 +174,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
             options={filterOptions}
             value={activeFilter}
             onChange={setActiveFilter}
+            size="sm"
           />
 
           {/* Document list */}

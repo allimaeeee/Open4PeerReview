@@ -218,7 +218,7 @@ export async function getMyDocumentsWithStats(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, created_at, authors, subject_matter,
-      creative_commons_license, third_party_content_disclosure,
+      creative_commons_license, third_party_content_disclosure, source_url,
       document_rubrics ( rubric:rubrics ( id, title ) ),
       reviews ( id, status, submitted_at )
     `)
@@ -279,10 +279,10 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, created_at, subject_matter,
-      creative_commons_license, third_party_content_disclosure,
+      creative_commons_license, third_party_content_disclosure, source_url,
       author:users!author_id ( id, display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title ) ),
-      reviews ( id, status, reviewer_id )
+      reviews ( id, status, reviewer_id, submitted_at )
     `)
     .order('created_at', { ascending: false })
 

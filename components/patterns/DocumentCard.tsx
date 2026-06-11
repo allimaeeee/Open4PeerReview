@@ -73,23 +73,32 @@ export function DocumentCard({
         </div>
 
         {/* Row 2: title */}
-        <h2 className="font-heading text-title-lg text-text-primary leading-snug mt-2 truncate">
+        <h2 className="font-heading text-title-lg text-text-primary leading-snug mt-3 truncate">
           {title}
         </h2>
 
-        {/* Row 3: platform label */}
-        <div className="flex items-center gap-1 mt-1 text-body-sm text-text-secondary">
-          <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M9 2h5v5M14 2L7 9" />
-          </svg>
-          {platform}
+        {/* Row 3: platform + date */}
+        <div className="flex items-center gap-4 mt-2 text-body-sm text-text-secondary flex-wrap">
+          <span className="flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M9 2h5v5M14 2L7 9" />
+            </svg>
+            {platform}
+          </span>
+          <span className="flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="12" height="10" rx="1" />
+              <path d="M2 8h12M6 2v4M10 2v4" />
+            </svg>
+            Submitted: {new Date(submittedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
         </div>
 
       </div>
 
-      {/* Right column */}
-      <div className="shrink-0 flex flex-col items-end gap-2">
-        {allCertified && (
+      {/* Right column — only shown when allCertified */}
+      {allCertified && (
+        <div className="shrink-0">
           <Button
             variant="secondary"
             size="md"
@@ -97,13 +106,8 @@ export function DocumentCard({
           >
             Download Stamp
           </Button>
-        )}
-        <span className="text-label-sm text-[var(--color-text-muted)]">
-          {new Date(submittedAt).toLocaleDateString(undefined, {
-            month: 'short', day: 'numeric', year: 'numeric',
-          })}
-        </span>
-      </div>
+        </div>
+      )}
 
     </div>
   )
