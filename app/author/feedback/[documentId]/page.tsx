@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getDocumentFeedback } from '@/lib/supabase/queries'
+import { getDocumentFeedback, getSignedUrl } from '@/lib/supabase/queries'
 import { FeedbackView } from './FeedbackView'
 
 export default async function FeedbackPage({
@@ -16,9 +16,17 @@ export default async function FeedbackPage({
 
   try {
     const data = await getDocumentFeedback(supabase, documentId)
+    const isHtml = data.document.file_type === 'html'
+    const pdfUrl = isHtml || !data.document.storage_path
+      ? null
+      : await getSignedUrl(supabase, data.document.storage_path)
     return (
       <main className="mx-auto max-w-4xl px-6 py-10">
-        <FeedbackView document={data.document} reviews={data.reviews} />
+        <FeedbackView
+          document={data.document}
+          reviews={data.reviews}
+          pdfUrl={pdfUrl}
+        />
       </main>
     )
   } catch {

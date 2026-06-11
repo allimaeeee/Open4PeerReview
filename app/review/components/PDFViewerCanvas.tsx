@@ -8,6 +8,8 @@ import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
 import { Select } from '@/components/ui/Select'
+import type { ReviewEventType } from '@/hooks/useReviewTracking'
+import type { Json } from '@/types/database.types'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
@@ -56,6 +58,9 @@ interface PDFViewerCanvasProps {
   onTextSelected: (selection: TextSelection) => void
   onAnnotationConfirm: (payload: AnnotationConfirmPayload) => Promise<string | null | undefined>
   onPendingSelectionClear: () => void
+  onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
+  onAnnotationDelete: (annotationId: string) => Promise<void>
+  onTrackEvent: (type: ReviewEventType, data?: Json) => void
   disabled: boolean
 }
 
@@ -68,6 +73,9 @@ export default function PDFViewerCanvas({
   onTextSelected,
   onAnnotationConfirm,
   onPendingSelectionClear,
+  onAnnotationEdit,
+  onAnnotationDelete,
+  onTrackEvent,
   disabled,
 }: PDFViewerCanvasProps) {
   const [numPages, setNumPages] = useState<number>(0)
@@ -80,7 +88,57 @@ export default function PDFViewerCanvas({
   const [isSaving, setIsSaving] = useState(false)
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition | null>(null)
 
+  const [editingAnnotation, setEditingAnnotation] = useState<SavedAnnotation | null>(null)
+  const [editTooltipPos, setEditTooltipPos] = useState<TooltipPosition | null>(null)
+  const [editBody, setEditBody] = useState('')
+  const [editTag, setEditTag] = useState<HighlightTag | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editDeleting, setEditDeleting] = useState(false)
+
+  const [hoverAnnotation, setHoverAnnotation] = useState<SavedAnnotation | null>(null)
+  const [hoverPos, setHoverPos] = useState<TooltipPosition | null>(null)
+
   const containerRef = useRef<HTMLDivElement>(null)
+  const editPopoverRef = useRef<HTMLDivElement>(null)
+  const prevPageRef = useRef(1)
+  const scrollThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── PDF page change tracking ───────────────────────────────────────────────
+  useEffect(() => {
+    if (currentPage === prevPageRef.current) return
+    onTrackEvent('pdf_page_change', { page: currentPage, prev_page: prevPageRef.current })
+    prevPageRef.current = currentPage
+  }, [currentPage, onTrackEvent])
+
+  // ── Scroll sampling (throttled to 1 sample/sec) ────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      if (scrollThrottleRef.current) return
+      scrollThrottleRef.current = setTimeout(() => {
+        scrollThrottleRef.current = null
+        const container = containerRef.current
+        if (!container) return
+        onTrackEvent('pdf_scroll', {
+          scroll_y: Math.round(container.scrollTop),
+          page: currentPage,
+        })
+      }, 1000)
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', handleScroll)
+      if (scrollThrottleRef.current) {
+        clearTimeout(scrollThrottleRef.current)
+        scrollThrottleRef.current = null
+      }
+    }
+  // currentPage intentionally excluded: we want the latest value inside the
+  // throttled callback without resetting the listener on every page change.
+  // The ref pattern avoids stale closure issues here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onTrackEvent])
 
   // Reset tooltip state when it opens
   useEffect(() => {
@@ -92,6 +150,51 @@ export default function PDFViewerCanvas({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tooltipPos])
+
+  // Close edit popover when clicking outside it
+  useEffect(() => {
+    if (!editingAnnotation) return
+    const handler = (e: MouseEvent) => {
+      if (editPopoverRef.current && !editPopoverRef.current.contains(e.target as Node)) {
+        setEditingAnnotation(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [editingAnnotation])
+
+  const openEditPopover = useCallback((e: React.MouseEvent, ann: SavedAnnotation) => {
+    e.stopPropagation()
+    if (disabled) return
+    onPendingSelectionClear()
+    setTooltipPos(null)
+    setHoverAnnotation(null)
+    window.getSelection()?.removeAllRanges()
+    setEditingAnnotation(ann)
+    setEditBody(ann.body)
+    setEditTag(ann.tag as HighlightTag | null)
+    const rects: { x1: number; y1: number; x2: number; y2: number }[] = (ann.anchor as any)?.rects ?? []
+    const lastRect = rects[rects.length - 1]
+    if (lastRect) {
+      setEditTooltipPos({ x: (lastRect.x1 + lastRect.x2) / 2, y: lastRect.y2 + 8 })
+    }
+  }, [disabled, onPendingSelectionClear])
+
+  const handleEditConfirm = async () => {
+    if (!editingAnnotation || !editBody.trim()) return
+    setEditSaving(true)
+    await onAnnotationEdit(editingAnnotation.id, { body: editBody.trim(), tag: editTag })
+    setEditSaving(false)
+    setEditingAnnotation(null)
+  }
+
+  const handleEditDelete = async () => {
+    if (!editingAnnotation) return
+    setEditDeleting(true)
+    await onAnnotationDelete(editingAnnotation.id)
+    setEditDeleting(false)
+    setEditingAnnotation(null)
+  }
 
   const handleMouseUp = useCallback(() => {
     if (disabled) return
@@ -213,6 +316,29 @@ export default function PDFViewerCanvas({
         ref={containerRef}
         className="flex-1 overflow-auto relative flex justify-center py-6 px-4"
         onMouseUp={handleMouseUp}
+        onMouseMove={(e) => {
+          if (editingAnnotation || pendingSelection) {
+            if (hoverAnnotation) setHoverAnnotation(null)
+            return
+          }
+          const el = containerRef.current
+          if (!el) return
+          const cr = el.getBoundingClientRect()
+          const mx = e.clientX - cr.left + el.scrollLeft
+          const my = e.clientY - cr.top  + el.scrollTop
+          for (const ann of savedAnnotations) {
+            if ((ann.anchor as any)?.page !== currentPage) continue
+            for (const r of ((ann.anchor as any)?.rects ?? []) as { x1: number; y1: number; x2: number; y2: number }[]) {
+              if (mx >= r.x1 && mx <= r.x2 && my >= r.y1 && my <= r.y2) {
+                setHoverAnnotation(ann)
+                setHoverPos({ x: (r.x1 + r.x2) / 2, y: r.y1 })
+                return
+              }
+            }
+          }
+          if (hoverAnnotation) setHoverAnnotation(null)
+        }}
+        onMouseLeave={() => setHoverAnnotation(null)}
       >
         {loadError ? (
           <div className="flex items-center justify-center h-64">
@@ -248,16 +374,148 @@ export default function PDFViewerCanvas({
             ((ann.anchor as any)?.rects ?? []).map((rect: { x1: number; y1: number; x2: number; y2: number }, i: number) => (
               <div
                 key={`${ann.id}-${i}`}
-                className={`absolute pointer-events-none rounded-sm ${ann.tag ? (HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG_DEFAULT) : HIGHLIGHT_BG_DEFAULT}`}
+                className={[
+                  'absolute rounded-sm transition-opacity',
+                  ann.tag ? (HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG_DEFAULT) : HIGHLIGHT_BG_DEFAULT,
+                  disabled ? 'pointer-events-none' : 'cursor-pointer hover:opacity-70',
+                  editingAnnotation?.id === ann.id ? 'ring-2 ring-[#1e3a5f]/40' : '',
+                ].join(' ')}
                 style={{
                   left:   rect.x1,
                   top:    rect.y1,
                   width:  Math.max(2, rect.x2 - rect.x1),
                   height: Math.max(3, rect.y2 - rect.y1),
                 }}
+                onClick={(e) => openEditPopover(e, ann)}
               />
             ))
           )}
+
+        {/* Hover tooltip — appears when mousing over a highlight */}
+        {hoverAnnotation && hoverPos && !editingAnnotation && !pendingSelection && (
+          <div
+            className="absolute z-40 pointer-events-none bg-white rounded-lg shadow-lg border border-slate-200 px-3 py-2.5 w-72"
+            style={{
+              left: Math.max(8, Math.min(hoverPos.x - 144, (containerRef.current?.clientWidth ?? 600) - 296)),
+              top:  hoverPos.y,
+              transform: 'translateY(calc(-100% - 8px))',
+            }}
+          >
+            {hoverAnnotation.tag && TAG_OPTIONS.find((o) => o.value === hoverAnnotation.tag) && (() => {
+              const opt = TAG_OPTIONS.find((o) => o.value === hoverAnnotation.tag)!
+              return (
+                <span className={[
+                  'inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide mb-1.5',
+                  opt.bg, opt.text,
+                ].join(' ')}>
+                  {opt.label}
+                </span>
+              )
+            })()}
+            <p className="text-[11px] text-slate-700 leading-snug">{hoverAnnotation.body}</p>
+            {(hoverAnnotation.anchor as any)?.text && (
+              <p className="mt-1 text-[10px] text-slate-400 italic line-clamp-2">
+                &ldquo;{(hoverAnnotation.anchor as any).text}&rdquo;
+              </p>
+            )}
+            {!disabled && (
+              <p className="mt-1.5 text-[9px] text-slate-300">Click to edit</p>
+            )}
+          </div>
+        )}
+
+        {/* Edit popover — appears when an existing highlight is clicked */}
+        {editingAnnotation && editTooltipPos && !disabled && (
+          <div
+            ref={editPopoverRef}
+            className="absolute z-50 bg-white rounded-xl shadow-xl border border-slate-200 p-3 w-80"
+            style={{
+              left: Math.max(8, Math.min(editTooltipPos.x - 160, (containerRef.current?.clientWidth ?? 600) - 328)),
+              top:  editTooltipPos.y,
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-700">Edit annotation</p>
+              <button
+                onClick={() => setEditingAnnotation(null)}
+                className="text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {(editingAnnotation.anchor as any)?.text && (
+              <p className="text-[11px] text-slate-400 bg-slate-50 rounded px-2 py-1 mb-3 line-clamp-2 italic">
+                &ldquo;{((editingAnnotation.anchor as any).text as string).slice(0, 80)}{((editingAnnotation.anchor as any).text as string).length > 80 ? '…' : ''}&rdquo;
+              </p>
+            )}
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Tag</label>
+              <div className="flex gap-1.5">
+                {TAG_OPTIONS.map((opt) => {
+                  const isSelected = editTag === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setEditTag((prev) => prev === opt.value ? null : opt.value)}
+                      className={[
+                        'flex-1 py-1 text-[10px] font-semibold rounded-lg border transition-all duration-100',
+                        isSelected
+                          ? `${opt.bg} ${opt.text} ring-2 ${opt.ring} border-transparent`
+                          : 'border-slate-200 text-slate-500 bg-white hover:border-slate-300',
+                      ].join(' ')}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="mb-2.5">
+              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                Evidence comment
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleEditConfirm()
+                  if (e.key === 'Escape') setEditingAnnotation(null)
+                }}
+                className="w-full text-xs rounded border border-slate-200 px-2.5 py-2 resize-none
+                  focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]"
+              />
+            </div>
+
+            <div className="flex justify-between items-center">
+              <button
+                onClick={handleEditDelete}
+                disabled={editDeleting}
+                className="text-xs px-2.5 py-1.5 rounded-lg text-red-500 border border-red-200 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {editDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400">⌘↵ to save</span>
+                <button
+                  onClick={handleEditConfirm}
+                  disabled={!editBody.trim() || editSaving}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-[#1e3a5f] text-white font-medium
+                    disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#162d4a] transition-colors"
+                >
+                  {editSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {pendingSelection && tooltipPos && !disabled && (
           <div

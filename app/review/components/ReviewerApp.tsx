@@ -14,6 +14,9 @@ export interface OERDocument {
   title: string
   file_url: string
   storage_path: string
+  file_type: string
+  source_url: string | null
+  content_fingerprint: string | null
 }
 
 export interface Rubric {
