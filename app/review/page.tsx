@@ -19,15 +19,20 @@ export default async function ReviewerPage({
   // Load the requested document, or fall back to the first one
   const docQuery = supabase
     .from('documents')
-    .select('id, title, file_url, storage_path')
+    .select('id, title, file_url, storage_path, file_type, source_url, content_fingerprint')
 
   const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()
     : await docQuery.order('created_at', { ascending: true }).limit(1).maybeSingle()
 
-  // Regenerate signed URL on every page load (stored URL is only valid 1 hour)
+  // For PDFs regenerate the signed URL; HTML snapshots are served through the proxy route
   const document = docRow
-    ? { ...docRow, file_url: await getSignedUrl(supabase, docRow.storage_path) }
+    ? {
+        ...docRow,
+        file_url: docRow.file_type === 'html'
+          ? docRow.file_url
+          : await getSignedUrl(supabase, docRow.storage_path),
+      }
     : null
 
   // If a specific document was requested, load only its assigned rubrics.

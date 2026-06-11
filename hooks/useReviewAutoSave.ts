@@ -187,6 +187,27 @@ export function useReviewAutoSave({
     [supabase]
   )
 
+  const updateAnnotation = useCallback(
+    async (annotationId: string, changes: { body?: string; tag?: HighlightTag | null; rubricItemId?: string | null }): Promise<void> => {
+      setSaveStatus('saving')
+      const { error } = await supabase
+        .from('annotations')
+        .update({
+          ...(changes.body !== undefined && { body: changes.body }),
+          ...('tag' in changes && { tag: changes.tag }),
+          ...('rubricItemId' in changes && { rubric_item_id: changes.rubricItemId ?? null }),
+        })
+        .eq('id', annotationId)
+      if (error) {
+        console.error('[useReviewAutoSave] updateAnnotation error:', error)
+        setSaveStatus('error')
+        return
+      }
+      setSaveStatus('saved')
+    },
+    [supabase]
+  )
+
   const deleteAnnotation = useCallback(
     async (annotationId: string): Promise<void> => {
       setSaveStatus('saving')
@@ -288,6 +309,7 @@ export function useReviewAutoSave({
     onScoreChange,
     onNotesChange,
     saveAnnotation,
+    updateAnnotation,
     deleteAnnotation,
     addScoreComment,
     deleteScoreComment,

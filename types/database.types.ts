@@ -39,7 +39,7 @@ export type Database = {
           created_at?: string
           id?: string
           review_id?: string
-          rubric_item_id?: string
+          rubric_item_id?: string | null
           tag?: string | null
           updated_at?: string
         }
@@ -139,11 +139,13 @@ export type Database = {
         Row: {
           author_id: string
           authors: string
+          content_fingerprint: string | null
           created_at: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
+          source_url: string | null
           storage_path: string
           subject_matter: string
           third_party_content_disclosure: string | null
@@ -152,11 +154,13 @@ export type Database = {
         Insert: {
           author_id: string
           authors?: string
+          content_fingerprint?: string | null
           created_at?: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
+          source_url?: string | null
           storage_path: string
           subject_matter?: string
           third_party_content_disclosure?: string | null
@@ -165,11 +169,13 @@ export type Database = {
         Update: {
           author_id?: string
           authors?: string
+          content_fingerprint?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
+          source_url?: string | null
           storage_path?: string
           subject_matter?: string
           third_party_content_disclosure?: string | null
@@ -202,6 +208,51 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      review_events: {
+        Row: {
+          id: string
+          review_id: string
+          reviewer_id: string
+          session_id: string
+          event_type: string
+          data: Json | null
+          occurred_at: string
+        }
+        Insert: {
+          id?: string
+          review_id: string
+          reviewer_id: string
+          session_id: string
+          event_type: string
+          data?: Json | null
+          occurred_at?: string
+        }
+        Update: {
+          id?: string
+          review_id?: string
+          reviewer_id?: string
+          session_id?: string
+          event_type?: string
+          data?: Json | null
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_events_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_events_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       review_scores: {
         Row: {
