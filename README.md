@@ -1,4 +1,3 @@
-# OLI Annotation Platform
 # Open4PeerReview
 
 
@@ -6,12 +5,3 @@
 
 npm run dev
 
-
-
-**COMMIT TO GIT**
-
-git add .
-
-git commit -m ''
-
-git push origin dev / git push origin testing
