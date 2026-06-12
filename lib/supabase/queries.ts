@@ -130,7 +130,7 @@ export async function uploadDocument(
   return data
 }
 
-/** Snapshot an OpenStax link: insert a document row with file_type 'html' */
+/** Insert a document row for a snapshotted OER URL */
 export async function submitOpenStaxLink(
   supabase: Client,
   opts: {
@@ -143,6 +143,7 @@ export async function submitOpenStaxLink(
     ccLicense: CreativeCommonsLicense
     thirdPartyDisclosure: string | null
     rubricIds: string[]
+    platform: string
   }
 ) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -162,6 +163,7 @@ export async function submitOpenStaxLink(
       third_party_content_disclosure: opts.thirdPartyDisclosure,
       source_url: opts.url,
       content_fingerprint: opts.fingerprint,
+      platform: opts.platform,
     })
     .select()
     .single()

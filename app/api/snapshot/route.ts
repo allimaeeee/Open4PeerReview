@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { submitOpenStaxLink } from '@/lib/supabase/queries'
-
-const OPENSTAX_ORIGIN = 'https://openstax.org'
-
-function isOpenStaxUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url)
-    return parsed.hostname === 'openstax.org' || parsed.hostname.endsWith('.openstax.org')
-  } catch {
-    return false
-  }
-}
+import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
 
 async function fingerprintHtml(html: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -46,11 +36,16 @@ export async function POST(req: NextRequest) {
 
   const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds } = body
 
-  if (!url || !isOpenStaxUrl(url)) {
-    return NextResponse.json({ error: 'URL must be on openstax.org' }, { status: 400 })
+  if (!url || !isKnownOerUrl(url)) {
+    return NextResponse.json(
+      { error: 'URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula)' },
+      { status: 400 }
+    )
   }
 
-  // Fetch the OpenStax page
+  const platform = detectPlatform(url)
+
+  // Fetch the OER page
   let html: string
   try {
     const res = await fetch(url, {
@@ -63,14 +58,14 @@ export async function POST(req: NextRequest) {
     })
     if (!res.ok) {
       return NextResponse.json(
-        { error: `Failed to fetch OpenStax page: ${res.status} ${res.statusText}` },
+        { error: `Failed to fetch page: ${res.status} ${res.statusText}` },
         { status: 502 }
       )
     }
     html = await res.text()
   } catch (err) {
     return NextResponse.json(
-      { error: `Could not reach openstax.org: ${err instanceof Error ? err.message : 'network error'}` },
+      { error: `Could not reach URL: ${err instanceof Error ? err.message : 'network error'}` },
       { status: 502 }
     )
   }
@@ -103,6 +98,7 @@ export async function POST(req: NextRequest) {
       ccLicense: ccLicense as Parameters<typeof submitOpenStaxLink>[1]['ccLicense'],
       thirdPartyDisclosure: thirdPartyDisclosure ?? null,
       rubricIds: rubricIds ?? [],
+      platform,
     })
     return NextResponse.json({ documentId: doc.id, fingerprint })
   } catch (err) {

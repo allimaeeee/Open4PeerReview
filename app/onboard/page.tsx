@@ -10,7 +10,7 @@ export default async function OnboardPage() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('onboarding_completed, display_name, institution, primary_discipline, profession, roles, reviewer_type, expertise_tags, rubric_specializations')
+    .select('onboarding_completed, display_name, institution, primary_discipline, profession, roles, reviewer_type, expertise_tags, rubric_specializations, oer_scope')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -38,6 +38,7 @@ export default async function OnboardPage() {
       defaultReviewerType={profile?.reviewer_type ?? ''}
       defaultExpertiseTags={profile?.expertise_tags ?? []}
       defaultRubricSpecializations={profile?.rubric_specializations ?? []}
+      defaultOerScope={(profile?.oer_scope ?? []) as ('public' | 'organization')[]}
       institutions={(institutions ?? []).map((i) => i.name)}
       rubrics={(rubrics ?? []).map((r) => ({ id: r.id, title: r.title }))}
     />
