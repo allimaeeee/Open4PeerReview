@@ -1,0 +1,345 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import Link from 'next/link'
+import { UploadDocumentForm } from './UploadDocumentForm'
+import { EditDraftForm } from './EditDraftForm'
+import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
+import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
+import { submitDraft, deleteDraft, deleteDocument } from '../actions'
+
+interface RubricRow {
+  id: string
+  title: string
+  description: string | null
+}
+
+interface DocumentRow {
+  id: string
+  title: string
+  authors: string
+  subject_matter: string
+  creative_commons_license: string
+  third_party_content_disclosure: string | null
+  file_type: string | null
+  created_at: string
+  is_draft: boolean
+  submission_scope: string[] | null
+  document_rubrics: { rubric: { id: string; title: string } | null }[]
+  reviews: { id: string; status: string; submitted_at: string | null }[]
+}
+
+function SubmitDraftButton({ documentId }: { documentId: string }) {
+  const [isPending, startTransition] = useTransition()
+  return (
+    <button
+      onClick={() => startTransition(() => submitDraft(documentId))}
+      disabled={isPending}
+      className={[
+        'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm',
+        isPending
+          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a]',
+      ].join(' ')}
+    >
+      {isPending ? 'Submitting…' : 'Submit for Review'}
+    </button>
+  )
+}
+
+interface Props {
+  documents: DocumentRow[]
+  rubrics: RubricRow[]
+  customSubjectMatters: string[]
+  authorInstitution: string | null
+}
+
+const FILE_TYPE_LABEL: Record<string, string> = {
+  pdf: 'PDF',
+  html: 'HTML',
+  image: 'Image',
+  audio: 'Audio',
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function DeleteDraftButton({ documentId }: { documentId: string }) {
+  const [confirming, setConfirming] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-slate-500">Delete?</span>
+        <button
+          onClick={() => startTransition(() => deleteDraft(documentId))}
+          disabled={isPending}
+          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+        >
+          {isPending ? 'Deleting…' : 'Yes, delete'}
+        </button>
+        <button
+          onClick={() => setConfirming(false)}
+          disabled={isPending}
+          className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors"
+    >
+      Delete
+    </button>
+  )
+}
+
+function DeleteDocumentButton({ documentId, hasReviews }: { documentId: string; hasReviews: boolean }) {
+  const [confirming, setConfirming] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  if (confirming) {
+    return (
+      <div className="flex flex-col gap-1.5 items-end">
+        {hasReviews && (
+          <p className="text-[11px] text-red-600 font-medium text-right max-w-[200px]">
+            This will permanently delete all associated reviews.
+          </p>
+        )}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500">Delete?</span>
+          <button
+            onClick={() => startTransition(() => deleteDocument(documentId))}
+            disabled={isPending}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            {isPending ? 'Deleting…' : 'Yes, delete'}
+          </button>
+          <button
+            onClick={() => setConfirming(false)}
+            disabled={isPending}
+            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors"
+    >
+      Delete
+    </button>
+  )
+}
+
+export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters, authorInstitution }: Props) {
+  const [showUpload, setShowUpload] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900">My Documents</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Upload OER documents and assign rubrics for peer review.</p>
+        </div>
+        {!showUpload && (
+          <button
+            onClick={() => setShowUpload(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#162d4a] transition-colors shadow-sm"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Upload Document
+          </button>
+        )}
+      </div>
+
+      {showUpload && (
+        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-900 mb-5">Upload a New Document</h3>
+          <UploadDocumentForm rubrics={rubrics} customSubjectMatters={customSubjectMatters} authorInstitution={authorInstitution} onCancel={() => setShowUpload(false)} />
+        </div>
+      )}
+
+      {documents.length === 0 ? (
+        <div className="rounded-xl border-2 border-dashed border-slate-200 py-16 text-center">
+          <svg className="mx-auto h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p className="mt-3 text-sm font-medium text-slate-600">No documents yet</p>
+          <p className="mt-1 text-xs text-slate-400">Upload your first document to get started.</p>
+          <button
+            onClick={() => setShowUpload(true)}
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1e3a5f] text-white text-sm font-medium hover:bg-[#162d4a] transition-colors"
+          >
+            Upload Document
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {documents.map(doc => {
+            const rubricList = doc.document_rubrics
+              .map(dr => dr.rubric)
+              .filter(Boolean) as { id: string; title: string }[]
+            const reviewsDone = doc.reviews.filter(r => r.status === 'submitted').length
+            const reviewsTotal = doc.reviews.length
+            const reviewsAssigned = doc.reviews.filter(r => r.status === 'assigned').length
+            const reviewsInProgress = doc.reviews.filter(r => r.status === 'in_progress').length
+            const isEditing = editingId === doc.id
+
+            return (
+              <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                {isEditing ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-semibold text-slate-900">Edit Draft</h4>
+                    </div>
+                    <EditDraftForm
+                      documentId={doc.id}
+                      initial={{
+                        title: doc.title,
+                        authors: doc.authors,
+                        subjectMatter: doc.subject_matter,
+                        creativeCommonsLicense: doc.creative_commons_license,
+                        thirdPartyContentDisclosure: doc.third_party_content_disclosure,
+                        submissionScope: (doc.submission_scope ?? []) as string[],
+                        rubricIds: rubricList.map(r => r.id),
+                        fileType: doc.file_type,
+                      }}
+                      rubrics={rubrics}
+                      authorInstitution={authorInstitution}
+                      hasContent={!!doc.file_type}
+                      onDone={() => setEditingId(null)}
+                    />
+                  </div>
+                ) : (
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-semibold text-slate-900 truncate">{doc.title}</h3>
+                      <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                        {FILE_TYPE_LABEL[doc.file_type ?? ''] ?? doc.file_type}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">Uploaded {formatDate(doc.created_at)}</p>
+
+                    {doc.authors && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        <span className="font-medium">Authors:</span> {doc.authors}
+                      </p>
+                    )}
+                    {doc.subject_matter && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-medium">Subject:</span>{' '}
+                        {EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter}
+                      </p>
+                    )}
+                    {doc.creative_commons_license && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-medium">License:</span>{' '}
+                        {CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license}
+                      </p>
+                    )}
+                    {doc.third_party_content_disclosure && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-medium">Third-Party Content:</span>{' '}
+                        {doc.third_party_content_disclosure}
+                      </p>
+                    )}
+
+                    {rubricList.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {rubricList.map(r => (
+                          <span key={r.id} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                            {r.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 flex flex-col items-end gap-2">
+                    {doc.is_draft ? (
+                      <>
+                        <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                          Draft
+                        </span>
+                        <SubmitDraftButton documentId={doc.id} />
+                        <button
+                          onClick={() => setEditingId(doc.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <DeleteDraftButton documentId={doc.id} />
+                      </>
+                    ) : (
+                      <>
+                        {/* Status badges */}
+                        {reviewsTotal === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                            Unassigned
+                          </span>
+                        ) : (
+                          <>
+                            {reviewsAssigned > 0 && reviewsInProgress === 0 && reviewsDone === 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
+                                Assigned
+                              </span>
+                            )}
+                            {reviewsInProgress > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                </svg>
+                                {reviewsInProgress} under review
+                              </span>
+                            )}
+                            {reviewsDone > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-100">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                {reviewsDone} {reviewsDone === 1 ? 'review' : 'reviews'} submitted
+                              </span>
+                            )}
+                          </>
+                        )}
+
+                        {/* View feedback */}
+                        {reviewsDone > 0 && (
+                          <Link
+                            href={`/dashboard/feedback/${doc.id}`}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] transition-colors shadow-sm"
+                          >
+                            View Feedback
+                          </Link>
+                        )}
+                        <DeleteDocumentButton documentId={doc.id} hasReviews={reviewsTotal > 0} />
+                      </>
+                    )}
+                  </div>
+                </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
