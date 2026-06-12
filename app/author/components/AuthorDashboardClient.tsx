@@ -7,8 +7,7 @@ import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
 import { DocumentCard } from '@/components/patterns/DocumentCard'
 import type { DocumentCardProps, RubricReview } from '@/components/patterns/DocumentCard'
 import { Card } from '@/components/ui/Card'
-import { Modal, ModalContent } from '@/components/ui/Modal'
-import { UploadDocumentForm } from './UploadDocumentForm'
+import { SubmissionModal } from './SubmissionModal'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 
@@ -198,19 +197,13 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
         </div>
       </DashboardShell>
 
-      {/* Upload modal */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)}>
-        <ModalContent>
-          <div className="p-6 overflow-y-auto h-full">
-            <h2 className="font-heading text-title-lg text-text-primary mb-5">New Submission</h2>
-            <UploadDocumentForm
-              rubrics={rubrics}
-              customSubjectMatters={customSubjectMatters}
-              onCancel={() => setShowUpload(false)}
-            />
-          </div>
-        </ModalContent>
-      </Modal>
+      <SubmissionModal
+        isOpen={showUpload}
+        onClose={() => setShowUpload(false)}
+        rubrics={rubrics}
+        customSubjectMatters={customSubjectMatters}
+        displayName={displayName}
+      />
     </>
   )
 }

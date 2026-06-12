@@ -75,7 +75,7 @@ export function CompletedReviewCard({
           </div>
 
           {/* Row 4: rubric tags */}
-          <RubricTagList rubrics={rubrics} variant="outlined" className="mt-2" />
+          <RubricTagList rubrics={rubrics} variant="filled" className="mt-2" />
 
         </div>
 

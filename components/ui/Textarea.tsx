@@ -1,29 +1,35 @@
 'use client'
 
-import { type InputHTMLAttributes, useId } from 'react'
+import { type TextareaHTMLAttributes, useId } from 'react'
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
   error?: string
   helperText?: string
   optional?: boolean
+  rows?: number
+  resize?: 'none' | 'vertical' | 'both'
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ')
 }
 
-export function Input({
+export function Textarea({
   label,
   error,
   helperText,
   optional,
+  rows = 3,
+  resize = 'none',
   className,
   id: idProp,
   ...props
-}: InputProps) {
+}: TextareaProps) {
   const autoId = useId()
   const id = idProp ?? autoId
+
+  const resizeClass = resize === 'none' ? 'resize-none' : resize === 'vertical' ? 'resize-y' : 'resize'
 
   return (
     <div className="flex flex-col">
@@ -41,8 +47,9 @@ export function Input({
           )}
         </label>
       )}
-      <input
+      <textarea
         id={id}
+        rows={rows}
         className={cx(
           'w-full bg-transparent border-0 border-b-2 outline-none',
           'px-0 pb-2',
@@ -50,7 +57,7 @@ export function Input({
           'placeholder:text-text-muted',
           'transition-colors duration-[var(--transition-duration-fast)]',
           'disabled:text-text-muted disabled:cursor-not-allowed disabled:opacity-60',
-          'read-only:text-text-muted read-only:cursor-default',
+          resizeClass,
           error ? 'border-error' : 'border-border focus:border-primary',
           className,
         )}
@@ -66,4 +73,4 @@ export function Input({
   )
 }
 
-export default Input
+export default Textarea
