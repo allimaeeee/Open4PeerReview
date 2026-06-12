@@ -27,7 +27,7 @@ interface DocumentRow {
   file_type: string
   created_at: string
   document_rubrics: { rubric: { id: string; title: string } | null }[]
-  reviews: { id: string; status: string; submitted_at: string | null }[]
+  reviews: { id: string; status: string; submitted_at: string | null; rubric_id: string }[]
 }
 
 interface Props {
@@ -37,26 +37,20 @@ interface Props {
   customSubjectMatters: string[]
 }
 
-// INTERIM mapping — per-rubric status not yet available from backend.
-// All rubrics on a document share the same status derived from the reviews array.
-// This will be replaced once reviews.rubric_id is available in the query.
+// 'assigned' status is intentionally unused here — it will be wired in once the
+// coordinator dashboard is in place (coordinator assigns unassigned OER to a reviewer).
 function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
-  const hasSubmitted = doc.reviews.some(r => r.status === 'submitted')
-  const hasInProgress = doc.reviews.some(r => r.status === 'in_progress')
-
-  const interimStatus: RubricReview['status'] =
-    hasSubmitted ? 'feedback-ready' :
-    hasInProgress ? 'under-review' :
-    'unassigned'
-
   const rubrics: RubricReview[] = doc.document_rubrics
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string } => r !== null)
-    .map(r => ({
-      rubricId: r.id,
-      rubricTitle: r.title,
-      status: interimStatus,
-    }))
+    .map(r => {
+      const review = doc.reviews.find(rev => rev.rubric_id === r.id)
+      const status: RubricReview['status'] =
+        review?.status === 'submitted'   ? 'feedback-ready' :
+        review?.status === 'in_progress' ? 'under-review' :
+        'unassigned'
+      return { rubricId: r.id, rubricTitle: r.title, status }
+    })
 
   return {
     id: doc.id,
