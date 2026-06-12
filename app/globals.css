@@ -32,7 +32,9 @@
   --color-on-secondary-container:   #735c00;
 
   /* ── Feedback ── */
-  --color-error:                    #ba1a1a;
+  --color-error:                    #d32f2f;
+  --color-on-error:                 #ffffff;
+  --color-error-hover:              #b71c1c;
   --color-error-container:          #ffdad6;
   --color-on-error-container:       #93000a;
   --color-success:                  #1a5c1a;
@@ -58,8 +60,8 @@
   --color-status-feedback-ready-text: #735c00;
   --color-status-certified-bg:        #d4f0d4;
   --color-status-certified-text:      #1a5c1a;
-  --color-status-not-started-bg:      #f1eee7;
-  --color-status-not-started-text:    #44474c;
+  --color-status-not-started-bg:      rgba(210, 228, 251, 0.4);
+  --color-status-not-started-text:    #041627;
   --color-status-in-progress-bg:      rgba(254, 214, 91, 0.6);
   --color-status-in-progress-text:    #735c00;
   --color-status-completed-bg:        #d4f0d4;

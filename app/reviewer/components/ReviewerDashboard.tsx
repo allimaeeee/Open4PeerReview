@@ -78,7 +78,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     claimedAt: '2026-05-14T10:22:00Z',
     rubrics: [
       { rubricId: 'rubric-accessibility', rubricTitle: 'Accessibility', completionPercent: 60 },
-      { rubricId: 'rubric-pedagogy',      rubricTitle: 'Pedagogy',      completionPercent: 0  },
+      { rubricId: 'rubric-copy-editing',      rubricTitle: 'Copy Editing',      completionPercent: 0  },
     ],
     reviewUrl: '/review?document=mock-active-1',
   })
@@ -94,7 +94,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     third_party_content_disclosure: null,
     author: { id: 'mock-author-2', display_name: 'Marcus Webb', email: 'mwebb@example.edu' },
     document_rubrics: [
-      { rubric: { id: 'rubric-accuracy', title: 'Content Accuracy' } },
+      { rubric: { id: 'rubric-disciplinary-appropriateness', title: 'Disciplinary Appropriateness' } },
     ],
     reviews: [{ id: 'mock-review-2', status: 'submitted', reviewer_id: userId }],
   } as unknown as Doc)
