@@ -703,11 +703,13 @@ export function AnnotationPanel({
   // Track which rubric sections are collapsed (default: all open)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
-  const toggleCollapsed = (rubricId: string) => {
+  const toggleCollapsed = (rubricId: string, title: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(rubricId)) next.delete(rubricId)
+      const wasCollapsed = next.has(rubricId)
+      if (wasCollapsed) next.delete(rubricId)
       else next.add(rubricId)
+      onTrackEvent('rubric_section_toggle', { rubric_id: rubricId, title, collapsed: !wasCollapsed })
       return next
     })
   }
@@ -752,7 +754,7 @@ export function AnnotationPanel({
             <div key={group.rubricId}>
               {/* Rubric section header / dropdown trigger */}
               <button
-                onClick={() => toggleCollapsed(group.rubricId)}
+                onClick={() => toggleCollapsed(group.rubricId, group.title)}
                 className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200 hover:bg-slate-100 transition-colors"
               >
                 <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider truncate pr-2">
@@ -794,7 +796,9 @@ export function AnnotationPanel({
                   onAnnotationDelete={onAnnotationDelete}
                   onAnnotationEdit={onAnnotationEdit}
                   onAddScoreComment={onAddScoreComment}
+                  onEditScoreComment={onEditScoreComment}
                   onDeleteScoreComment={onDeleteScoreComment}
+                  onCommentBlur={onCommentBlur}
                 />
               ))}
             </div>
@@ -803,7 +807,7 @@ export function AnnotationPanel({
         {/* Free notes section */}
         <div className="border-t border-slate-200 bg-slate-50">
           <button
-            onClick={() => toggleCollapsed('__notes__')}
+            onClick={() => toggleCollapsed('__notes__', 'Free Notes')}
             className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200 hover:bg-slate-100 transition-colors"
           >
             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
