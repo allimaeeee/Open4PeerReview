@@ -102,6 +102,33 @@ export async function deleteDraft(documentId: string) {
   revalidatePath('/dashboard')
 }
 
+/** Author deletes any document they own (draft or submitted), cascading to reviews */
+export async function deleteDocument(documentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id, storage_path, file_type')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+
+  if (doc.storage_path && doc.file_type === 'pdf') {
+    await supabase.storage.from('documents').remove([doc.storage_path])
+  }
+
+  const { error } = await supabase
+    .from('documents')
+    .delete()
+    .eq('id', documentId)
+
+  if (error) throw error
+  revalidatePath('/dashboard')
+}
+
 /** Author or coordinator adds/replaces the PDF content on a draft document */
 export async function updateDraftPdf(
   documentId: string,

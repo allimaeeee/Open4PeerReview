@@ -15,7 +15,7 @@ interface Props {
 
 export async function ReviewerDashboard({ userId }: Props) {
   const supabase = await createClient()
-  const { documents, acceptedDocIds, assignedDocIds } = await getDocumentsForReviewer(supabase, userId)
+  const { documents, acceptedDocIds } = await getDocumentsForReviewer(supabase, userId)
 
   type Doc = (typeof documents)[number]
   type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; review_scores: { id: string; score: string | null }[] }
@@ -31,15 +31,7 @@ export async function ReviewerDashboard({ userId }: Props) {
     if (myReview?.status === 'submitted') {
       completed.push(doc)
     } else if (myReview?.status === 'in_progress') {
-      // Coordinator-assigned docs auto-transition to in_progress the moment the review
-      // page is opened. Keep them in Available until the reviewer has actually scored
-      // at least one criterion — only then treat it as actively in progress.
-      const scoredCount = (myReview.review_scores ?? []).filter(s => s.score !== null).length
-      if (assignedDocIds.has(doc.id) && scoredCount === 0) {
-        available.push(doc)
-      } else {
-        inProgress.push(doc)
-      }
+      inProgress.push(doc)
     } else {
       // 'assigned' (not yet opened) or no review row → available
       available.push(doc)

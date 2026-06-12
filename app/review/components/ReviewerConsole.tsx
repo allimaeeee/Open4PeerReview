@@ -202,14 +202,16 @@ export function ReviewerConsole({
   const handleAnnotationConfirm = useCallback(
     async (payload: AnnotationConfirmPayload) => {
       if (!pendingSelection) return
-      const { body, rubricItemId, tag } = payload
+      const { body, rubricItemIds, tag } = payload
 
       const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
         ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
         : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
 
-      if (!rubricItemId || !scores[rubricItemId]) {
+      const validItemIds = rubricItemIds.filter((id) => scores[id])
+
+      if (validItemIds.length === 0) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         track('annotation_create', { annotation_id: newId, rubric_item_id: null, tag, char_count: body.length })
@@ -218,21 +220,28 @@ export function ReviewerConsole({
         return null
       }
 
-      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId, anchor, body, tag })
-      if (!newId) return 'Failed to save evidence. Please try again.'
-      track('annotation_create', { annotation_id: newId, rubric_item_id: rubricItemId, tag, char_count: body.length })
+      const results = await Promise.all(
+        validItemIds.map((id) => saveAnnotation({ reviewId: review.id, rubricItemId: id, anchor, body, tag }))
+      )
+      if (results.some((id) => !id)) return 'Failed to save evidence. Please try again.'
 
-      setScores((prev) => ({
-        ...prev,
-        [rubricItemId]: {
-          ...prev[rubricItemId],
-          annotations: [...prev[rubricItemId].annotations, { id: newId, anchor, body, tag }],
-        },
-      }))
+      results.forEach((newId, i) => {
+        if (newId) track('annotation_create', { annotation_id: newId, rubric_item_id: validItemIds[i], tag, char_count: body.length })
+      })
+
+      setScores((prev) => {
+        let next = { ...prev }
+        validItemIds.forEach((id, i) => {
+          const newId = results[i]
+          if (!newId || !next[id]) return
+          next = { ...next, [id]: { ...next[id], annotations: [...next[id].annotations, { id: newId, anchor, body, tag }] } }
+        })
+        return next
+      })
       setPendingSelection(null)
       return null
     },
-    [pendingSelection, scores, review.id, saveAnnotation, setGeneralAnnotations]
+    [pendingSelection, scores, review.id, saveAnnotation, setGeneralAnnotations, track]
   )
 
   const handleAddGeneralNote = useCallback(async (body: string): Promise<string | null> => {
