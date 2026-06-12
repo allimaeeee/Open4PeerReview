@@ -10,6 +10,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   public: {
     Tables: {
       annotations: {
@@ -60,48 +65,6 @@ export type Database = {
           },
         ]
       }
-      score_comments: {
-        Row: {
-          body: string
-          created_at: string
-          id: string
-          review_id: string
-          rubric_item_id: string
-          score_level: string
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          id?: string
-          review_id: string
-          rubric_item_id: string
-          score_level: string
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          id?: string
-          review_id?: string
-          rubric_item_id?: string
-          score_level?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "score_comments_review_id_fkey"
-            columns: ["review_id"]
-            isOneToOne: false
-            referencedRelation: "reviews"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "score_comments_rubric_item_id_fkey"
-            columns: ["rubric_item_id"]
-            isOneToOne: false
-            referencedRelation: "rubric_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       document_rubrics: {
         Row: {
           assigned_at: string
@@ -145,6 +108,7 @@ export type Database = {
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id: string
+          platform: string | null
           source_url: string | null
           storage_path: string
           subject_matter: string
@@ -156,10 +120,11 @@ export type Database = {
           authors?: string
           content_fingerprint?: string | null
           created_at?: string
-          creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
+          creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"]
           file_url: string
           id?: string
+          platform?: string | null
           source_url?: string | null
           storage_path: string
           subject_matter?: string
@@ -175,6 +140,7 @@ export type Database = {
           file_type?: Database["public"]["Enums"]["file_type"]
           file_url?: string
           id?: string
+          platform?: string | null
           source_url?: string | null
           storage_path?: string
           subject_matter?: string
@@ -193,17 +159,17 @@ export type Database = {
       }
       institutions: {
         Row: {
-          created_at: string
+          created_at: string | null
           id: string
           name: string
         }
         Insert: {
-          created_at?: string
+          created_at?: string | null
           id?: string
           name: string
         }
         Update: {
-          created_at?: string
+          created_at?: string | null
           id?: string
           name?: string
         }
@@ -211,31 +177,31 @@ export type Database = {
       }
       review_events: {
         Row: {
+          data: Json | null
+          event_type: string
           id: string
+          occurred_at: string
           review_id: string
           reviewer_id: string
           session_id: string
-          event_type: string
-          data: Json | null
-          occurred_at: string
         }
         Insert: {
+          data?: Json | null
+          event_type: string
           id?: string
+          occurred_at?: string
           review_id: string
           reviewer_id: string
           session_id: string
-          event_type: string
-          data?: Json | null
-          occurred_at?: string
         }
         Update: {
+          data?: Json | null
+          event_type?: string
           id?: string
+          occurred_at?: string
           review_id?: string
           reviewer_id?: string
           session_id?: string
-          event_type?: string
-          data?: Json | null
-          occurred_at?: string
         }
         Relationships: [
           {
@@ -243,13 +209,6 @@ export type Database = {
             columns: ["review_id"]
             isOneToOne: false
             referencedRelation: "reviews"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "review_events_reviewer_id_fkey"
-            columns: ["reviewer_id"]
-            isOneToOne: false
-            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -279,7 +238,7 @@ export type Database = {
           id?: string
           review_id?: string
           rubric_item_id?: string
-          score?: Database["public"]["Enums"]["criterion_score"]
+          score?: Database["public"]["Enums"]["criterion_score"] | null
           updated_at?: string
         }
         Relationships: [
@@ -425,51 +384,96 @@ export type Database = {
         }
         Relationships: []
       }
+      score_comments: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          review_id: string
+          rubric_item_id: string
+          score_level: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          review_id?: string
+          rubric_item_id?: string
+          score_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "score_comments_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "score_comments_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "rubric_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
           display_name: string | null
           email: string
-          expertise_tags: string[]
+          expertise_tags: string[] | null
           id: string
           institution: string | null
+          oer_scope: string[]
           onboarding_completed: boolean
           primary_discipline: string | null
           profession: string | null
           reviewer_type: string | null
           role: Database["public"]["Enums"]["user_role"]
           roles: string[]
-          rubric_specializations: string[]
+          rubric_specializations: string[] | null
         }
         Insert: {
           created_at?: string
           display_name?: string | null
           email: string
-          expertise_tags?: string[]
+          expertise_tags?: string[] | null
           id: string
           institution?: string | null
+          oer_scope?: string[]
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
           reviewer_type?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           roles?: string[]
-          rubric_specializations?: string[]
+          rubric_specializations?: string[] | null
         }
         Update: {
           created_at?: string
           display_name?: string | null
           email?: string
-          expertise_tags?: string[]
+          expertise_tags?: string[] | null
           id?: string
           institution?: string | null
+          oer_scope?: string[]
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
           reviewer_type?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           roles?: string[]
-          rubric_specializations?: string[]
+          rubric_specializations?: string[] | null
         }
         Relationships: []
       }
@@ -485,7 +489,13 @@ export type Database = {
     }
     Enums: {
       anchor_type: "text-range" | "dom-range" | "bbox" | "timestamp"
-      creative_commons_license: "cc_by" | "cc_by_sa" | "cc_by_nd" | "cc_by_nc" | "cc_by_nc_sa" | "cc_by_nc_nd"
+      creative_commons_license:
+        | "cc_by"
+        | "cc_by_sa"
+        | "cc_by_nd"
+        | "cc_by_nc"
+        | "cc_by_nc_sa"
+        | "cc_by_nc_nd"
       criterion_score: "does_not_meet" | "exemplifies" | "exceeds"
       expert_domain:
         | "agriculture"
@@ -515,35 +525,158 @@ export type Database = {
   }
 }
 
-// ─── Convenience helpers ──────────────────────────────────────────────────────
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = Database["public"]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
-export type Tables<T extends keyof DefaultSchema["Tables"]> =
-  DefaultSchema["Tables"][T]["Row"]
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
 
-export type TablesInsert<T extends keyof DefaultSchema["Tables"]> =
-  DefaultSchema["Tables"][T]["Insert"]
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
 
-export type TablesUpdate<T extends keyof DefaultSchema["Tables"]> =
-  DefaultSchema["Tables"][T]["Update"]
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
 
-export type Enums<T extends keyof DefaultSchema["Enums"]> =
-  DefaultSchema["Enums"][T]
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
 
-// ─── Enum constants (use instead of raw strings) ──────────────────────────────
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
 
 export const Constants = {
-  Enums: {
-    creative_commons_license: ["cc_by", "cc_by_sa", "cc_by_nd", "cc_by_nc", "cc_by_nc_sa", "cc_by_nc_nd"] as const,
-    criterion_score:  ["does_not_meet", "exemplifies", "exceeds"] as const,
-    expert_domain:    ["agriculture", "arts_and_humanities", "biology", "business",
-                       "chemistry", "computer_science", "economics", "education",
-                       "engineering", "environmental_science", "health_and_medicine",
-                       "history", "law", "mathematics", "physics", "social_sciences",
-                       "other"] as const,
-    file_type:        ["pdf", "html", "image", "audio"] as const,
-    review_status:    ["in_progress", "submitted"] as const,
-    user_role:        ["author", "reviewer", "admin"] as const,
+  public: {
+    Enums: {
+      anchor_type: ["text-range", "dom-range", "bbox", "timestamp"],
+      creative_commons_license: [
+        "cc_by",
+        "cc_by_sa",
+        "cc_by_nd",
+        "cc_by_nc",
+        "cc_by_nc_sa",
+        "cc_by_nc_nd",
+      ],
+      criterion_score: ["does_not_meet", "exemplifies", "exceeds"],
+      expert_domain: [
+        "agriculture",
+        "arts_and_humanities",
+        "biology",
+        "business",
+        "chemistry",
+        "computer_science",
+        "economics",
+        "education",
+        "engineering",
+        "environmental_science",
+        "health_and_medicine",
+        "history",
+        "law",
+        "mathematics",
+        "physics",
+        "social_sciences",
+        "other",
+      ],
+      file_type: ["pdf", "html", "image", "audio"],
+      review_status: ["in_progress", "submitted"],
+      user_role: ["author", "reviewer", "admin"],
+    },
   },
 } as const

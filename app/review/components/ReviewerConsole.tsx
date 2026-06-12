@@ -117,8 +117,14 @@ export function ReviewerConsole({
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
     saveStatus, onScoreChange, saveAnnotation, updateAnnotation, deleteAnnotation,
-    addScoreComment, deleteScoreComment, saveDraft,
+    addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
+
+  // Stable ref so annotation callbacks can look up rubric_item_id without stale closures
+  const scoresRef = useRef(scores)
+  const generalAnnotationsRef = useRef(generalAnnotations)
+  useEffect(() => { scoresRef.current = scores }, [scores])
+  useEffect(() => { generalAnnotationsRef.current = generalAnnotations }, [generalAnnotations])
 
   // ── Interaction tracking ───────────────────────────────────────────────────
   const { track, flush } = useReviewTracking({ supabase, reviewId: review.id, reviewerId: userId })
@@ -198,9 +204,10 @@ export function ReviewerConsole({
       if (!pendingSelection) return
       const { body, rubricItemId, tag } = payload
 
+      const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
         ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
-        : { page: (pendingSelection as TextSelection).page, text: pendingSelection.text, rects: (pendingSelection as TextSelection).rects }
+        : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
 
       if (!rubricItemId || !scores[rubricItemId]) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
@@ -260,7 +267,11 @@ export function ReviewerConsole({
   // Called from PDF highlight click — deletes without knowing rubric item
   const handleAnnotationDeleteFromPDF = useCallback(
     async (annotationId: string) => {
-      track('annotation_delete', { annotation_id: annotationId })
+      let rubricItemId: string | null = null
+      for (const [id, s] of Object.entries(scoresRef.current)) {
+        if (s.annotations.some((a) => a.id === annotationId)) { rubricItemId = id; break }
+      }
+      track('annotation_delete', { annotation_id: annotationId, rubric_item_id: rubricItemId })
       await deleteAnnotation(annotationId)
       setScores((prev) => {
         const next = { ...prev }
@@ -283,7 +294,11 @@ export function ReviewerConsole({
   // Called from PDF highlight click — edits body/tag without knowing rubric item
   const handleAnnotationEditFromPDF = useCallback(
     async (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => {
-      track('annotation_edit', { annotation_id: annotationId })
+      let rubricItemId: string | null = null
+      for (const [id, s] of Object.entries(scoresRef.current)) {
+        if (s.annotations.some((a) => a.id === annotationId)) { rubricItemId = id; break }
+      }
+      track('annotation_edit', { annotation_id: annotationId, rubric_item_id: rubricItemId })
       await updateAnnotation(annotationId, changes)
       setScores((prev) => {
         const next = { ...prev }
@@ -307,6 +322,11 @@ export function ReviewerConsole({
 
   const handleEditFreeNote = useCallback(
     async (annotationId: string, changes: { body: string; rubricItemId: string | null }) => {
+      if (changes.rubricItemId) {
+        track('note_categorize', { annotation_id: annotationId, to_rubric_item_id: changes.rubricItemId, char_count: changes.body.length })
+      } else {
+        track('note_edit', { annotation_id: annotationId, char_count: changes.body.length })
+      }
       await updateAnnotation(annotationId, { body: changes.body, rubricItemId: changes.rubricItemId })
       if (changes.rubricItemId && scores[changes.rubricItemId]) {
         // Move from free notes into a criterion
@@ -331,6 +351,35 @@ export function ReviewerConsole({
       }
     },
     [updateAnnotation, scores, generalAnnotations]
+  )
+
+  // ── Criterion comment blur ────────────────────────────────────────────────
+  const handleCommentBlur = useCallback(
+    (rubricItemId: string, comment: string) => {
+      track('comment_change', { rubric_item_id: rubricItemId, char_count: comment.length })
+    },
+    [track]
+  )
+
+  // ── Score comment edit ────────────────────────────────────────────────────
+  const handleEditScoreComment = useCallback(
+    async (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => {
+      track('score_comment_edit', { rubric_item_id: rubricItemId, comment_id: commentId, score_level: scoreLevel, char_count: body.length })
+      await updateScoreComment(commentId, body)
+      setScores((prev) => {
+        const existing = prev[rubricItemId]
+        if (!existing) return prev
+        const key = scoreLevel === 'does_not_meet' ? 'niComments' : 'exceedsComments'
+        return {
+          ...prev,
+          [rubricItemId]: {
+            ...existing,
+            [key]: existing[key].map((c) => (c.id === commentId ? { ...c, body } : c)),
+          },
+        }
+      })
+    },
+    [updateScoreComment, track]
   )
 
   // ── Score comments ────────────────────────────────────────────────────────
@@ -510,7 +559,10 @@ export function ReviewerConsole({
             onAddGeneralNote={handleAddGeneralNote}
             onDeleteGeneralAnnotation={handleDeleteGeneralAnnotation}
             onAddScoreComment={handleAddScoreComment}
+            onEditScoreComment={handleEditScoreComment}
             onDeleteScoreComment={handleDeleteScoreComment}
+            onCommentBlur={handleCommentBlur}
+            onTrackEvent={track}
           />
         </div>
       </div>

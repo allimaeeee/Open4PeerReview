@@ -36,6 +36,7 @@ interface Props {
   defaultReviewerType: string
   defaultExpertiseTags: string[]
   defaultRubricSpecializations: string[]
+  defaultOerScope: ('public' | 'organization')[]
   institutions: string[]
   rubrics: { id: string; title: string }[]
 }
@@ -157,6 +158,7 @@ export function OnboardingForm({
   defaultReviewerType,
   defaultExpertiseTags,
   defaultRubricSpecializations,
+  defaultOerScope,
   institutions,
   rubrics,
 }: Props) {
@@ -175,6 +177,7 @@ export function OnboardingForm({
   const [expertiseTags, setExpertiseTags]     = useState<Set<string>>(new Set(defaultExpertiseTags))
   const [tagInput, setTagInput]               = useState('')
   const [rubricSpecs, setRubricSpecs]         = useState<Set<string>>(new Set(defaultRubricSpecializations))
+  const [oerScope, setOerScope]               = useState<Set<'public' | 'organization'>>(new Set(defaultOerScope))
   const [errors, setErrors]                   = useState<Record<string, string>>({})
   const [serverError, setServerError]         = useState<string | null>(null)
   const [loading, setLoading]                 = useState(false)
@@ -230,6 +233,15 @@ export function OnboardingForm({
     setExpertiseTags(prev => {
       const next = new Set(prev)
       next.delete(tag)
+      return next
+    })
+  }
+
+  function toggleOerScope(scope: 'public' | 'organization') {
+    setOerScope(prev => {
+      const next = new Set(prev)
+      if (next.has(scope)) next.delete(scope)
+      else next.add(scope)
       return next
     })
   }
@@ -292,6 +304,7 @@ export function OnboardingForm({
         reviewer_type:            isReviewer ? reviewerType : null,
         expertise_tags:           isReviewer ? Array.from(expertiseTags) : [],
         rubric_specializations:   isReviewer ? Array.from(rubricSpecs) : [],
+        oer_scope:                isReviewer && institution.trim() ? Array.from(oerScope) : [],
         onboarding_completed:     true,
       },
       { onConflict: 'id' }

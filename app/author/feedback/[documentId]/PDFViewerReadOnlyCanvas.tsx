@@ -18,6 +18,7 @@ export interface ReadOnlyAnnotation {
   anchor: unknown
   tag: string | null
   body: string
+  rubricItemLabel: string | null
 }
 
 interface Props {
@@ -26,10 +27,18 @@ interface Props {
   focusAnnotationId: string | null
 }
 
+interface HoverState {
+  ann: ReadOnlyAnnotation
+  x: number
+  y: number
+}
+
 export default function PDFViewerReadOnlyCanvas({ fileUrl, annotations, focusAnnotationId }: Props) {
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [containerWidth, setContainerWidth] = useState(800)
+  const [hover, setHover] = useState<HoverState | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -39,7 +48,36 @@ export default function PDFViewerReadOnlyCanvas({ fileUrl, annotations, focusAnn
     if (typeof page === 'number') setCurrentPage(page)
   }, [focusAnnotationId, annotations])
 
-  const pageWidth = Math.min((containerRef.current?.clientWidth ?? 800) - 32, 900)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    setContainerWidth(el.clientWidth)
+    const obs = new ResizeObserver(entries => setContainerWidth((entries[0].target as HTMLElement).clientWidth))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const pageWidth = Math.min(containerWidth - 32, 900)
+
+  function scaleRect(
+    rect: { x1: number; y1: number; x2: number; y2: number },
+    anchor: any,
+  ) {
+    const storedPW: number = anchor?.pageWidth
+    const storedCW: number = anchor?.containerWidth
+    if (!storedPW || !storedCW) return rect
+
+    const storedOffsetX = 16 + Math.max(0, (storedCW - 32 - storedPW) / 2)
+    const scale = pageWidth / storedPW
+    const newOffsetX = 16 + Math.max(0, (containerWidth - 32 - pageWidth) / 2)
+
+    return {
+      x1: newOffsetX + (rect.x1 - storedOffsetX) * scale,
+      y1: 24 + (rect.y1 - 24) * scale,
+      x2: newOffsetX + (rect.x2 - storedOffsetX) * scale,
+      y2: 24 + (rect.y2 - 24) * scale,
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
@@ -97,11 +135,12 @@ export default function PDFViewerReadOnlyCanvas({ fileUrl, annotations, focusAnn
             ((ann.anchor as any)?.rects ?? []).map(
               (rect: { x1: number; y1: number; x2: number; y2: number }, i: number) => {
                 const isFocused = ann.id === focusAnnotationId
+                const r = scaleRect(rect, ann.anchor)
                 return (
                   <div
                     key={`${ann.id}-${i}`}
                     className={[
-                      'absolute rounded-sm pointer-events-none transition-all',
+                      'absolute rounded-sm transition-all cursor-default',
                       isFocused
                         ? 'bg-amber-300/60 ring-2 ring-amber-500/60'
                         : ann.tag
@@ -109,16 +148,51 @@ export default function PDFViewerReadOnlyCanvas({ fileUrl, annotations, focusAnn
                           : HIGHLIGHT_BG_DEFAULT,
                     ].join(' ')}
                     style={{
-                      left:   rect.x1,
-                      top:    rect.y1,
-                      width:  Math.max(2, rect.x2 - rect.x1),
-                      height: Math.max(3, rect.y2 - rect.y1),
+                      left:   r.x1,
+                      top:    r.y1 + 10,
+                      width:  Math.max(2, r.x2 - r.x1),
+                      height: Math.max(3, r.y2 - r.y1),
                     }}
+                    onMouseEnter={() => setHover({ ann, x: (r.x1 + r.x2) / 2, y: r.y1 + 10 })}
+                    onMouseLeave={() => setHover(null)}
                   />
                 )
               }
             )
           )}
+
+        {hover && (
+          <div
+            className="absolute z-50 pointer-events-none bg-white rounded-lg shadow-lg border border-slate-200 px-3 py-2.5 w-72"
+            style={{
+              left: Math.max(8, Math.min(hover.x - 144, containerWidth - 296)),
+              top: hover.y,
+              transform: 'translateY(calc(-100% - 8px))',
+            }}
+          >
+            {hover.ann.rubricItemLabel && (
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                {hover.ann.rubricItemLabel}
+              </p>
+            )}
+            {hover.ann.tag && (
+              <span className={[
+                'inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide mb-1.5',
+                hover.ann.tag === 'quick_fix'
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'bg-orange-50 text-orange-700',
+              ].join(' ')}>
+                {hover.ann.tag === 'quick_fix' ? 'Quick Fix' : 'Action Item'}
+              </span>
+            )}
+            <p className="text-[11px] text-slate-700 leading-snug">{hover.ann.body}</p>
+            {(hover.ann.anchor as any)?.text && (
+              <p className="mt-1 text-[10px] text-slate-400 italic line-clamp-2">
+                &ldquo;{(hover.ann.anchor as any).text}&rdquo;
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
