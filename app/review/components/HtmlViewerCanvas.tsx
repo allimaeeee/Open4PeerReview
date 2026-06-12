@@ -92,6 +92,8 @@ export default function HtmlViewerCanvas({
 
   // True once the iframe has loaded and originalHtmlRef is populated
   const [iframeReady, setIframeReady] = useState(false)
+  // Shown briefly when the user manages to trigger a navigation despite CSS
+  const [navBannerVisible, setNavBannerVisible] = useState(false)
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const containerRef    = useRef<HTMLDivElement>(null)
@@ -171,7 +173,32 @@ export default function HtmlViewerCanvas({
   // ── Wire up iframe after load ──────────────────────────────────────────────
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current
-    const doc    = iframe?.contentDocument
+    if (!iframe) return
+
+    // Detect cross-origin navigation (user clicked a link that escaped the snapshot).
+    // Accessing contentWindow.location throws for cross-origin frames; a non-matching
+    // origin means we ended up on openstax.org which renders a no-JS error page.
+    try {
+      const href = iframe.contentWindow?.location.href ?? ''
+      const escaped = href !== '' && href !== 'about:blank' && !href.startsWith(window.location.origin)
+      if (escaped) {
+        // Reset iframeReady first so the upcoming reload triggers the highlights effect
+        setIframeReady(false)
+        iframe.src = snapshotSrc
+        setNavBannerVisible(true)
+        setTimeout(() => setNavBannerVisible(false), 4000)
+        return
+      }
+    } catch {
+      // Cross-origin access denied — definitely navigated away
+      setIframeReady(false)
+      iframe.src = snapshotSrc
+      setNavBannerVisible(true)
+      setTimeout(() => setNavBannerVisible(false), 4000)
+      return
+    }
+
+    const doc = iframe.contentDocument
     if (!doc) return
 
     // Snapshot clean HTML and signal the highlights effect to run
@@ -206,7 +233,7 @@ export default function HtmlViewerCanvas({
 
     doc.addEventListener('mouseup', handleMouseUp)
     return () => doc.removeEventListener('mouseup', handleMouseUp)
-  }, [disabled, iframeToContainer, onTextSelected, onTrackEvent])
+  }, [snapshotSrc, disabled, iframeToContainer, onTextSelected, onTrackEvent])
 
   // ── Reset tooltip form when it opens ──────────────────────────────────────
   useEffect(() => {
@@ -299,6 +326,17 @@ export default function HtmlViewerCanvas({
 
       {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
+
+        {/* Navigation-blocked banner */}
+        {navBannerVisible && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/90 text-white text-xs shadow-xl pointer-events-none">
+            <svg className="h-4 w-4 flex-shrink-0 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Navigation is disabled — this is a saved snapshot for review
+          </div>
+        )}
+
         <iframe
           ref={iframeRef}
           src={snapshotSrc}
