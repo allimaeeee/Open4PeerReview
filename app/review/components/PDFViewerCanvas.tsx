@@ -135,7 +135,7 @@ export default function PDFViewerCanvas({
   // ── PDF page change tracking ───────────────────────────────────────────────
   useEffect(() => {
     if (currentPage === prevPageRef.current) return
-    onTrackEvent('pdf_page_change', { page: currentPage, prev_page: prevPageRef.current })
+    onTrackEvent('pdf_page_change', { page: currentPage, prev_page: prevPageRef.current, rubric_item_id: activeItemId })
     prevPageRef.current = currentPage
   }, [currentPage, onTrackEvent])
 

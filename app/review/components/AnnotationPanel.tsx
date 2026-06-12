@@ -7,6 +7,8 @@ import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
 import type { CriterionScore, SaveStatus } from '../../../hooks/useReviewAutoSave'
 import type { HighlightTag } from '@/types'
+import type { ReviewEventType } from '@/hooks/useReviewTracking'
+import type { Json } from '@/types/database.types'
 
 // ─── Sub-criteria parser ──────────────────────────────────────────────────────
 // Descriptions are stored as "1. Point one\n2. Point two\n..." in the DB.
@@ -107,7 +109,10 @@ interface AnnotationPanelProps {
   onAddGeneralNote: (body: string) => Promise<string | null>
   onDeleteGeneralAnnotation: (id: string) => void
   onAddScoreComment: (rubricItemId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
+  onEditScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
   onDeleteScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => Promise<void>
+  onCommentBlur: (rubricItemId: string, comment: string) => void
+  onTrackEvent: (type: ReviewEventType, data?: Json) => void
 }
 
 // ─── Criterion card ───────────────────────────────────────────────────────────
@@ -123,7 +128,9 @@ function CriterionCard({
   onAnnotationDelete,
   onAnnotationEdit,
   onAddScoreComment,
+  onEditScoreComment,
   onDeleteScoreComment,
+  onCommentBlur,
 }: {
   item: RubricItem
   index: number
@@ -136,7 +143,9 @@ function CriterionCard({
   onAnnotationDelete: (rubricItemId: string, annotationId: string) => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAddScoreComment: (rubricItemId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
+  onEditScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
   onDeleteScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => Promise<void>
+  onCommentBlur: (rubricItemId: string, comment: string) => void
 }) {
   const isScored = Boolean(score?.score) || (score?.niComments ?? []).length > 0 || (score?.exceedsComments ?? []).length > 0
   const subCriteria = parseSubCriteria(item.description)
@@ -146,6 +155,22 @@ function CriterionCard({
   const [editDraftBody, setEditDraftBody] = useState('')
   const [editDraftTag, setEditDraftTag] = useState<HighlightTag | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+
+  // Inline edit state for NI / Exceeds score comments
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editCommentDraft, setEditCommentDraft] = useState('')
+  const [editCommentSaving, setEditCommentSaving] = useState(false)
+
+  const saveEditComment = async (scoreLevel: 'does_not_meet' | 'exceeds') => {
+    if (!editingCommentId || !editCommentDraft.trim()) return
+    setEditCommentSaving(true)
+    await onEditScoreComment(item.id, editingCommentId, scoreLevel, editCommentDraft.trim())
+    setEditCommentSaving(false)
+    setEditingCommentId(null)
+  }
+
+  // Per-criterion summary comment
+  const [commentDraft, setCommentDraft] = useState(score?.comment ?? '')
 
   const startEditAnnotation = (ann: { id: string; body: string; tag: string | null }) => {
     setEditingAnnotationId(ann.id)
@@ -250,18 +275,57 @@ function CriterionCard({
               {(score?.niComments ?? []).length > 0 && (
                 <div className="space-y-1 mb-1.5">
                   {(score?.niComments ?? []).map((c) => (
-                    <div key={c.id} className="group flex items-start gap-2 bg-red-50/60 rounded-lg px-3 py-2 border border-red-100">
-                      <p className="flex-1 text-[11px] text-red-800 leading-snug">{c.body}</p>
-                      {!isSubmitted && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDeleteScoreComment(item.id, c.id, 'does_not_meet') }}
-                          className="opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-500 transition-opacity flex-shrink-0"
-                          aria-label="Delete comment"
-                        >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
+                    <div key={c.id} className="rounded-lg border border-red-100 bg-red-50/60">
+                      {editingCommentId === c.id ? (
+                        <div className="px-3 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCommentDraft}
+                            onChange={(e) => setEditCommentDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEditComment('does_not_meet')
+                              if (e.key === 'Escape') setEditingCommentId(null)
+                            }}
+                            className="w-full text-xs rounded border border-red-200 px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 bg-white"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button onClick={() => setEditingCommentId(null)} className="text-[11px] px-2 py-1 rounded text-slate-500 hover:text-slate-700">Cancel</button>
+                            <button
+                              disabled={!editCommentDraft.trim() || editCommentSaving}
+                              onClick={() => saveEditComment('does_not_meet')}
+                              className="text-[11px] px-2.5 py-1 rounded bg-red-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-700 transition-colors"
+                            >
+                              {editCommentSaving ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="group flex items-start gap-2 px-3 py-2">
+                          <p className="flex-1 text-[11px] text-red-800 leading-snug">{c.body}</p>
+                          {!isSubmitted && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity flex-shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingCommentId(c.id); setEditCommentDraft(c.body) }}
+                                className="text-red-300 hover:text-red-500"
+                                aria-label="Edit comment"
+                              >
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteScoreComment(item.id, c.id, 'does_not_meet') }}
+                                className="text-red-300 hover:text-red-500"
+                                aria-label="Delete comment"
+                              >
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -327,18 +391,57 @@ function CriterionCard({
               {(score?.exceedsComments ?? []).length > 0 && (
                 <div className="space-y-1 mb-1.5">
                   {(score?.exceedsComments ?? []).map((c) => (
-                    <div key={c.id} className="group flex items-start gap-2 bg-emerald-50/60 rounded-lg px-3 py-2 border border-emerald-100">
-                      <p className="flex-1 text-[11px] text-emerald-800 leading-snug">{c.body}</p>
-                      {!isSubmitted && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDeleteScoreComment(item.id, c.id, 'exceeds') }}
-                          className="opacity-0 group-hover:opacity-100 text-emerald-300 hover:text-emerald-500 transition-opacity flex-shrink-0"
-                          aria-label="Delete comment"
-                        >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
+                    <div key={c.id} className="rounded-lg border border-emerald-100 bg-emerald-50/60">
+                      {editingCommentId === c.id ? (
+                        <div className="px-3 py-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={editCommentDraft}
+                            onChange={(e) => setEditCommentDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEditComment('exceeds')
+                              if (e.key === 'Escape') setEditingCommentId(null)
+                            }}
+                            className="w-full text-xs rounded border border-emerald-200 px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 bg-white"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button onClick={() => setEditingCommentId(null)} className="text-[11px] px-2 py-1 rounded text-slate-500 hover:text-slate-700">Cancel</button>
+                            <button
+                              disabled={!editCommentDraft.trim() || editCommentSaving}
+                              onClick={() => saveEditComment('exceeds')}
+                              className="text-[11px] px-2.5 py-1 rounded bg-emerald-600 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
+                            >
+                              {editCommentSaving ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="group flex items-start gap-2 px-3 py-2">
+                          <p className="flex-1 text-[11px] text-emerald-800 leading-snug">{c.body}</p>
+                          {!isSubmitted && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity flex-shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingCommentId(c.id); setEditCommentDraft(c.body) }}
+                                className="text-emerald-300 hover:text-emerald-500"
+                                aria-label="Edit comment"
+                              >
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteScoreComment(item.id, c.id, 'exceeds') }}
+                                className="text-emerald-300 hover:text-emerald-500"
+                                aria-label="Delete comment"
+                              >
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -375,6 +478,27 @@ function CriterionCard({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Per-criterion summary comment */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+              Summary comment
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Overall comment for this criterion…"
+              value={commentDraft}
+              disabled={isSubmitted}
+              onChange={(e) => {
+                setCommentDraft(e.target.value)
+                onScoreChange(item.id, { comment: e.target.value })
+              }}
+              onBlur={() => onCommentBlur(item.id, commentDraft)}
+              className="w-full text-xs rounded-lg border border-slate-200 px-2.5 py-2 resize-none
+                focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/25 focus:border-[#1e3a5f]
+                placeholder-slate-300 text-slate-700 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+            />
           </div>
 
           {score?.annotations && score.annotations.length > 0 && (
@@ -534,7 +658,10 @@ export function AnnotationPanel({
   onAddGeneralNote,
   onDeleteGeneralAnnotation,
   onAddScoreComment,
+  onEditScoreComment,
   onDeleteScoreComment,
+  onCommentBlur,
+  onTrackEvent,
 }: AnnotationPanelProps) {
   const activeRef = useRef<HTMLDivElement>(null)
   const [newNoteBody, setNewNoteBody] = useState('')

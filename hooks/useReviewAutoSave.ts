@@ -304,6 +304,23 @@ export function useReviewAutoSave({
     [supabase]
   )
 
+  const updateScoreComment = useCallback(
+    async (commentId: string, body: string): Promise<void> => {
+      setSaveStatus('saving')
+      const { error } = await supabase
+        .from('score_comments')
+        .update({ body })
+        .eq('id', commentId)
+      if (error) {
+        console.error('[useReviewAutoSave] updateScoreComment error:', error)
+        setSaveStatus('error')
+        return
+      }
+      setSaveStatus('saved')
+    },
+    [supabase]
+  )
+
   return {
     saveStatus,
     onScoreChange,
@@ -312,6 +329,7 @@ export function useReviewAutoSave({
     updateAnnotation,
     deleteAnnotation,
     addScoreComment,
+    updateScoreComment,
     deleteScoreComment,
     saveDraft,
   }
