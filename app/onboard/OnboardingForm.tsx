@@ -25,11 +25,10 @@ interface Props {
   defaultInstitution: string
   defaultDiscipline: string
   defaultProfession: string
-  defaultRoles: ('author' | 'reviewer')[]
+  defaultRoles: ('author' | 'reviewer' | 'coordinator')[]
   defaultReviewerType: string
   defaultExpertiseTags: string[]
   defaultRubricSpecializations: string[]
-  defaultOerScope: ('public' | 'organization')[]
   institutions: string[]
   rubrics: { id: string; title: string }[]
 }
@@ -45,7 +44,6 @@ export function OnboardingForm({
   defaultReviewerType,
   defaultExpertiseTags,
   defaultRubricSpecializations,
-  defaultOerScope,
   institutions,
   rubrics,
 }: Props) {
@@ -58,12 +56,11 @@ export function OnboardingForm({
   const [disciplineOther, setDisciplineOther] = useState(isKnownDiscipline ? '' : defaultDiscipline)
   const [profession, setProfession]           = useState(isKnownProfession ? defaultProfession : (defaultProfession ? 'other' : ''))
   const [professionOther, setProfessionOther] = useState(isKnownProfession ? '' : defaultProfession)
-  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer'>>(new Set(defaultRoles))
+  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer' | 'coordinator'>>(new Set(defaultRoles))
   const [reviewerType, setReviewerType]       = useState(defaultReviewerType)
   const [expertiseTags, setExpertiseTags]     = useState<Set<string>>(new Set(defaultExpertiseTags))
   const [tagInput, setTagInput]               = useState('')
   const [rubricSpecs, setRubricSpecs]         = useState<Set<string>>(new Set(defaultRubricSpecializations))
-  const [oerScope, setOerScope]               = useState<Set<'public' | 'organization'>>(new Set(defaultOerScope))
   const [errors, setErrors]                   = useState<Record<string, string>>({})
   const [serverError, setServerError]         = useState<string | null>(null)
   const [loading, setLoading]                 = useState(false)
@@ -76,7 +73,7 @@ export function OnboardingForm({
     setErrors(prev => { const next = { ...prev }; delete next[key]; return next })
   }
 
-  function toggleRole(role: 'author' | 'reviewer') {
+  function toggleRole(role: 'author' | 'reviewer' | 'coordinator') {
     setRoles(prev => {
       const next = new Set(prev)
       if (next.has(role)) next.delete(role)
@@ -106,15 +103,6 @@ export function OnboardingForm({
     setExpertiseTags(prev => {
       const next = new Set(prev)
       next.delete(tag)
-      return next
-    })
-  }
-
-  function toggleOerScope(scope: 'public' | 'organization') {
-    setOerScope(prev => {
-      const next = new Set(prev)
-      if (next.has(scope)) next.delete(scope)
-      else next.add(scope)
       return next
     })
   }
@@ -176,7 +164,6 @@ export function OnboardingForm({
         reviewer_type:            isReviewer ? reviewerType : null,
         expertise_tags:           isReviewer ? Array.from(expertiseTags) : [],
         rubric_specializations:   isReviewer ? Array.from(rubricSpecs) : [],
-        oer_scope:                isReviewer && institution.trim() ? Array.from(oerScope) : [],
         onboarding_completed:     true,
       },
       { onConflict: 'id' }
@@ -321,31 +308,31 @@ export function OnboardingForm({
               Role <span className="text-red-500">*</span>
             </p>
             <p className="text-xs text-slate-500 mb-3">Select all that apply. You must choose at least one.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(['author', 'reviewer'] as const).map(role => (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {([
+                { value: 'author',      label: 'Author',      description: 'Submit work for peer review' },
+                { value: 'reviewer',    label: 'Reviewer',    description: 'Review and evaluate submissions' },
+                { value: 'coordinator', label: 'Coordinator', description: 'Manage OER submissions for your organization' },
+              ] as const).map(({ value, label, description }) => (
                 <button
-                  key={role}
+                  key={value}
                   type="button"
-                  onClick={() => toggleRole(role)}
+                  onClick={() => toggleRole(value)}
                   disabled={loading}
                   className={[
                     'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                    roles.has(role)
+                    roles.has(value)
                       ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
                       : 'border-slate-200 bg-white hover:border-slate-300',
                   ].join(' ')}
                 >
                   <span className={[
-                    'text-sm font-semibold capitalize',
-                    roles.has(role) ? 'text-[#1e3a5f]' : 'text-slate-700',
+                    'text-sm font-semibold',
+                    roles.has(value) ? 'text-[#1e3a5f]' : 'text-slate-700',
                   ].join(' ')}>
-                    {role === 'author' ? 'Author' : 'Reviewer'}
+                    {label}
                   </span>
-                  <span className="mt-0.5 text-xs text-slate-500">
-                    {role === 'author'
-                      ? 'Submit work for peer review'
-                      : 'Review and evaluate submissions'}
-                  </span>
+                  <span className="mt-0.5 text-xs text-slate-500">{description}</span>
                 </button>
               ))}
             </div>
@@ -501,45 +488,6 @@ export function OnboardingForm({
                 </div>
                 {errors.rubricSpecs && <p className="mt-1.5 text-xs text-red-600">{errors.rubricSpecs}</p>}
               </div>
-
-              {/* OER scope — only when institution is set */}
-              {institution.trim() && (
-                <div>
-                  <p className="block text-sm font-medium text-slate-700 mb-1">
-                    OER sources
-                  </p>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Which open educational resources would you like to receive for review?
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    {([
-                      { value: 'organization', label: 'My organization', description: `OER submitted by ${institution.trim()}` },
-                      { value: 'public',       label: 'Public OER',      description: 'Open submissions from any author' },
-                    ] as const).map(opt => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => toggleOerScope(opt.value)}
-                        disabled={loading}
-                        className={[
-                          'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                          oerScope.has(opt.value)
-                            ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
-                            : 'border-slate-200 bg-white hover:border-slate-300',
-                        ].join(' ')}
-                      >
-                        <span className={[
-                          'text-sm font-semibold',
-                          oerScope.has(opt.value) ? 'text-[#1e3a5f]' : 'text-slate-700',
-                        ].join(' ')}>
-                          {opt.label}
-                        </span>
-                        <span className="mt-0.5 text-xs text-slate-500">{opt.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
             </div>
           )}

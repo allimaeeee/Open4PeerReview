@@ -1,0 +1,348 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import { createDocumentAssignments, assignRubrics, updateDocumentContent } from '@/lib/supabase/queries'
+
+export async function releaseDocument(documentId: string) {
+  const supabase = await createClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  // Verify the coordinator shares the same institution as the document's author
+  const { data: coordProfile } = await supabase
+    .from('users')
+    .select('institution, roles')
+    .eq('id', user.id)
+    .single()
+
+  if (!coordProfile?.roles?.includes('coordinator')) throw new Error('Not authorized')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author:users!author_id ( institution )')
+    .eq('id', documentId)
+    .single()
+
+  const authorInstitution = (doc?.author as { institution: string | null } | null)?.institution
+  if (!authorInstitution || authorInstitution !== coordProfile.institution) {
+    throw new Error('Document does not belong to your organization')
+  }
+
+  const { error } = await supabase
+    .from('documents')
+    .update({ coordinator_released_at: new Date().toISOString() })
+    .eq('id', documentId)
+
+  if (error) throw error
+  revalidatePath('/dashboard')
+}
+
+/** Coordinator publishes a draft document and optionally assigns specific reviewers */
+export async function saveReviewerAssignments(documentId: string, reviewerIds: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('institution, roles')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.roles?.includes('coordinator')) throw new Error('Not authorized')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('id, author_id')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized to publish this document')
+
+  const { error: updateError } = await supabase
+    .from('documents')
+    .update({ is_draft: false, coordinator_released_at: new Date().toISOString() })
+    .eq('id', documentId)
+
+  if (updateError) throw updateError
+
+  await createDocumentAssignments(supabase, documentId, reviewerIds, user.id)
+
+  revalidatePath('/dashboard')
+}
+
+/** Author or coordinator deletes a draft document */
+export async function deleteDraft(documentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id, storage_path, file_type, is_draft')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+  if (!doc.is_draft) throw new Error('Only drafts can be deleted')
+
+  // Delete PDF from storage (PDFs are unique per document)
+  if (doc.storage_path && doc.file_type === 'pdf') {
+    await supabase.storage.from('documents').remove([doc.storage_path])
+  }
+
+  const { error } = await supabase
+    .from('documents')
+    .delete()
+    .eq('id', documentId)
+
+  if (error) throw error
+  revalidatePath('/dashboard')
+}
+
+/** Author or coordinator adds/replaces the PDF content on a draft document */
+export async function updateDraftPdf(
+  documentId: string,
+  content: { storagePath: string; fileUrl: string }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id, is_draft')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+  if (!doc.is_draft) throw new Error('Only drafts can be updated')
+
+  await updateDocumentContent(supabase, documentId, {
+    fileType: 'pdf',
+    fileUrl: content.fileUrl,
+    storagePath: content.storagePath,
+    sourceUrl: null,
+    contentFingerprint: null,
+    platform: null,
+  })
+  revalidatePath('/dashboard')
+}
+
+/** Author or coordinator updates the metadata of a draft document */
+export async function updateDraft(
+  documentId: string,
+  data: {
+    title: string
+    authors: string
+    subjectMatter: string
+    creativeCommonsLicense: string
+    thirdPartyContentDisclosure: string | null
+    submissionScope: string[]
+    rubricIds: string[]
+  }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id, is_draft')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+  if (!doc.is_draft) throw new Error('Only drafts can be edited')
+
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      title: data.title,
+      authors: data.authors,
+      subject_matter: data.subjectMatter,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      creative_commons_license: data.creativeCommonsLicense as any,
+      third_party_content_disclosure: data.thirdPartyContentDisclosure,
+      submission_scope: data.submissionScope,
+    })
+    .eq('id', documentId)
+
+  if (error) throw error
+  await assignRubrics(supabase, documentId, data.rubricIds)
+  revalidatePath('/dashboard')
+}
+
+/** Author submits a saved draft for review */
+export async function submitDraft(documentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+
+  const { error } = await supabase
+    .from('documents')
+    .update({ is_draft: false })
+    .eq('id', documentId)
+
+  if (error) throw error
+  revalidatePath('/dashboard')
+}
+
+/** Coordinator assigns reviewers to an author-submitted org doc and releases it */
+export async function assignAndReleaseDocument(documentId: string, reviewerIds: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('institution, roles')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.roles?.includes('coordinator')) throw new Error('Not authorized')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author:users!author_id ( institution )')
+    .eq('id', documentId)
+    .single()
+
+  const authorInstitution = (doc?.author as { institution: string | null } | null)?.institution
+  if (!authorInstitution || authorInstitution !== profile.institution) {
+    throw new Error('Document does not belong to your organization')
+  }
+
+  if (reviewerIds.length > 0) {
+    await createDocumentAssignments(supabase, documentId, reviewerIds, user.id)
+  }
+
+  const { error } = await supabase
+    .from('documents')
+    .update({ coordinator_released_at: new Date().toISOString() })
+    .eq('id', documentId)
+
+  if (error) throw error
+  revalidatePath('/dashboard')
+}
+
+/** Reviewer accepts a document — dismisses the accept/decline prompt permanently */
+export async function acceptDocument(documentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  await supabase
+    .from('document_acceptances')
+    .upsert({ document_id: documentId, reviewer_id: user.id }, { onConflict: 'document_id,reviewer_id', ignoreDuplicates: true })
+
+  revalidatePath('/dashboard')
+}
+
+/** Reviewer declines a document — removes it from their pool and notifies the coordinator if assigned */
+export async function declineDocument(documentId: string, note: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  // Record the decline to hide this doc from the reviewer's pool
+  const { error: declineError } = await supabase
+    .from('review_declines')
+    .upsert({ document_id: documentId, reviewer_id: user.id, note }, { onConflict: 'document_id,reviewer_id' })
+  if (declineError) throw declineError
+
+  // If coordinator-assigned: stamp the assignment with the decline note
+  const { data: assignment } = await supabase
+    .from('document_assignments')
+    .select('id')
+    .eq('document_id', documentId)
+    .eq('reviewer_id', user.id)
+    .maybeSingle()
+
+  if (assignment) {
+    await supabase
+      .from('document_assignments')
+      .update({ decline_note: note, declined_at: new Date().toISOString() })
+      .eq('id', assignment.id)
+
+    // Delete the pre-created assigned review row so it doesn't linger
+    await supabase
+      .from('reviews')
+      .delete()
+      .eq('document_id', documentId)
+      .eq('reviewer_id', user.id)
+      .eq('status', 'assigned')
+
+    // If all assigned reviewers have now declined, return the doc to pending release
+    const { count } = await supabase
+      .from('document_assignments')
+      .select('id', { count: 'exact', head: true })
+      .eq('document_id', documentId)
+      .is('declined_at', null)
+
+    if (count === 0) {
+      await supabase
+        .from('documents')
+        .update({ coordinator_released_at: null })
+        .eq('id', documentId)
+    }
+  }
+
+  revalidatePath('/dashboard')
+}
+
+/** Author or coordinator saves draft metadata and submits for review in one step */
+export async function updateAndSubmitDraft(
+  documentId: string,
+  data: {
+    title: string
+    authors: string
+    subjectMatter: string
+    creativeCommonsLicense: string
+    thirdPartyContentDisclosure: string | null
+    submissionScope: string[]
+    rubricIds: string[]
+  }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('author_id, is_draft, file_type')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
+  if (!doc.is_draft) throw new Error('Only drafts can be submitted')
+  if (!doc.file_type) throw new Error('Please add a PDF or OER URL before submitting for review.')
+
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      title: data.title,
+      authors: data.authors,
+      subject_matter: data.subjectMatter,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      creative_commons_license: data.creativeCommonsLicense as any,
+      third_party_content_disclosure: data.thirdPartyContentDisclosure,
+      submission_scope: data.submissionScope,
+      is_draft: false,
+    })
+    .eq('id', documentId)
+
+  if (error) throw error
+  await assignRubrics(supabase, documentId, data.rubricIds)
+  revalidatePath('/dashboard')
+}

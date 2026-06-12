@@ -26,6 +26,7 @@ export default async function FeedbackPage({
           document={data.document}
           reviews={data.reviews}
           pdfUrl={pdfUrl}
+          includeAuthorNotes={data.isAuthor}
         />
       </main>
     )

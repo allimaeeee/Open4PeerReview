@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
-import { getAllDocumentsWithRubrics } from '@/lib/supabase/queries'
+import { getDocumentsForReviewer } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import Link from 'next/link'
+import { ReviewerAvailableCard } from './ReviewerAvailableCard'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -14,38 +15,53 @@ interface Props {
 
 export async function ReviewerDashboard({ userId }: Props) {
   const supabase = await createClient()
-  const documents = await getAllDocumentsWithRubrics(supabase)
+  const { documents, acceptedDocIds, assignedDocIds } = await getDocumentsForReviewer(supabase, userId)
 
   type Doc = (typeof documents)[number]
-  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null }
-  type AuthorRow = { id: string; display_name: string | null; email: string } | null
-
-  // Exclude documents the reviewer authored
-  const reviewable = documents.filter(d => (d.author as AuthorRow)?.id !== userId)
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; review_scores: { id: string; score: string | null }[] }
+  type AuthorRow = { id: string; display_name: string | null; email: string; institution: string | null } | null
 
   const inProgress: Doc[] = []
   const available: Doc[] = []
   const completed: Doc[] = []
 
-  for (const doc of reviewable) {
+  for (const doc of documents) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReview = reviews.find(r => r.reviewer_id === userId)
-    if (myReview?.status === 'in_progress') inProgress.push(doc)
-    else if (myReview?.status === 'submitted') completed.push(doc)
-    else available.push(doc)
+    if (myReview?.status === 'submitted') {
+      completed.push(doc)
+    } else if (myReview?.status === 'in_progress') {
+      // Coordinator-assigned docs auto-transition to in_progress the moment the review
+      // page is opened. Keep them in Available until the reviewer has actually scored
+      // at least one criterion — only then treat it as actively in progress.
+      const scoredCount = (myReview.review_scores ?? []).filter(s => s.score !== null).length
+      if (assignedDocIds.has(doc.id) && scoredCount === 0) {
+        available.push(doc)
+      } else {
+        inProgress.push(doc)
+      }
+    } else {
+      // 'assigned' (not yet opened) or no review row → available
+      available.push(doc)
+    }
   }
 
+  // Server-rendered card used for in-progress and completed docs
   function DocCard({
     doc,
     myStatus,
+    scoredCount,
+    totalCount,
   }: {
     doc: Doc
-    myStatus: 'in_progress' | 'submitted' | null
+    myStatus: 'assigned' | 'in_progress' | 'submitted' | null
+    scoredCount?: number
+    totalCount?: number
   }) {
     const author = doc.author as AuthorRow
     const rubrics = (doc.document_rubrics ?? [])
       .map(dr => dr.rubric)
-      .filter(Boolean) as { id: string; title: string }[]
+      .filter(Boolean) as { id: string; title: string; rubric_items?: { id: string }[] }[]
     const subjectLabel = doc.subject_matter
       ? (EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter)
       : null
@@ -120,6 +136,21 @@ export async function ReviewerDashboard({ userId }: Props) {
             </Link>
           </div>
         </div>
+
+        {myStatus === 'in_progress' && totalCount !== undefined && totalCount > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-slate-500">Criteria scored</span>
+              <span className="text-xs font-medium text-slate-700">{scoredCount ?? 0} / {totalCount}</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[#1e3a5f] transition-all"
+                style={{ width: `${Math.round(((scoredCount ?? 0) / totalCount) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -146,9 +177,22 @@ export async function ReviewerDashboard({ userId }: Props) {
         ) : (
           <div className="space-y-3">
             {inProgress.map(doc => {
-              const reviews = (doc.reviews ?? []) as { id: string; status: string; reviewer_id: string; submitted_at: string | null }[]
+              const reviews = (doc.reviews ?? []) as ReviewRow[]
               const myReview = reviews.find(r => r.reviewer_id === userId)
-              return <DocCard key={doc.id} doc={doc} myStatus={myReview?.status as 'in_progress' | null ?? null} />
+              const scoredCount = (myReview?.review_scores ?? []).filter(s => s.score !== null).length
+              const totalCount = (doc.document_rubrics ?? []).reduce((sum, dr) => {
+                const items = (dr.rubric as { id: string; title: string; rubric_items?: { id: string }[] } | null)?.rubric_items ?? []
+                return sum + items.length
+              }, 0)
+              return (
+                <DocCard
+                  key={doc.id}
+                  doc={doc}
+                  myStatus={myReview?.status as 'in_progress' | null ?? null}
+                  scoredCount={scoredCount}
+                  totalCount={totalCount}
+                />
+              )
             })}
           </div>
         )}
@@ -165,22 +209,49 @@ export async function ReviewerDashboard({ userId }: Props) {
           )}
         </div>
         <p className="text-sm text-slate-500 -mt-2 mb-4">
-          Click <span className="font-medium">Start Review</span> to claim a document and begin your review.
+          Accept documents you plan to review, or decline with a note to remove them from your queue.
         </p>
 
         {available.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center">
             <p className="text-sm text-slate-500">
-              {reviewable.length === 0
-                ? 'No documents have been uploaded yet.'
+              {documents.length === 0
+                ? 'No documents are available for review yet.'
                 : 'You have reviewed all available documents.'}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {available.map(doc => (
-              <DocCard key={doc.id} doc={doc} myStatus={null} />
-            ))}
+            {available.map(doc => {
+              const author = doc.author as AuthorRow
+              const rubrics = (doc.document_rubrics ?? [])
+                .map(dr => dr.rubric)
+                .filter(Boolean) as { id: string; title: string }[]
+              const subjectLabel = doc.subject_matter
+                ? (EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter)
+                : null
+              const licenseLabel = doc.creative_commons_license
+                ? (CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license)
+                : null
+              return (
+                <ReviewerAvailableCard
+                  key={doc.id}
+                  doc={{
+                    id: doc.id,
+                    title: doc.title,
+                    created_at: doc.created_at,
+                    subject_matter: doc.subject_matter ?? null,
+                    creative_commons_license: doc.creative_commons_license ?? null,
+                    third_party_content_disclosure: doc.third_party_content_disclosure ?? null,
+                    author: author ? { display_name: author.display_name, email: author.email } : null,
+                    rubrics,
+                  }}
+                  subjectLabel={subjectLabel}
+                  licenseLabel={licenseLabel}
+                  isAccepted={acceptedDocIds.has(doc.id)}
+                />
+              )
+            })}
           </div>
         )}
       </section>

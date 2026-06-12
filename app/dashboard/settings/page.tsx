@@ -40,7 +40,7 @@ export default async function SettingsPage() {
         defaultInstitution={profile?.institution ?? ''}
         defaultDiscipline={profile?.primary_discipline ?? ''}
         defaultProfession={profile?.profession ?? ''}
-        defaultRoles={(profile?.roles ?? []) as ('author' | 'reviewer')[]}
+        defaultRoles={(profile?.roles ?? []) as ('author' | 'reviewer' | 'coordinator')[]}
         defaultReviewerType={profile?.reviewer_type ?? ''}
         defaultExpertiseTags={profile?.expertise_tags ?? []}
         defaultRubricSpecializations={profile?.rubric_specializations ?? []}
