@@ -6,7 +6,7 @@ import { UploadDocumentForm } from './UploadDocumentForm'
 import { EditDraftForm } from './EditDraftForm'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
-import { submitDraft, deleteDraft } from '../actions'
+import { submitDraft, deleteDraft, deleteDocument } from '../actions'
 
 interface RubricRow {
   id: string
@@ -87,6 +87,49 @@ function DeleteDraftButton({ documentId }: { documentId: string }) {
         >
           Cancel
         </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors"
+    >
+      Delete
+    </button>
+  )
+}
+
+function DeleteDocumentButton({ documentId, hasReviews }: { documentId: string; hasReviews: boolean }) {
+  const [confirming, setConfirming] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  if (confirming) {
+    return (
+      <div className="flex flex-col gap-1.5 items-end">
+        {hasReviews && (
+          <p className="text-[11px] text-red-600 font-medium text-right max-w-[200px]">
+            This will permanently delete all associated reviews.
+          </p>
+        )}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500">Delete?</span>
+          <button
+            onClick={() => startTransition(() => deleteDocument(documentId))}
+            disabled={isPending}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            {isPending ? 'Deleting…' : 'Yes, delete'}
+          </button>
+          <button
+            onClick={() => setConfirming(false)}
+            disabled={isPending}
+            className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     )
   }
@@ -286,6 +329,7 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
                             View Feedback
                           </Link>
                         )}
+                        <DeleteDocumentButton documentId={doc.id} hasReviews={reviewsTotal > 0} />
                       </>
                     )}
                   </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { acceptDocument, declineDocument } from '../actions'
 
 interface ReviewerAvailableCardProps {
@@ -31,6 +31,8 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
   const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [isStarting, setIsStarting] = useState(false)
+  const router = useRouter()
 
   if (declined) return null
 
@@ -39,6 +41,12 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
     startTransition(async () => {
       await acceptDocument(doc.id)
     })
+  }
+
+  async function handleStartReview() {
+    setIsStarting(true)
+    await acceptDocument(doc.id)
+    router.push(`/review?document=${doc.id}`)
   }
 
   function handleDeclineSubmit() {
@@ -91,12 +99,13 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
         </div>
 
         <div className="shrink-0 flex flex-col items-end gap-2">
-          <Link
-            href={`/review?document=${doc.id}`}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm transition-colors"
+          <button
+            onClick={handleStartReview}
+            disabled={isStarting}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Start Review
-          </Link>
+            {isStarting ? 'Opening…' : 'Start Review'}
+          </button>
         </div>
       </div>
 

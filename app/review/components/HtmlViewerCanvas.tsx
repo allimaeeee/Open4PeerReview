@@ -17,7 +17,7 @@ export interface HtmlTextSelection {
 
 export interface AnnotationConfirmPayload {
   body: string
-  rubricItemId: string | null
+  rubricItemIds: string[]
   tag: HighlightTag | null
 }
 
@@ -73,7 +73,7 @@ export default function HtmlViewerCanvas({
   // ── New-annotation tooltip state ───────────────────────────────────────────
   const [tooltipPos,        setTooltipPos]        = useState<TooltipPos | null>(null)
   const [annotationBody,    setAnnotationBody]    = useState('')
-  const [selectedCriterion, setSelectedCriterion] = useState('')
+  const [selectedCriterions, setSelectedCriterions] = useState<string[]>([])
   const [selectedTag,       setSelectedTag]       = useState<HighlightTag | null>(null)
   const [saveError,         setSaveError]         = useState<string | null>(null)
   const [isSaving,          setIsSaving]          = useState(false)
@@ -241,7 +241,7 @@ export default function HtmlViewerCanvas({
     setAnnotationBody('')
     setSelectedTag(null)
     setSaveError(null)
-    setSelectedCriterion(activeItemId ?? rubricItems[0]?.id ?? '')
+    setSelectedCriterions(activeItemId ? [activeItemId] : rubricItems[0]?.id ? [rubricItems[0].id] : [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tooltipPos])
 
@@ -263,9 +263,9 @@ export default function HtmlViewerCanvas({
     setIsSaving(true)
     setSaveError(null)
     const err = await onAnnotationConfirm({
-      body:        annotationBody.trim(),
-      rubricItemId: selectedCriterion || null,
-      tag:         selectedTag,
+      body:           annotationBody.trim(),
+      rubricItemIds:  selectedCriterions,
+      tag:            selectedTag,
     })
     setIsSaving(false)
     if (err) { setSaveError(err); return }
@@ -481,18 +481,26 @@ export default function HtmlViewerCanvas({
 
             <div className="mb-2.5">
               <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                Criterion
+                Criteria
               </label>
-              <select
-                value={selectedCriterion}
-                onChange={e => { setSelectedCriterion(e.target.value); setSaveError(null) }}
-                className="w-full text-xs rounded border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f] text-slate-700 bg-white"
-              >
-                <option value="">No criterion</option>
+              <div className="max-h-32 overflow-y-auto border border-slate-200 rounded px-2 py-1.5 space-y-1 bg-white">
                 {rubricItems.map(item => (
-                  <option key={item.id} value={item.id}>{item.label}</option>
+                  <label key={item.id} className="flex items-start gap-2 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={selectedCriterions.includes(item.id)}
+                      onChange={(e) => {
+                        setSelectedCriterions((prev) =>
+                          e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                        )
+                        setSaveError(null)
+                      }}
+                      className="mt-0.5 rounded border-slate-300 text-[#1e3a5f] focus:ring-[#1e3a5f]/30 flex-shrink-0"
+                    />
+                    <span className="text-[11px] text-slate-700 leading-tight group-hover:text-slate-900">{item.label}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </div>
 
             <div className="mb-2.5">
