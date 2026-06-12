@@ -3,6 +3,25 @@ import { createClient } from '@/lib/supabase/server'
 
 const OPENSTAX_ORIGIN = 'https://openstax.org'
 
+// CSS injected into every snapshot to disable navigation links.
+// OpenStax book-page links (Next/Previous chapter) all match /books/…/pages/…
+// so we can target them specifically without touching in-page anchor links.
+const DISABLE_NAV_CSS = `
+<style data-open4pr="nav-disable">
+  a[href^="/books"],
+  a[href*="openstax.org/books"],
+  a[href^="/l/"],
+  .os-raise-nav a,
+  .os-raise-nav-btn,
+  nav[data-type="chapter-nav"] a,
+  [data-type="next-page"],
+  [data-type="prev-page"] {
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+    opacity: 0.45 !important;
+  }
+</style>`
+
 function rewriteHtml(html: string): string {
   // Strip all <script> tags — the OpenStax React app boots, hydrates over the
   // SSR content, and renders blank when it can't initialize in an iframe context.
@@ -12,9 +31,9 @@ function rewriteHtml(html: string): string {
   // Inject <base> tag so relative URLs for CSS/images resolve against openstax.org
   const baseTag = `<base href="${OPENSTAX_ORIGIN}/">`
   if (/<head[^>]*>/i.test(out)) {
-    out = out.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`)
+    out = out.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${DISABLE_NAV_CSS}`)
   } else {
-    out = baseTag + out
+    out = baseTag + DISABLE_NAV_CSS + out
   }
 
   return out
