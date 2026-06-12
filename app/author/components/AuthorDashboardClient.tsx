@@ -24,7 +24,8 @@ interface DocumentRow {
   subject_matter: string
   creative_commons_license: string
   third_party_content_disclosure: string | null
-  file_type: string
+  file_type: string | null
+  platform: string | null
   created_at: string
   document_rubrics: { rubric: { id: string; title: string } | null }[]
   reviews: { id: string; status: string; submitted_at: string | null; rubric_id: string }[]
@@ -55,9 +56,9 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
   return {
     id: doc.id,
     title: doc.title,
-    platform: doc.file_type === 'pdf' ? 'PDF'
-      : doc.file_type === 'html' ? 'Web URL'
-      : doc.file_type.toUpperCase(),
+    platform: doc.platform
+      ?? (doc.file_type === 'pdf' ? 'PDF'
+      : doc.file_type?.toUpperCase() ?? ''),
     authors: doc.authors ?? '',
     discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
     ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
