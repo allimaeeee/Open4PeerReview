@@ -17,10 +17,10 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
-  function getFileLabel(fileType: string): string {
+  function getFileLabel(fileType: string | null): string {
     if (fileType === 'pdf') return 'PDF'
     if (fileType === 'html') return 'Web URL'
-    return fileType.toUpperCase()
+    return fileType?.toUpperCase() ?? ''
   }
 
   function mapRubrics(doc: Doc) {
@@ -34,7 +34,8 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   // add `id` to `author:users!author_id (...)` in the query for this to take effect.
   const reviewable = documents.filter(d => {
     const author = d.author as AuthorRow & { id?: string }
-    return author?.id !== userId
+    const reviews = (d.reviews ?? []) as ReviewRow[]
+    return author?.id !== userId || reviews.some(r => r.reviewer_id === userId)
   })
 
   const activeReviews: Doc[] = []
@@ -66,38 +67,6 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     }
   })
 
-  // MOCK — remove after real data is flowing
-  activeCards.push({
-    id: 'mock-active-1',
-    title: 'Introduction to Thermodynamics: A Project-Based Learning Module',
-    platform: 'PDF',
-    authorName: 'Dr. Priya Nair',
-    discipline: 'Physics',
-    ccLicense: 'CC BY 4.0',
-    description: 'Includes adapted diagrams from OpenStax Physics (CC BY 4.0).',
-    claimedAt: '2026-05-14T10:22:00Z',
-    rubrics: [
-      { rubricId: 'rubric-accessibility', rubricTitle: 'Accessibility', completionPercent: 60 },
-      { rubricId: 'rubric-copy-editing',      rubricTitle: 'Copy Editing',      completionPercent: 0  },
-    ],
-    reviewUrl: '/review?document=mock-active-1',
-  })
-
-  // MOCK — remove after real data is flowing
-  completedReviews.push({
-    id: 'mock-completed-1',
-    title: 'Open Chemistry: Equilibrium and Reaction Rates',
-    file_type: 'html',
-    created_at: '2026-04-03T08:15:00Z',
-    subject_matter: 'chemistry',
-    creative_commons_license: 'cc_by_sa',
-    third_party_content_disclosure: null,
-    author: { id: 'mock-author-2', display_name: 'Marcus Webb', email: 'mwebb@example.edu' },
-    document_rubrics: [
-      { rubric: { id: 'rubric-disciplinary-appropriateness', title: 'Disciplinary Appropriateness' } },
-    ],
-    reviews: [{ id: 'mock-review-2', status: 'submitted', reviewer_id: userId }],
-  } as unknown as Doc)
 
   const completedCards = completedReviews.map(doc => {
     const author = doc.author as AuthorRow
@@ -111,7 +80,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
       completedAt: myReview?.submitted_at ?? doc.created_at,
-      reviewUrl: `/review?document=${doc.id}`,
+      reviewUrl: `/author/feedback/${doc.id}`,
     }
   })
 
