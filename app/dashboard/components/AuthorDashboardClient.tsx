@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { UploadDocumentForm } from './UploadDocumentForm'
+import { EditDraftForm } from './EditDraftForm'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
+import { submitDraft, deleteDraft } from '../actions'
 
 interface RubricRow {
   id: string
@@ -19,16 +21,37 @@ interface DocumentRow {
   subject_matter: string
   creative_commons_license: string
   third_party_content_disclosure: string | null
-  file_type: string
+  file_type: string | null
   created_at: string
+  is_draft: boolean
+  submission_scope: string[] | null
   document_rubrics: { rubric: { id: string; title: string } | null }[]
   reviews: { id: string; status: string; submitted_at: string | null }[]
+}
+
+function SubmitDraftButton({ documentId }: { documentId: string }) {
+  const [isPending, startTransition] = useTransition()
+  return (
+    <button
+      onClick={() => startTransition(() => submitDraft(documentId))}
+      disabled={isPending}
+      className={[
+        'px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm',
+        isPending
+          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          : 'bg-[#1e3a5f] text-white hover:bg-[#162d4a]',
+      ].join(' ')}
+    >
+      {isPending ? 'Submitting…' : 'Submit for Review'}
+    </button>
+  )
 }
 
 interface Props {
   documents: DocumentRow[]
   rubrics: RubricRow[]
   customSubjectMatters: string[]
+  authorInstitution: string | null
 }
 
 const FILE_TYPE_LABEL: Record<string, string> = {
@@ -42,8 +65,45 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters }: Props) {
+function DeleteDraftButton({ documentId }: { documentId: string }) {
+  const [confirming, setConfirming] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-slate-500">Delete?</span>
+        <button
+          onClick={() => startTransition(() => deleteDraft(documentId))}
+          disabled={isPending}
+          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+        >
+          {isPending ? 'Deleting…' : 'Yes, delete'}
+        </button>
+        <button
+          onClick={() => setConfirming(false)}
+          disabled={isPending}
+          className="px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setConfirming(true)}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 hover:border-red-200 hover:text-red-600 hover:bg-red-50 transition-colors"
+    >
+      Delete
+    </button>
+  )
+}
+
+export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters, authorInstitution }: Props) {
   const [showUpload, setShowUpload] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   return (
     <div>
@@ -68,7 +128,7 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
       {showUpload && (
         <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-base font-semibold text-slate-900 mb-5">Upload a New Document</h3>
-          <UploadDocumentForm rubrics={rubrics} customSubjectMatters={customSubjectMatters} onCancel={() => setShowUpload(false)} />
+          <UploadDocumentForm rubrics={rubrics} customSubjectMatters={customSubjectMatters} authorInstitution={authorInstitution} onCancel={() => setShowUpload(false)} />
         </div>
       )}
 
@@ -94,17 +154,42 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
               .filter(Boolean) as { id: string; title: string }[]
             const reviewsDone = doc.reviews.filter(r => r.status === 'submitted').length
             const reviewsTotal = doc.reviews.length
-
+            const reviewsAssigned = doc.reviews.filter(r => r.status === 'assigned').length
             const reviewsInProgress = doc.reviews.filter(r => r.status === 'in_progress').length
+            const isEditing = editingId === doc.id
 
             return (
               <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                {isEditing ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-semibold text-slate-900">Edit Draft</h4>
+                    </div>
+                    <EditDraftForm
+                      documentId={doc.id}
+                      initial={{
+                        title: doc.title,
+                        authors: doc.authors,
+                        subjectMatter: doc.subject_matter,
+                        creativeCommonsLicense: doc.creative_commons_license,
+                        thirdPartyContentDisclosure: doc.third_party_content_disclosure,
+                        submissionScope: (doc.submission_scope ?? []) as string[],
+                        rubricIds: rubricList.map(r => r.id),
+                        fileType: doc.file_type,
+                      }}
+                      rubrics={rubrics}
+                      authorInstitution={authorInstitution}
+                      hasContent={!!doc.file_type}
+                      onDone={() => setEditingId(null)}
+                    />
+                  </div>
+                ) : (
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-sm font-semibold text-slate-900 truncate">{doc.title}</h3>
                       <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                        {FILE_TYPE_LABEL[doc.file_type] ?? doc.file_type}
+                        {FILE_TYPE_LABEL[doc.file_type ?? ''] ?? doc.file_type}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">Uploaded {formatDate(doc.created_at)}</p>
@@ -145,43 +230,67 @@ export function AuthorDashboardClient({ documents, rubrics, customSubjectMatters
                   </div>
 
                   <div className="shrink-0 flex flex-col items-end gap-2">
-                    {/* Status badges */}
-                    {reviewsTotal === 0 ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
-                        No reviews yet
-                      </span>
+                    {doc.is_draft ? (
+                      <>
+                        <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                          Draft
+                        </span>
+                        <SubmitDraftButton documentId={doc.id} />
+                        <button
+                          onClick={() => setEditingId(doc.id)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <DeleteDraftButton documentId={doc.id} />
+                      </>
                     ) : (
                       <>
-                        {reviewsInProgress > 0 && (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                            </svg>
-                            {reviewsInProgress} under review
+                        {/* Status badges */}
+                        {reviewsTotal === 0 ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                            Unassigned
                           </span>
+                        ) : (
+                          <>
+                            {reviewsAssigned > 0 && reviewsInProgress === 0 && reviewsDone === 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
+                                Assigned
+                              </span>
+                            )}
+                            {reviewsInProgress > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                </svg>
+                                {reviewsInProgress} under review
+                              </span>
+                            )}
+                            {reviewsDone > 0 && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-100">
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                                {reviewsDone} {reviewsDone === 1 ? 'review' : 'reviews'} submitted
+                              </span>
+                            )}
+                          </>
                         )}
+
+                        {/* View feedback */}
                         {reviewsDone > 0 && (
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-100">
-                            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            {reviewsDone} {reviewsDone === 1 ? 'review' : 'reviews'} submitted
-                          </span>
+                          <Link
+                            href={`/dashboard/feedback/${doc.id}`}
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] transition-colors shadow-sm"
+                          >
+                            View Feedback
+                          </Link>
                         )}
                       </>
                     )}
-
-                    {/* View feedback */}
-                    {reviewsDone > 0 && (
-                      <Link
-                        href={`/dashboard/feedback/${doc.id}`}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#162d4a] transition-colors shadow-sm"
-                      >
-                        View Feedback
-                      </Link>
-                    )}
                   </div>
                 </div>
+                )}
               </div>
             )
           })}

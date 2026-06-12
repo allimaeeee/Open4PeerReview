@@ -47,9 +47,10 @@ interface Review {
 }
 
 interface Props {
-  document: { id: string; title: string; file_type?: string; content_fingerprint?: string | null }
+  document: { id: string; title: string; file_type?: string | null; content_fingerprint?: string | null }
   reviews: Review[]
   pdfUrl: string | null
+  includeAuthorNotes?: boolean
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,16 +91,17 @@ function CriterionCard({
   rubricTitle,
   annotations,
   onViewAnnotation,
+  includeAuthorNotes,
 }: {
   index: number
   score: ReviewScore
   rubricTitle: string | null
   annotations: ReviewAnnotation[]
   onViewAnnotation: ((annId: string) => void) | null
+  includeAuthorNotes: boolean
 }) {
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [log, setLog] = useState('')
-  const [msg, setMsg] = useState('')
   const [resolved, setResolved] = useState(false)
 
   const item = score.rubric_item
@@ -133,8 +135,6 @@ function CriterionCard({
           <section className="px-5 py-4">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">About This Criterion</h3>
             <p className="text-sm text-slate-600 leading-relaxed">{item.description}</p>
-            <div className="flex items-center gap-4 mt-2.5">
-            </div>
           </section>
         )}
 
@@ -163,15 +163,15 @@ function CriterionCard({
                     type="checkbox"
                     checked={checked[ann.id] ?? false}
                     onChange={e => setChecked(prev => ({ ...prev, [ann.id]: e.target.checked }))}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    className="print:hidden mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
                   />
                   <div className="flex-1 min-w-0">
                     {ann.tag && <div className="mb-1.5"><TagChip tag={ann.tag as HighlightTag} /></div>}
                     <p className="text-sm text-slate-700">{ann.body}</p>
-                    {onViewAnnotation && (ann.anchor as any)?.page != null && (
+                    {onViewAnnotation && (ann.anchor as { page?: number })?.page != null && (
                       <button
                         onClick={() => onViewAnnotation(ann.id)}
-                        className="mt-1.5 text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
+                        className="print:hidden mt-1.5 text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
                       >
                         ↗ View source
                       </button>
@@ -220,7 +220,7 @@ function CriterionCard({
                     {onViewAnnotation && anchorPage != null && (
                       <button
                         onClick={() => onViewAnnotation(ann.id)}
-                        className="mt-1.5 text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
+                        className="print:hidden mt-1.5 text-xs font-medium text-amber-700 hover:text-amber-900 transition-colors"
                       >
                         ↗ View annotation
                       </button>
@@ -232,20 +232,26 @@ function CriterionCard({
           </section>
         )}
 
-        {/* Revision Log */}
-        <section className="px-5 py-4">
-          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Revision Log</h3>
-          <textarea
-            value={log}
-            onChange={e => setLog(e.target.value)}
-            placeholder="Leave any notes about your revisions or thoughts on this feedback..."
-            rows={3}
-            className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-300 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
-          />
-        </section>
+        {/* Revision Log — author only */}
+        {includeAuthorNotes && (
+          <section className="px-5 py-4">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Revision Log</h3>
+            {log ? (
+              <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{log}</p>
+            ) : (
+              <textarea
+                value={log}
+                onChange={e => setLog(e.target.value)}
+                placeholder="Leave any notes about your revisions or thoughts on this feedback..."
+                rows={3}
+                className="print:hidden w-full resize-none rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-300 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              />
+            )}
+          </section>
+        )}
 
-        {/* Footer */}
-        <div className="flex justify-end px-5 py-3 bg-slate-50">
+        {/* Footer — interactive only, hidden in print */}
+        <div className="print:hidden flex justify-end px-5 py-3 bg-slate-50">
           <label className="flex items-center gap-2 text-sm text-slate-500 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -267,10 +273,12 @@ function ReviewerSection({
   review,
   reviewIndex,
   onViewAnnotation,
+  includeAuthorNotes,
 }: {
   review: Review
   reviewIndex: number
   onViewAnnotation: ((annId: string) => void) | null
+  includeAuthorNotes: boolean
 }) {
   const reviewer = review.reviewer?.display_name ?? review.reviewer?.email ?? 'Anonymous Reviewer'
   const scores = [...review.review_scores].sort(
@@ -307,6 +315,7 @@ function ReviewerSection({
               a => a.rubric_item_id === score.rubric_item?.id
             )}
             onViewAnnotation={onViewAnnotation}
+            includeAuthorNotes={includeAuthorNotes}
           />
         ))}
       </div>
@@ -316,7 +325,7 @@ function ReviewerSection({
 
 // ── FeedbackView ─────────────────────────────────────────────────────────────
 
-export function FeedbackView({ document, reviews, pdfUrl }: Props) {
+export function FeedbackView({ document, reviews, pdfUrl, includeAuthorNotes = true }: Props) {
   const [focusAnnotationId, setFocusAnnotationId] = useState<string | null>(null)
 
   const isHtml = document.file_type === 'html'
@@ -348,45 +357,80 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
   const panelOpen = !!(focusAnnotationId && (pdfUrl || snapshotSrc))
 
   return (
-    <div className={panelOpen ? 'w-1/2 px-6 py-10' : 'mx-auto max-w-4xl px-6 py-10'}>
-      <div className="mb-8">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to Dashboard
-        </Link>
-        <h1 className="text-2xl font-bold text-slate-900">{document.title}</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {reviews.length === 0
-            ? 'No submitted reviews yet.'
-            : `${reviews.length} submitted ${reviews.length === 1 ? 'review' : 'reviews'}`}
-        </p>
+    <>
+      <style>{`
+        @media print {
+          .feedback-main { max-width: none !important; width: 100% !important; padding: 1rem !important; }
+          .feedback-side-panel { display: none !important; }
+        }
+      `}</style>
+
+      <div className={`feedback-main ${panelOpen ? 'w-1/2 px-6 py-10' : 'mx-auto max-w-4xl px-6 py-10'}`}>
+        <div className="mb-8">
+          {/* Back link — hidden in print */}
+          <Link
+            href="/dashboard"
+            className="print:hidden inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors mb-4"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Dashboard
+          </Link>
+
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">{document.title}</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                {reviews.length === 0
+                  ? 'No submitted reviews yet.'
+                  : `${reviews.length} submitted ${reviews.length === 1 ? 'review' : 'reviews'}`}
+              </p>
+            </div>
+
+            {/* Export button — hidden in print */}
+            {reviews.length > 0 && (
+              <button
+                onClick={() => window.print()}
+                className="print:hidden shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"
+              >
+                <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Export PDF
+              </button>
+            )}
+          </div>
+        </div>
+
+        {reviews.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-slate-200 py-20 text-center">
+            <svg className="mx-auto h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="mt-3 text-sm font-medium text-slate-600">No feedback yet</p>
+            <p className="mt-1 text-xs text-slate-400">Reviews will appear here once submitted by a reviewer.</p>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {reviews.map((review, i) => (
+              <ReviewerSection
+                key={review.id}
+                review={review}
+                reviewIndex={i}
+                onViewAnnotation={onViewAnnotation}
+                includeAuthorNotes={includeAuthorNotes}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {reviews.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 py-20 text-center">
-          <svg className="mx-auto h-10 w-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-          <p className="mt-3 text-sm font-medium text-slate-600">No feedback yet</p>
-          <p className="mt-1 text-xs text-slate-400">Reviews will appear here once submitted by a reviewer.</p>
-        </div>
-      ) : (
-        <div className="space-y-12">
-          {reviews.map((review, i) => (
-            <ReviewerSection key={review.id} review={review} reviewIndex={i} onViewAnnotation={onViewAnnotation} />
-          ))}
-        </div>
-      )}
-
-      {/* Side-by-side canvas panel */}
+      {/* Side-by-side canvas panel — hidden in print */}
       {panelOpen && (
-        <div className="fixed right-0 top-0 bottom-0 w-1/2 z-40 bg-white border-l border-slate-200 shadow-2xl flex flex-col">
+        <div className="feedback-side-panel fixed right-0 top-0 bottom-0 w-1/2 z-40 bg-white border-l border-slate-200 shadow-2xl flex flex-col">
           <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-slate-200 flex-shrink-0">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-700">
@@ -424,6 +468,6 @@ export function FeedbackView({ document, reviews, pdfUrl }: Props) {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

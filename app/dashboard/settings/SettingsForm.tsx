@@ -25,7 +25,7 @@ interface Props {
   defaultInstitution: string
   defaultDiscipline: string
   defaultProfession: string
-  defaultRoles: ('author' | 'reviewer')[]
+  defaultRoles: ('author' | 'reviewer' | 'coordinator')[]
   defaultReviewerType: string
   defaultExpertiseTags: string[]
   defaultRubricSpecializations: string[]
@@ -127,7 +127,7 @@ export function SettingsForm({
   const [passwordSaved, setPasswordSaved]     = useState(false)
 
   // ── Roles section ────────────────────────────────────────────────────────────
-  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer'>>(new Set(defaultRoles))
+  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer' | 'coordinator'>>(new Set(defaultRoles))
   const [reviewerType, setReviewerType]       = useState(defaultReviewerType)
   const [expertiseTags, setExpertiseTags]     = useState<Set<string>>(new Set(defaultExpertiseTags))
   const [tagInput, setTagInput]               = useState('')
@@ -145,7 +145,7 @@ export function SettingsForm({
     setProfileSaved(false)
   }
 
-  function toggleRole(role: 'author' | 'reviewer') {
+  function toggleRole(role: 'author' | 'reviewer' | 'coordinator') {
     setRoles(prev => {
       const next = new Set(prev)
       if (next.has(role)) next.delete(role)
@@ -530,26 +530,28 @@ export function SettingsForm({
               Role <span className="text-red-500">*</span>
             </p>
             <p className="text-xs text-slate-500 mb-3">Select all that apply.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {(['author', 'reviewer'] as const).map(role => (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {([
+                { value: 'author',      label: 'Author',      description: 'Submit work for peer review' },
+                { value: 'reviewer',    label: 'Reviewer',    description: 'Review and evaluate submissions' },
+                { value: 'coordinator', label: 'Coordinator', description: 'Manage OER submissions for your organization' },
+              ] as const).map(({ value, label, description }) => (
                 <button
-                  key={role}
+                  key={value}
                   type="button"
-                  onClick={() => toggleRole(role)}
+                  onClick={() => toggleRole(value)}
                   disabled={rolesLoading}
                   className={[
                     'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                    roles.has(role)
+                    roles.has(value)
                       ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
                       : 'border-slate-200 bg-white hover:border-slate-300',
                   ].join(' ')}
                 >
-                  <span className={['text-sm font-semibold capitalize', roles.has(role) ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
-                    {role === 'author' ? 'Author' : 'Reviewer'}
+                  <span className={['text-sm font-semibold', roles.has(value) ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
+                    {label}
                   </span>
-                  <span className="mt-0.5 text-xs text-slate-500">
-                    {role === 'author' ? 'Submit work for peer review' : 'Review and evaluate submissions'}
-                  </span>
+                  <span className="mt-0.5 text-xs text-slate-500">{description}</span>
                 </button>
               ))}
             </div>

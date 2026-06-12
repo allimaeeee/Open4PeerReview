@@ -1,6 +1,3 @@
-// types/database.types.ts
-// Regenerate with: npx supabase gen types typescript --project-id nkcyjfuzmmkuavhmqyvu > types/database.types.ts
-
 export type Json =
   | string
   | number
@@ -65,6 +62,94 @@ export type Database = {
           },
         ]
       }
+      document_acceptances: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          reviewer_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          reviewer_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_acceptances_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_acceptances_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_assignments: {
+        Row: {
+          assigned_by: string
+          created_at: string
+          decline_note: string | null
+          declined_at: string | null
+          document_id: string
+          id: string
+          reviewer_id: string
+        }
+        Insert: {
+          assigned_by: string
+          created_at?: string
+          decline_note?: string | null
+          declined_at?: string | null
+          document_id: string
+          id?: string
+          reviewer_id: string
+        }
+        Update: {
+          assigned_by?: string
+          created_at?: string
+          decline_note?: string | null
+          declined_at?: string | null
+          document_id?: string
+          id?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_assignments_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_assignments_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_rubrics: {
         Row: {
           assigned_at: string
@@ -103,15 +188,19 @@ export type Database = {
           author_id: string
           authors: string
           content_fingerprint: string | null
+          coordinator_released_at: string | null
+          coordinator_upload: boolean
           created_at: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
-          file_type: Database["public"]["Enums"]["file_type"]
-          file_url: string
+          file_type: Database["public"]["Enums"]["file_type"] | null
+          file_url: string | null
           id: string
+          is_draft: boolean
           platform: string | null
           source_url: string | null
-          storage_path: string
+          storage_path: string | null
           subject_matter: string
+          submission_scope: string[]
           third_party_content_disclosure: string | null
           title: string
         }
@@ -119,15 +208,19 @@ export type Database = {
           author_id: string
           authors?: string
           content_fingerprint?: string | null
+          coordinator_released_at?: string | null
+          coordinator_upload?: boolean
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
-          file_type: Database["public"]["Enums"]["file_type"]
-          file_url: string
+          file_type?: Database["public"]["Enums"]["file_type"] | null
+          file_url?: string | null
           id?: string
+          is_draft?: boolean
           platform?: string | null
           source_url?: string | null
-          storage_path: string
+          storage_path?: string | null
           subject_matter?: string
+          submission_scope?: string[]
           third_party_content_disclosure?: string | null
           title: string
         }
@@ -135,15 +228,19 @@ export type Database = {
           author_id?: string
           authors?: string
           content_fingerprint?: string | null
+          coordinator_released_at?: string | null
+          coordinator_upload?: boolean
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
-          file_type?: Database["public"]["Enums"]["file_type"]
-          file_url?: string
+          file_type?: Database["public"]["Enums"]["file_type"] | null
+          file_url?: string | null
           id?: string
+          is_draft?: boolean
           platform?: string | null
           source_url?: string | null
-          storage_path?: string
+          storage_path?: string | null
           subject_matter?: string
+          submission_scope?: string[]
           third_party_content_disclosure?: string | null
           title?: string
         }
@@ -254,6 +351,45 @@ export type Database = {
             columns: ["rubric_item_id"]
             isOneToOne: false
             referencedRelation: "rubric_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_declines: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          note: string
+          reviewer_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          note: string
+          reviewer_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          note?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_declines_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_declines_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -434,7 +570,6 @@ export type Database = {
           expertise_tags: string[] | null
           id: string
           institution: string | null
-          oer_scope: string[]
           onboarding_completed: boolean
           primary_discipline: string | null
           profession: string | null
@@ -450,7 +585,6 @@ export type Database = {
           expertise_tags?: string[] | null
           id: string
           institution?: string | null
-          oer_scope?: string[]
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
@@ -466,7 +600,6 @@ export type Database = {
           expertise_tags?: string[] | null
           id?: string
           institution?: string | null
-          oer_scope?: string[]
           onboarding_completed?: boolean
           primary_discipline?: string | null
           profession?: string | null
@@ -516,7 +649,7 @@ export type Database = {
         | "social_sciences"
         | "other"
       file_type: "pdf" | "html" | "image" | "audio"
-      review_status: "in_progress" | "submitted"
+      review_status: "unassigned" | "assigned" | "in_progress" | "submitted"
       user_role: "author" | "reviewer" | "admin"
     }
     CompositeTypes: {
@@ -550,13 +683,13 @@ export type Tables<
     : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
         DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
+  ? (DefaultSchema["Tables"] &
+      DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R
+    }
+    ? R
     : never
+  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
@@ -576,12 +709,12 @@ export type TablesInsert<
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Insert: infer I
+    }
+    ? I
     : never
+  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
@@ -601,12 +734,12 @@ export type TablesUpdate<
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Update: infer U
+    }
+    ? U
     : never
+  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
@@ -622,8 +755,8 @@ export type Enums<
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
@@ -639,8 +772,8 @@ export type CompositeTypes<
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : never
 
 export const Constants = {
   public: {
@@ -675,7 +808,7 @@ export const Constants = {
         "other",
       ],
       file_type: ["pdf", "html", "image", "audio"],
-      review_status: ["in_progress", "submitted"],
+      review_status: ["unassigned", "assigned", "in_progress", "submitted"],
       user_role: ["author", "reviewer", "admin"],
     },
   },

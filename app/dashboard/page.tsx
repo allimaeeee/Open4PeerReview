@@ -23,7 +23,7 @@ export default async function DashboardPage({
   if (!profile?.onboarding_completed) redirect('/onboard')
 
   const roles: string[] = profile.roles ?? []
-  const isCoordinator = profile.role === 'admin'
+  const isCoordinator = roles.includes('coordinator') || profile.role === 'admin'
   const isAuthor = roles.includes('author')
   const isReviewer = roles.includes('reviewer')
 
