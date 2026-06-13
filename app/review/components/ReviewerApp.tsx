@@ -12,9 +12,9 @@ import { ReviewerConsole } from './ReviewerConsole'
 export interface OERDocument {
   id: string
   title: string
-  file_url: string
-  storage_path: string
-  file_type: string
+  file_url: string | null
+  storage_path: string | null
+  file_type: string | null
   source_url: string | null
   content_fingerprint: string | null
 }
@@ -60,7 +60,7 @@ export interface ScoreComment {
 
 export interface Review {
   id: string
-  status: 'in_progress' | 'submitted'
+  status: 'unassigned' | 'assigned' | 'in_progress' | 'submitted'
   overall_comment: string | null
   notes: string | null
   last_saved_at: string | null
@@ -94,9 +94,28 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
     score_comments ( id, rubric_item_id, score_level, body )
   `
 
-  // Auto-create a review on first visit (no picker step)
+  // On first visit: if a pre-assigned review exists, transition it to in_progress.
+  // Otherwise auto-create a new in_progress review.
   useEffect(() => {
-    if (review || creating || rubrics.length === 0 || !document) return
+    if (creating || !document) return
+
+    if (review) {
+      // Pre-assigned review was loaded server-side — transition assigned → in_progress
+      if (review.status === 'assigned') {
+        supabase
+          .from('reviews')
+          .update({ status: 'in_progress' })
+          .eq('id', review.id)
+          .select(reviewSelect)
+          .single()
+          .then(({ data, error }) => {
+            if (!error && data) setReview(data as Review)
+          })
+      }
+      return
+    }
+
+    if (rubrics.length === 0) return
     setCreating(true)
 
     supabase
@@ -105,6 +124,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
         document_id: document.id,
         rubric_id: rubrics[0].id,
         reviewer_id: userId,
+        status: 'in_progress',
       })
       .select(reviewSelect)
       .single()

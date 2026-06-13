@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -32,16 +32,15 @@ interface Props {
   defaultInstitution: string
   defaultDiscipline: string
   defaultProfession: string
-  defaultRoles: ('author' | 'reviewer')[]
+  defaultRoles: ('author' | 'reviewer' | 'coordinator')[]
   defaultReviewerType: string
   defaultExpertiseTags: string[]
   defaultRubricSpecializations: string[]
-  defaultOerScope: ('public' | 'organization')[]
   institutions: string[]
   rubrics: { id: string; title: string }[]
 }
 
-// ── Icons ──────────────────────────────────────────────────────────────────
+// â”€â”€ Icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function AuthorIcon() {
   return (
@@ -98,12 +97,12 @@ function IndustryIcon() {
   )
 }
 
-// ── Shared panel sub-components ────────────────────────────────────────────
+// â”€â”€ Shared panel sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ReviewerEyebrow({ n }: { n: number }) {
   return (
     <p className="text-label-sm font-label uppercase tracking-widest text-text-muted mb-2">
-      Reviewer Setup · {n} of 3
+      Reviewer Setup Â· {n} of 3
     </p>
   )
 }
@@ -145,7 +144,7 @@ function PanelFooter({
   )
 }
 
-// ── Main component ─────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function OnboardingForm({
   userId,
@@ -158,26 +157,24 @@ export function OnboardingForm({
   defaultReviewerType,
   defaultExpertiseTags,
   defaultRubricSpecializations,
-  defaultOerScope,
   institutions,
   rubrics,
 }: Props) {
   const isKnownDiscipline = DISCIPLINE_OPTIONS.some(d => d.value === defaultDiscipline)
   const isKnownProfession = PROFESSION_OPTIONS.some(p => p.value === defaultProfession)
 
-  // ── State (preserved exactly) ──────────────────────────────────────────
+  // â”€â”€ State (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [displayName, setDisplayName]         = useState(defaultDisplayName)
   const [institution, setInstitution]         = useState(defaultInstitution)
   const [discipline, setDiscipline]           = useState(isKnownDiscipline ? defaultDiscipline : (defaultDiscipline ? 'other' : ''))
   const [disciplineOther, setDisciplineOther] = useState(isKnownDiscipline ? '' : defaultDiscipline)
   const [profession, setProfession]           = useState(isKnownProfession ? defaultProfession : (defaultProfession ? 'other' : ''))
   const [professionOther, setProfessionOther] = useState(isKnownProfession ? '' : defaultProfession)
-  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer'>>(new Set(defaultRoles))
+  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer' | 'coordinator'>>(new Set(defaultRoles))
   const [reviewerType, setReviewerType]       = useState(defaultReviewerType)
   const [expertiseTags, setExpertiseTags]     = useState<Set<string>>(new Set(defaultExpertiseTags))
   const [tagInput, setTagInput]               = useState('')
   const [rubricSpecs, setRubricSpecs]         = useState<Set<string>>(new Set(defaultRubricSpecializations))
-  const [oerScope, setOerScope]               = useState<Set<'public' | 'organization'>>(new Set(defaultOerScope))
   const [errors, setErrors]                   = useState<Record<string, string>>({})
   const [serverError, setServerError]         = useState<string | null>(null)
   const [loading, setLoading]                 = useState(false)
@@ -190,7 +187,7 @@ export function OnboardingForm({
   const sub      = parseInt(searchParams.get('sub')  ?? '0', 10)
   const isReviewer = roles.has('reviewer')
 
-  // ── Navigation ─────────────────────────────────────────────────────────
+  // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function navigate(step: number, subStep?: number) {
     const params = new URLSearchParams()
     params.set('step', String(step))
@@ -198,12 +195,12 @@ export function OnboardingForm({
     router.push(`/onboard?${params.toString()}`, { scroll: false })
   }
 
-  // ── Event handlers (preserved exactly) ────────────────────────────────
+  // â”€â”€ Event handlers (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function clearError(key: string) {
     setErrors(prev => { const next = { ...prev }; delete next[key]; return next })
   }
 
-  function toggleRole(role: 'author' | 'reviewer') {
+  function toggleRole(role: 'author' | 'reviewer' | 'coordinator') {
     setRoles(prev => {
       const next = new Set(prev)
       if (next.has(role)) next.delete(role)
@@ -237,15 +234,6 @@ export function OnboardingForm({
     })
   }
 
-  function toggleOerScope(scope: 'public' | 'organization') {
-    setOerScope(prev => {
-      const next = new Set(prev)
-      if (next.has(scope)) next.delete(scope)
-      else next.add(scope)
-      return next
-    })
-  }
-
   function toggleRubric(id: string) {
     setRubricSpecs(prev => {
       const next = new Set(prev)
@@ -256,7 +244,7 @@ export function OnboardingForm({
     clearError('rubricSpecs')
   }
 
-  // ── Validation (preserved exactly) ────────────────────────────────────
+  // â”€â”€ Validation (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function validate() {
     const errs: Record<string, string> = {}
     if (!displayName.trim())    errs.displayName     = 'Display name is required.'
@@ -275,7 +263,7 @@ export function OnboardingForm({
     return Object.keys(errs).length === 0
   }
 
-  // ── Submission (preserved sequence, triggered by button click) ─────────
+  // â”€â”€ Submission (preserved sequence, triggered by button click) â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function submit() {
     if (!validate()) return
 
@@ -304,7 +292,6 @@ export function OnboardingForm({
         reviewer_type:            isReviewer ? reviewerType : null,
         expertise_tags:           isReviewer ? Array.from(expertiseTags) : [],
         rubric_specializations:   isReviewer ? Array.from(rubricSpecs) : [],
-        oer_scope:                isReviewer && institution.trim() ? Array.from(oerScope) : [],
         onboarding_completed:     true,
       },
       { onConflict: 'id' }
@@ -320,7 +307,7 @@ export function OnboardingForm({
     navigate(4)
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────
+  // â”€â”€ Derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const predefinedTagValues = new Set(DISCIPLINE_OPTIONS.map(d => d.value))
   const customTags = Array.from(expertiseTags).filter(t => !predefinedTagValues.has(t))
 
@@ -331,16 +318,16 @@ export function OnboardingForm({
     !!profession &&
     (profession !== 'other' || !!professionOther.trim())
 
-  // ── Panel renderer ─────────────────────────────────────────────────────
+  // â”€â”€ Panel renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderPanel() {
 
-    // Panel 1 — Welcome
+    // Panel 1 â€” Welcome
     if (mainStep === 1) return (
       <>
         <img src="/welcome-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Welcome to Open4PeerReview</h1>
         <p className="text-body-md text-text-muted mt-2">
-          Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.
+          Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them â€” your contribution strengthens learning for everyone.
         </p>
         <p className="text-body-md text-text-muted mt-1">This takes about 3 minutes.</p>
         <PanelFooter
@@ -350,7 +337,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 2 — Personal info
+    // Panel 2 â€” Personal info
     if (mainStep === 2) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
@@ -399,7 +386,7 @@ export function OnboardingForm({
               disabled={loading}
               error={errors.discipline}
             >
-              <option value="">Select a discipline…</option>
+              <option value="">Select a disciplineâ€¦</option>
               {DISCIPLINE_OPTIONS.map(d => (
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
@@ -427,7 +414,7 @@ export function OnboardingForm({
               disabled={loading}
               error={errors.profession}
             >
-              <option value="">Select your profession…</option>
+              <option value="">Select your professionâ€¦</option>
               {PROFESSION_OPTIONS.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
@@ -455,12 +442,12 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3 — Role selection
+    // Panel 3 â€” Role selection
     if (mainStep === 3 && sub === 0) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">How do you participate in OER?</h1>
         <p className="text-body-md text-text-muted mt-2">
-          Pick all that apply — many people both create and review. You can always add roles later from your profile settings.
+          Pick all that apply â€” many people both create and review. You can always add roles later from your profile settings.
         </p>
 
         <div className="space-y-3 mt-6">
@@ -484,9 +471,8 @@ export function OnboardingForm({
           />
           <SelectionCard
             selectionMode="checkbox"
-            isSelected={false}
-            onChange={() => {}}
-            comingSoon
+            isSelected={roles.has('coordinator')}
+            onChange={() => toggleRole('coordinator')}
             icon={<CoordinatorIcon />}
             title="Coordinator"
             description="You oversee review pipelines, match reviewers to resources, and ensure feedback quality before it reaches authors."
@@ -511,7 +497,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.1 — Reviewer type
+    // Panel 3.1 â€” Reviewer type
     if (mainStep === 3 && sub === 1) return (
       <>
         <ReviewerEyebrow n={1} />
@@ -537,7 +523,7 @@ export function OnboardingForm({
             disabled={loading}
             icon={<IndustryIcon />}
             title="Industry Expert"
-            description="You bring workforce and industry perspective — evaluating whether OERs prepare learners for real-world professional contexts."
+            description="You bring workforce and industry perspective â€” evaluating whether OERs prepare learners for real-world professional contexts."
           />
         </div>
 
@@ -552,13 +538,13 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.2 — Expertise tags
+    // Panel 3.2 â€” Expertise tags
     if (mainStep === 3 && sub === 2) return (
       <>
         <ReviewerEyebrow n={2} />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What are your areas of expertise?</h1>
         <p className="text-body-md text-text-muted mt-2">
-          These tags surface tasks that match your knowledge. Add at least two — you can always update them in Settings.
+          These tags surface tasks that match your knowledge. Add at least two â€” you can always update them in Settings.
         </p>
 
         <div className="mt-6">
@@ -606,7 +592,7 @@ export function OnboardingForm({
             <div className="flex-1 min-w-0">
               <Input
                 type="text"
-                placeholder="Add a custom tag…"
+                placeholder="Add a custom tagâ€¦"
                 value={tagInput}
                 onChange={e => setTagInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
@@ -635,7 +621,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.3 — Rubric specialization
+    // Panel 3.3 â€” Rubric specialization
     if (mainStep === 3 && sub === 3) return (
       <>
         <ReviewerEyebrow n={3} />
@@ -671,23 +657,32 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 4 — Finish
+    // Panel 4 â€” Finish
     if (mainStep === 4) return (
       <>
         <img src="/celebration-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">You're all set, {displayName}!</h1>
         <p className="text-body-md text-text-muted mt-2">
-          You're ready to go. Explore your dashboard to see what's waiting for you — and if anything changes, you can always update your profile in Settings.
+          You're ready to go. Explore your dashboard to see what's waiting for you â€” and if anything changes, you can always update your profile in Settings.
         </p>
 
         <div className="flex justify-end gap-3 mt-8">
           {roles.has('reviewer') && (
             <Button
               type="button"
-              variant={roles.has('author') ? 'secondary' : 'primary'}
+              variant={roles.has('author') || roles.has('coordinator') ? 'secondary' : 'primary'}
               onClick={() => router.push('/reviewer')}
             >
               Go to reviewer dashboard
+            </Button>
+          )}
+          {roles.has('coordinator') && (
+            <Button
+              type="button"
+              variant={roles.has('author') ? 'secondary' : 'primary'}
+              onClick={() => router.push('/coordinator')}
+            >
+              Go to coordinator dashboard
             </Button>
           )}
           {roles.has('author') && (
@@ -706,7 +701,7 @@ export function OnboardingForm({
     return null
   }
 
-  // ── Shell ──────────────────────────────────────────────────────────────
+  // â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="min-h-screen bg-surface py-12 px-4">
       <div className="max-w-[600px] mx-auto">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { submitOpenStaxLink } from '@/lib/supabase/queries'
+import { submitOpenStaxLink, updateDocumentContent } from '@/lib/supabase/queries'
 import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
 
 async function fingerprintHtml(html: string): Promise<string> {
@@ -26,6 +26,10 @@ export async function POST(req: NextRequest) {
     ccLicense: string
     thirdPartyDisclosure?: string
     rubricIds?: string[]
+    submissionScope?: string[]
+    isDraft?: boolean
+    coordinatorUpload?: boolean
+    documentId?: string
   }
 
   try {
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds } = body
+  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, documentId } = body
 
   if (!url || !isKnownOerUrl(url)) {
     return NextResponse.json(
@@ -88,6 +92,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Update mode: patch content on an existing document
+    if (documentId) {
+      const { data: doc } = await supabase
+        .from('documents')
+        .select('author_id, is_draft')
+        .eq('id', documentId)
+        .single()
+
+      if (!doc || doc.author_id !== user.id) {
+        return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+      }
+      if (!doc.is_draft) {
+        return NextResponse.json({ error: 'Only drafts can be updated' }, { status: 400 })
+      }
+
+      await updateDocumentContent(supabase, documentId, {
+        fileType: 'html',
+        fileUrl: url,
+        storagePath,
+        sourceUrl: url,
+        contentFingerprint: fingerprint,
+        platform,
+      })
+
+      return NextResponse.json({ documentId, fingerprint })
+    }
+
+    // Create mode: insert new document
     const doc = await submitOpenStaxLink(supabase, {
       url,
       storagePath,
@@ -99,6 +131,9 @@ export async function POST(req: NextRequest) {
       thirdPartyDisclosure: thirdPartyDisclosure ?? null,
       rubricIds: rubricIds ?? [],
       platform,
+      submissionScope: submissionScope ?? ['public'],
+      isDraft: isDraft ?? false,
+      coordinatorUpload: coordinatorUpload ?? false,
     })
     return NextResponse.json({ documentId: doc.id, fingerprint })
   } catch (err) {
