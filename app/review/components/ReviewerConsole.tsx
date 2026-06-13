@@ -10,6 +10,7 @@ import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReview
 import { useReviewTracking } from '../../../hooks/useReviewTracking'
 import { useRouter } from 'next/navigation'
 import type { HighlightTag } from '@/types'
+import type { Json } from '@/types/database.types'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
 import { ReviewConsoleHeader } from './ReviewConsoleHeader'
@@ -371,7 +372,7 @@ export function ReviewerConsole({
           saveAnnotation({
             reviewId: review.id,
             rubricItemId: id,
-            anchor: target.anchor,
+            anchor: target.anchor as Json,
             body: target.body,
             tag: target.tag as HighlightTag | null,
           })
@@ -623,7 +624,7 @@ export function ReviewerConsole({
         totalCount={totalCount}
         lastSavedAt={lastSavedAt ? new Date(lastSavedAt) : null}
         onBack={() => router.push('/reviewer')}
-        onSubmit={() => handleSubmit('')}
+        onSubmit={async () => { await handleSubmit('') }}
         isSubmitted={isSubmitted}
       />
 
