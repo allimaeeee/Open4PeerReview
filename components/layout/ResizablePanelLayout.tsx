@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 interface ResizablePanelLayoutProps {
@@ -39,34 +39,34 @@ export default function ResizablePanelLayout({
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  // Offset between cursor and the split point at the moment drag starts,
+  // so the divider tracks the cursor rather than snapping to it.
+  const dragOffsetRef = useRef(0)
 
-  useEffect(() => {
-    if (!isDragging) return
-
-    function onMouseMove(e: MouseEvent) {
-      if (!containerRef.current) return
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setIsDragging(true)
+    if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
-      const newPercent = ((e.clientX - rect.left) / rect.width) * 100
-      const minLeftPercent = (minLeftWidth / rect.width) * 100
-      const minRightPercent = (minRightWidth / rect.width) * 100
-      const clamped = Math.min(Math.max(newPercent, minLeftPercent), 100 - minRightPercent)
-      setLeftPercent(clamped)
+      dragOffsetRef.current = (e.clientX - rect.left) - (leftPercent / 100) * rect.width
     }
+  }
 
-    function onMouseUp() {
-      setIsDragging(false)
-    }
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!isDragging || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const newPercent = ((e.clientX - rect.left - dragOffsetRef.current) / rect.width) * 100
+    const minLeftPercent = (minLeftWidth / rect.width) * 100
+    const minRightPercent = (minRightWidth / rect.width) * 100
+    setLeftPercent(Math.min(Math.max(newPercent, minLeftPercent), 100 - minRightPercent))
+  }
 
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
-    }
-  }, [isDragging, minLeftWidth, minRightWidth])
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    setIsDragging(false)
+  }
 
   const leftWidth = leftCollapsed ? 0 : `${leftPercent}%`
-  const leftFlex = rightCollapsed ? '1 1 0%' : undefined
 
   return (
     <div
@@ -76,10 +76,11 @@ export default function ResizablePanelLayout({
       {/* Left panel */}
       <div
         style={{
-          width: leftFlex ? undefined : leftWidth,
-          flex: leftFlex,
+          width: rightCollapsed ? undefined : leftWidth,
+          flexGrow: rightCollapsed ? 1 : 0,
+          flexShrink: rightCollapsed ? 1 : 0,
+          flexBasis: rightCollapsed ? '0%' : undefined,
           overflow: leftCollapsed ? 'hidden' : undefined,
-          flexShrink: 0,
         }}
         className="h-full overflow-y-auto"
       >
@@ -90,31 +91,50 @@ export default function ResizablePanelLayout({
       <div
         className="relative h-full flex-shrink-0 cursor-col-resize"
         style={{ width: 12 }}
-        onMouseDown={() => setIsDragging(true)}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         <div className="w-px h-full bg-border mx-auto" />
 
-        {/* Collapse left button */}
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); setLeftCollapsed(v => !v) }}
-          onMouseDown={e => e.stopPropagation()}
-          className="absolute left-1/2 -translate-x-1/2 top-8 w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
-          aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse left panel'}
-        >
-          {leftCollapsed ? <ChevronRight /> : <ChevronLeft />}
-        </button>
+        {/* Left-face button — hangs into left panel. Always shows ‹.
+            Normal: collapse left. Right-collapsed: expand right (right face is hidden).
+            Guarded: won't collapse left if right is already collapsed. */}
+        {!leftCollapsed && (
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              if (rightCollapsed) setRightCollapsed(false)
+              else setLeftCollapsed(true)
+            }}
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute top-8 left-0 -translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+            aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse left panel'}
+          >
+            <ChevronLeft />
+          </button>
+        )}
 
-        {/* Collapse right button */}
-        <button
-          type="button"
-          onClick={e => { e.stopPropagation(); setRightCollapsed(v => !v) }}
-          onMouseDown={e => e.stopPropagation()}
-          className="absolute left-1/2 -translate-x-1/2 top-16 w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
-          aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse right panel'}
-        >
-          {rightCollapsed ? <ChevronLeft /> : <ChevronRight />}
-        </button>
+        {/* Right-face button — hangs into right panel. Always shows ›.
+            Normal: collapse right. Left-collapsed: expand left (left face is hidden).
+            Guarded: won't collapse right if left is already collapsed. */}
+        {!rightCollapsed && (
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              if (leftCollapsed) setLeftCollapsed(false)
+              else setRightCollapsed(true)
+            }}
+            onPointerDown={e => e.stopPropagation()}
+            className="absolute top-8 right-0 translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+            aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse right panel'}
+          >
+            <ChevronRight />
+          </button>
+        )}
+
       </div>
 
       {/* Right panel */}

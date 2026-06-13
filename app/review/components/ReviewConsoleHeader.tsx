@@ -20,7 +20,20 @@ function formatLastSaved(lastSavedAt: Date | null): string {
   if (diffSec < 10) return `Last saved ${time} (just now)`
   if (diffSec < 60) return `Last saved ${time} (${diffSec}s ago)`
   const diffMin = Math.floor(diffSec / 60)
-  return `Last saved ${time} (${diffMin}m ago)`
+  if (diffMin < 60) return `Last saved ${time} (${diffMin} min ago)`
+  const diffHrs = Math.floor(diffMin / 60)
+  const remMin  = diffMin % 60
+  if (diffHrs < 24) {
+    const parts = [`${diffHrs} ${diffHrs === 1 ? 'hr' : 'hrs'}`]
+    if (remMin > 0) parts.push(`${remMin} min`)
+    return `Last saved ${time} (${parts.join(', ')} ago)`
+  }
+  const diffDays = Math.floor(diffHrs / 24)
+  const remHrs   = diffHrs % 24
+  const parts = [`${diffDays} ${diffDays === 1 ? 'day' : 'days'}`]
+  if (remHrs > 0) parts.push(`${remHrs} ${remHrs === 1 ? 'hr' : 'hrs'}`)
+  if (remMin > 0) parts.push(`${remMin} min`)
+  return `Last saved ${time} (${parts.join(', ')} ago)`
 }
 
 export function ReviewConsoleHeader({

@@ -17,11 +17,10 @@ interface AnnotationConfirmPayload {
 }
 
 interface AnnotationPopupProps {
-  selectedText: string
   criteria: CriterionOption[]
   onSave: (payload: AnnotationConfirmPayload) => void
   onCancel: () => void
-  position: { x: number; y: number }
+  position: { x: number; selectionTop: number; selectionBottom: number }
 }
 
 const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
@@ -30,7 +29,6 @@ const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
 ]
 
 export function AnnotationPopup({
-  selectedText,
   criteria,
   onSave,
   onCancel,
@@ -39,25 +37,32 @@ export function AnnotationPopup({
   const [rubricItemIds, setRubricItemIds] = useState<string[]>([])
   const [tag, setTag] = useState<HighlightTag | null>(null)
   const [body, setBody] = useState('')
-  const [adjustedPos, setAdjustedPos] = useState(position)
+  const [adjustedPos, setAdjustedPos] = useState({ x: position.x, y: position.selectionBottom + 8 })
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!ref.current) return
     const { offsetWidth: w, offsetHeight: h } = ref.current
+    const MARGIN = 8
     let x = position.x
-    let y = position.y
-    if (x + w > window.innerWidth - 16) x = window.innerWidth - w - 16
-    if (y + h > window.innerHeight - 16) y = window.innerHeight - h - 16
+
+    // Try above the selection; fall back to below if not enough space
+    let y = position.selectionTop - h - MARGIN
+    if (y < MARGIN) y = position.selectionBottom + MARGIN
+
+    // Clamp to viewport
+    if (x + w > window.innerWidth  - MARGIN) x = window.innerWidth  - w - MARGIN
+    if (x < MARGIN) x = MARGIN
+    if (y + h > window.innerHeight - MARGIN) y = window.innerHeight - h - MARGIN
+    if (y < MARGIN) y = MARGIN
+
     setAdjustedPos({ x, y })
-  }, [position.x, position.y])
+  }, [position.x, position.selectionTop, position.selectionBottom])
 
   function handleSave() {
     if (!body.trim()) return
     onSave({ body: body.trim(), rubricItemIds, tag })
   }
-
-  const preview = selectedText.length > 60 ? selectedText.slice(0, 60) + '…' : selectedText
 
   return (
     <div
@@ -85,9 +90,6 @@ export function AnnotationPopup({
           </svg>
         </button>
       </div>
-
-      {/* Selected text preview */}
-      <p className="text-body-sm text-text-muted italic">&ldquo;{preview}&rdquo;</p>
 
       {/* Criteria selector */}
       <div className="flex flex-col gap-1">
@@ -146,20 +148,11 @@ export function AnnotationPopup({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-body-sm text-text-muted hover:text-text-primary cursor-pointer"
-        >
-          Cancel
-        </button>
-        <div className="flex items-center gap-2">
-          <span className="text-label-sm text-text-muted">⌘↵ to save</span>
-          <Button variant="primary" disabled={!body.trim()} onClick={handleSave}>
-            Save
-          </Button>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-label-sm text-text-muted">⌘↵ to save</span>
+        <Button variant="primary" disabled={!body.trim()} onClick={handleSave}>
+          Save
+        </Button>
       </div>
     </div>
   )

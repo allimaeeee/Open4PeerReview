@@ -8,12 +8,13 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
 import { useReviewTracking } from '../../../hooks/useReviewTracking'
+import { useRouter } from 'next/navigation'
 import type { HighlightTag } from '@/types'
-import { SaveStatusIndicator } from '@/components/SaveStatusIndicator'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
-import { AnnotationPanel } from './AnnotationPanel'
-import { SubmitButton } from './SubmitButton'
+import { ReviewConsoleHeader } from './ReviewConsoleHeader'
+import ReviewRightPanel from './ReviewRightPanel'
+import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
 
 type AnyTextSelection = TextSelection | HtmlTextSelection
@@ -62,6 +63,7 @@ export function ReviewerConsole({
   )
 
   const isSubmitted = review.status === 'submitted'
+  const router = useRouter()
 
   // ── Load rubric items ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,15 +132,12 @@ export function ReviewerConsole({
   const { track, flush } = useReviewTracking({ supabase, reviewId: review.id, reviewerId: userId })
   const criterionFocusTime = useRef<{ id: string; at: number } | null>(null)
 
-  // After any save, refresh last_saved_at from DB
-  const refreshLastSaved = useCallback(async () => {
-    const { data } = await supabase
-      .from('reviews')
-      .select('last_saved_at')
-      .eq('id', review.id)
-      .single()
-    if (data?.last_saved_at) setLastSavedAt(data.last_saved_at)
-  }, [supabase, review.id])
+  // After any save, stamp the current time — last_saved_at on the DB is only
+  // updated by a trigger on review_score upserts, so fetching from DB would
+  // return a stale value for annotation saves.
+  const refreshLastSaved = useCallback(() => {
+    setLastSavedAt(new Date().toISOString())
+  }, [])
 
   useEffect(() => {
     if (saveStatus === 'saved') refreshLastSaved()
@@ -571,6 +570,41 @@ export function ReviewerConsole({
     [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
   )
 
+  const firstRubricId = useMemo(() => {
+    for (const item of rubricItems) {
+      return item.rubric_id
+    }
+    return null
+  }, [rubricItems])
+
+  const [activeRubricId, setActiveRubricId] = useState<string | null>(firstRubricId)
+  const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (firstRubricId && activeRubricId === null) {
+      setActiveRubricId(firstRubricId)
+    }
+  }, [firstRubricId])
+
+  const activeViewerCriteria = useMemo(
+    () => activeRubricId
+      ? rubricItems.filter(item => item.rubric_id === activeRubricId).map(({ id, label }) => ({ id, label }))
+      : rubricItems.map(({ id, label }) => ({ id, label })),
+    [rubricItems, activeRubricId]
+  )
+
+  const handleScoreToggle = useCallback(
+    (rubricItemId: string, level: CriterionScore) => {
+      const current = scoresRef.current[rubricItemId]
+      if (!current) return
+      const newScores = current.scores.includes(level)
+        ? current.scores.filter(s => s !== level)
+        : [...current.scores, level]
+      handleScoreChange(rubricItemId, { scores: newScores })
+    },
+    [handleScoreChange]
+  )
+
   const scoredCount = Object.values(scores).filter((s) => s.scores.length > 0).length
   const totalCount = rubricItems.length
 
@@ -584,128 +618,79 @@ export function ReviewerConsole({
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 overflow-hidden print:h-auto print:overflow-visible print:block">
-      {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <header className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-xs font-bold tracking-widest text-[#1e3a5f] uppercase hidden sm:block">
-            Open 4 Peer Review
-          </span>
-          <span className="text-slate-200 hidden sm:block">|</span>
-          <h1 className="text-sm font-semibold text-slate-800 truncate">{document.title}</h1>
-          <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-            {review.rubric.title}
-          </span>
-        </div>
+      <ReviewConsoleHeader
+        scoredCount={scoredCount}
+        totalCount={totalCount}
+        lastSavedAt={lastSavedAt ? new Date(lastSavedAt) : null}
+        onBack={() => router.push('/reviewer')}
+        onSubmit={() => handleSubmit('')}
+        isSubmitted={isSubmitted}
+      />
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {/* Progress pill — hidden in print */}
-          <span className={[
-            'print:hidden text-xs font-medium px-2.5 py-1 rounded-full',
-            scoredCount === totalCount && totalCount > 0
-              ? 'bg-emerald-50 text-emerald-700'
-              : 'bg-slate-100 text-slate-600',
-          ].join(' ')}>
-            {scoredCount}/{totalCount} rated
-          </span>
-
-          <div className="print:hidden">
-            <SaveStatusIndicator
-              status={saveStatus}
-              lastSavedAt={lastSavedAt}
-              onSaveDraft={saveDraft}
-              disabled={isSubmitted}
-            />
+      <ResizablePanelLayout
+        defaultLeftPercent={60}
+        leftPanel={
+          <div className="h-full overflow-hidden print:hidden">
+            {document.file_type === 'html' && document.content_fingerprint ? (
+              <HtmlViewerCanvas
+                snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+                rubricItems={activeViewerCriteria}
+                activeItemId={activeItemId}
+                pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}
+                savedAnnotations={savedAnnotations}
+                onTextSelected={handleTextSelected as (sel: HtmlTextSelection) => void}
+                onAnnotationConfirm={handleAnnotationConfirm}
+                onPendingSelectionClear={handlePendingSelectionClear}
+                onAnnotationEdit={handleAnnotationEditFromPDF}
+                onAnnotationDelete={handleAnnotationDeleteFromPDF}
+                onAnnotationRelink={handleAnnotationRelink}
+                onTrackEvent={track}
+                disabled={isSubmitted}
+                scrollToAnnotationId={scrollToAnnotationId}
+                onGoToAnnotation={() => setScrollToAnnotationId(null)}
+              />
+            ) : document.file_url ? (
+              <PDFViewer
+                fileUrl={document.file_url}
+                rubricItems={activeViewerCriteria}
+                activeItemId={activeItemId}
+                pendingSelection={pendingSelection && 'page' in pendingSelection ? pendingSelection : null}
+                savedAnnotations={savedAnnotations}
+                onTextSelected={handleTextSelected as (sel: TextSelection) => void}
+                onAnnotationConfirm={handleAnnotationConfirm}
+                onPendingSelectionClear={handlePendingSelectionClear}
+                onAnnotationEdit={handleAnnotationEditFromPDF}
+                onAnnotationDelete={handleAnnotationDeleteFromPDF}
+                onAnnotationRelink={handleAnnotationRelink}
+                onTrackEvent={track}
+                disabled={isSubmitted}
+                scrollToAnnotationId={scrollToAnnotationId}
+                onGoToAnnotation={() => setScrollToAnnotationId(null)}
+              />
+            ) : null}
           </div>
-
-          <div className="print:hidden">
-            <SubmitButton
+        }
+        rightPanel={
+          <div className="h-full overflow-hidden print:w-full print:overflow-visible">
+            <ReviewRightPanel
+              rubricItems={rubricItems}
+              scores={scores}
+              generalAnnotations={generalAnnotations}
+              activeRubricId={activeRubricId}
+              onActiveRubricChange={setActiveRubricId}
               isSubmitted={isSubmitted}
-              scoredCount={scoredCount}
-              totalCount={totalCount}
-              overallComment={overallComment}
-              onOverallCommentChange={setOverallComment}
-              onSubmit={handleSubmit}
+              onScoreToggle={handleScoreToggle}
+              onAddComment={handleAddScoreComment}
+              onEditComment={handleEditScoreComment}
+              onDeleteComment={handleDeleteScoreComment}
+              onAddNote={handleAddGeneralNote}
+              onEditFreeNote={handleEditFreeNote}
+              onDeleteNote={handleDeleteGeneralAnnotation}
+              onGoToAnnotation={(id) => setScrollToAnnotationId(id)}
             />
           </div>
-
-          {/* Export report button — shown only when submitted, hidden in print */}
-          {isSubmitted && (
-            <button
-              onClick={() => window.print()}
-              className="print:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-colors"
-            >
-              <svg className="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              Export Report
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* ── Split pane ───────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex min-h-0 print:block">
-        {/* Content viewer — left 60%, hidden in print */}
-        <div className="w-[60%] border-r border-slate-200 overflow-hidden print:hidden">
-          {document.file_type === 'html' && document.content_fingerprint ? (
-            <HtmlViewerCanvas
-              snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
-              rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
-              activeItemId={activeItemId}
-              pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}
-              savedAnnotations={savedAnnotations}
-              onTextSelected={handleTextSelected as (sel: HtmlTextSelection) => void}
-              onAnnotationConfirm={handleAnnotationConfirm}
-              onPendingSelectionClear={handlePendingSelectionClear}
-              onAnnotationEdit={handleAnnotationEditFromPDF}
-              onAnnotationDelete={handleAnnotationDeleteFromPDF}
-              onTrackEvent={track}
-              disabled={isSubmitted}
-            />
-          ) : document.file_url ? (
-            <PDFViewer
-              fileUrl={document.file_url}
-              rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
-              activeItemId={activeItemId}
-              pendingSelection={pendingSelection && 'page' in pendingSelection ? pendingSelection : null}
-              savedAnnotations={savedAnnotations}
-              onTextSelected={handleTextSelected as (sel: TextSelection) => void}
-              onAnnotationConfirm={handleAnnotationConfirm}
-              onPendingSelectionClear={handlePendingSelectionClear}
-              onAnnotationEdit={handleAnnotationEditFromPDF}
-              onAnnotationDelete={handleAnnotationDeleteFromPDF}
-              onTrackEvent={track}
-              disabled={isSubmitted}
-            />
-          ) : null}
-        </div>
-
-        {/* Annotation panel — right 40%, full width in print */}
-        <div className="w-[40%] overflow-hidden print:w-full print:overflow-visible">
-          <AnnotationPanel
-            rubricItems={rubricItems}
-            scores={scores}
-            activeItemId={activeItemId}
-            isSubmitted={isSubmitted}
-            saveStatus={saveStatus}
-            lastSavedAt={lastSavedAt}
-            generalAnnotations={generalAnnotations}
-            onActiveItemChange={setActiveItemId}
-            onScoreChange={handleScoreChange}
-            onAnnotationDelete={handleAnnotationDelete}
-            onAnnotationEdit={handleAnnotationEditFromPDF}
-            onEditFreeNote={handleEditFreeNote}
-            onAddGeneralNote={handleAddGeneralNote}
-            onDeleteGeneralAnnotation={handleDeleteGeneralAnnotation}
-            onAddScoreComment={handleAddScoreComment}
-            onEditScoreComment={handleEditScoreComment}
-            onDeleteScoreComment={handleDeleteScoreComment}
-            onCommentBlur={handleCommentBlur}
-            onTrackEvent={track}
-          />
-        </div>
-      </div>
+        }
+      />
     </div>
   )
 }

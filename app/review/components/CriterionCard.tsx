@@ -17,7 +17,6 @@ interface AnnotationSummary {
 interface CriterionCardProps {
   rubricItem: RubricItem
   score: LocalScore
-  index: number
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
   onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
@@ -40,7 +39,6 @@ const SCORE_PILL_CLASSES: Record<CriterionScore, string> = {
 export function CriterionCard({
   rubricItem,
   score,
-  index,
   onScoreToggle,
   onAddComment,
   onEditComment,
@@ -58,7 +56,7 @@ export function CriterionCard({
       >
         <div className="flex-1 flex items-center gap-2">
           <span className="text-body-sm font-semibold text-text-primary">
-            C{index} {rubricItem.label}
+            {rubricItem.label}
           </span>
           {score.annotations.length > 0 && (
             <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface-container text-label-sm text-text-secondary">
