@@ -36,6 +36,7 @@ interface Props {
   documents: DocumentRow[]
   rubrics: RubricRow[]
   customSubjectMatters: string[]
+  authorInstitution: string | null
 }
 
 // 'assigned' status is intentionally unused here — it will be wired in once the
