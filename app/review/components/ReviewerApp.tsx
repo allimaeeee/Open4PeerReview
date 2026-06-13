@@ -48,6 +48,7 @@ export interface ReviewScore {
   id: string
   rubric_item_id: string
   score: 'does_not_meet' | 'exemplifies' | 'exceeds' | null
+  criterion_scores: ('does_not_meet' | 'exemplifies' | 'exceeds')[]
   comment: string | null
 }
 
@@ -89,7 +90,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
   const reviewSelect = `
     id, status, overall_comment, notes, last_saved_at, rubric_id,
     rubric:rubrics ( id, title, description, operational_definition ),
-    review_scores ( id, rubric_item_id, score, comment ),
+    review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
     annotations ( id, rubric_item_id, anchor, body, tag ),
     score_comments ( id, rubric_item_id, score_level, body )
   `

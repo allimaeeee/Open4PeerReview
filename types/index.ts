@@ -53,7 +53,7 @@ export type ReviewSession = Pick<
 
 export type ReviewScoreSession = Pick<
   ReviewScore,
-  'id' | 'rubric_item_id' | 'score' | 'comment'
+  'id' | 'rubric_item_id' | 'score' | 'criterion_scores' | 'comment'
 > & {
   annotations: Pick<Annotation, 'id' | 'anchor' | 'body' | 'tag'>[]
 }

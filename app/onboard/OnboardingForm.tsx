@@ -186,6 +186,7 @@ export function OnboardingForm({
   const mainStep = parseInt(searchParams.get('step') ?? '1', 10)
   const sub      = parseInt(searchParams.get('sub')  ?? '0', 10)
   const isReviewer = roles.has('reviewer')
+  const isCoordinator = roles.has('coordinator')
 
   // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function navigate(step: number, subStep?: number) {
@@ -255,6 +256,8 @@ export function OnboardingForm({
     if (profession === 'other' && !professionOther.trim())
                                 errs.professionOther = 'Please specify your profession.'
     if (roles.size === 0)       errs.roles           = 'Please select at least one role.'
+    if (isCoordinator && !institution.trim())
+                                errs.institution     = 'Coordinators must belong to an organization.'
     if (isReviewer) {
       if (!reviewerType)        errs.reviewerType    = 'Please select your reviewer type.'
       if (rubricSpecs.size === 0) errs.rubricSpecs   = 'Please select at least one rubric.'
@@ -311,12 +314,13 @@ export function OnboardingForm({
   const predefinedTagValues = new Set(DISCIPLINE_OPTIONS.map(d => d.value))
   const customTags = Array.from(expertiseTags).filter(t => !predefinedTagValues.has(t))
 
-  const canContinuePanel2 =
+  const canContinuePanel3 =
     !!displayName.trim() &&
     !!discipline &&
     (discipline !== 'other' || !!disciplineOther.trim()) &&
     !!profession &&
-    (profession !== 'other' || !!professionOther.trim())
+    (profession !== 'other' || !!professionOther.trim()) &&
+    (!isCoordinator || !!institution.trim())
 
   // â”€â”€ Panel renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderPanel() {
@@ -337,113 +341,8 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 2 — Personal info
-    if (mainStep === 2) return (
-      <>
-        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
-        <p className="text-body-md text-text-muted mt-2">
-          This helps match you with the right tasks and gives reviewers and authors helpful context.
-        </p>
-
-        <div className="space-y-5 mt-6">
-          <Input
-            id="displayName"
-            type="text"
-            label="Display name"
-            required
-            autoComplete="name"
-            placeholder="Your name"
-            value={displayName}
-            onChange={e => { setDisplayName(e.target.value); clearError('displayName') }}
-            disabled={loading}
-            error={errors.displayName}
-          />
-
-          <div>
-            <Input
-              id="institution"
-              type="text"
-              label="Institution"
-              list="institutions-list"
-              autoComplete="organization"
-              placeholder="Your university or organization"
-              value={institution}
-              onChange={e => setInstitution(e.target.value)}
-              disabled={loading}
-            />
-            <datalist id="institutions-list">
-              {institutions.map(name => <option key={name} value={name} />)}
-            </datalist>
-          </div>
-
-          <div>
-            <Select
-              id="discipline"
-              label="Primary discipline"
-              required
-              value={discipline}
-              onChange={e => { setDiscipline(e.target.value); clearError('discipline'); clearError('disciplineOther') }}
-              disabled={loading}
-              error={errors.discipline}
-            >
-              <option value="">Select a disciplineâ€¦</option>
-              {DISCIPLINE_OPTIONS.map(d => (
-                <option key={d.value} value={d.value}>{d.label}</option>
-              ))}
-            </Select>
-            {discipline === 'other' && (
-              <Input
-                type="text"
-                placeholder="Please specify your discipline"
-                value={disciplineOther}
-                onChange={e => { setDisciplineOther(e.target.value); clearError('disciplineOther') }}
-                disabled={loading}
-                error={errors.disciplineOther}
-                className="mt-2"
-              />
-            )}
-          </div>
-
-          <div>
-            <Select
-              id="profession"
-              label="Profession"
-              required
-              value={profession}
-              onChange={e => { setProfession(e.target.value); clearError('profession'); clearError('professionOther') }}
-              disabled={loading}
-              error={errors.profession}
-            >
-              <option value="">Select your professionâ€¦</option>
-              {PROFESSION_OPTIONS.map(p => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </Select>
-            {profession === 'other' && (
-              <Input
-                type="text"
-                placeholder="Please describe your profession"
-                value={professionOther}
-                onChange={e => { setProfessionOther(e.target.value); clearError('professionOther') }}
-                disabled={loading}
-                error={errors.professionOther}
-                className="mt-2"
-              />
-            )}
-          </div>
-        </div>
-
-        <PanelFooter
-          onBack={() => navigate(1)}
-          onContinue={() => navigate(3)}
-          continueDisabled={!canContinuePanel2}
-          loading={loading}
-        />
-      </>
-    )
-
-    // Panel 3 — Role selection
-    if (mainStep === 3 && sub === 0) return (
+    // Panel 2 — Role selection
+    if (mainStep === 2 && sub === 0) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">How do you participate in OER?</h1>
         <p className="text-body-md text-text-muted mt-2">
@@ -483,12 +382,12 @@ export function OnboardingForm({
         {serverError && <Alert variant="error" message={serverError} className="mt-3" />}
 
         <PanelFooter
-          onBack={() => navigate(2)}
-          onContinue={async () => {
+          onBack={() => navigate(1)}
+          onContinue={() => {
             if (roles.has('reviewer')) {
-              navigate(3, 1)
+              navigate(2, 1)
             } else {
-              await submit()
+              navigate(3)
             }
           }}
           continueDisabled={roles.size === 0}
@@ -497,8 +396,8 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.1 — Reviewer type
-    if (mainStep === 3 && sub === 1) return (
+    // Panel 2.1 — Reviewer type
+    if (mainStep === 2 && sub === 1) return (
       <>
         <ReviewerEyebrow n={1} />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What kind of reviewer are you?</h1>
@@ -530,16 +429,16 @@ export function OnboardingForm({
         {errors.reviewerType && <Alert variant="error" message={errors.reviewerType} className="mt-3" />}
 
         <PanelFooter
-          onBack={() => navigate(3)}
-          onContinue={() => navigate(3, 2)}
+          onBack={() => navigate(2)}
+          onContinue={() => navigate(2, 2)}
           continueDisabled={!reviewerType}
           loading={loading}
         />
       </>
     )
 
-    // Panel 3.2 — Expertise tags
-    if (mainStep === 3 && sub === 2) return (
+    // Panel 2.2 — Expertise tags
+    if (mainStep === 2 && sub === 2) return (
       <>
         <ReviewerEyebrow n={2} />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What are your areas of expertise?</h1>
@@ -613,16 +512,16 @@ export function OnboardingForm({
         </div>
 
         <PanelFooter
-          onBack={() => navigate(3, 1)}
-          onContinue={() => navigate(3, 3)}
+          onBack={() => navigate(2, 1)}
+          onContinue={() => navigate(2, 3)}
           continueDisabled={expertiseTags.size < 2}
           loading={loading}
         />
       </>
     )
 
-    // Panel 3.3 — Rubric specialization
-    if (mainStep === 3 && sub === 3) return (
+    // Panel 2.3 — Rubric specialization
+    if (mainStep === 2 && sub === 3) return (
       <>
         <ReviewerEyebrow n={3} />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Which rubrics are you qualified to apply?</h1>
@@ -649,9 +548,116 @@ export function OnboardingForm({
         {serverError && <Alert variant="error" message={serverError} className="mt-3" />}
 
         <PanelFooter
-          onBack={() => navigate(3, 2)}
-          onContinue={async () => { await submit() }}
+          onBack={() => navigate(2, 2)}
+          onContinue={() => navigate(3)}
           continueDisabled={rubricSpecs.size === 0}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 3 — Personal info
+    if (mainStep === 3) return (
+      <>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          This helps match you with the right tasks and gives reviewers and authors helpful context.
+        </p>
+
+        <div className="space-y-5 mt-6">
+          <Input
+            id="displayName"
+            type="text"
+            label="Display name"
+            required
+            autoComplete="name"
+            placeholder="Your name"
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); clearError('displayName') }}
+            disabled={loading}
+            error={errors.displayName}
+          />
+
+          <div>
+            <Input
+              id="institution"
+              type="text"
+              label="Institution"
+              required={isCoordinator}
+              list="institutions-list"
+              autoComplete="organization"
+              placeholder="Your university or organization"
+              value={institution}
+              onChange={e => { setInstitution(e.target.value); clearError('institution') }}
+              disabled={loading}
+            />
+            <datalist id="institutions-list">
+              {institutions.map(name => <option key={name} value={name} />)}
+            </datalist>
+            {errors.institution && <p className="mt-1 text-xs text-red-600">{errors.institution}</p>}
+          </div>
+
+          <div>
+            <Select
+              id="discipline"
+              label="Primary discipline"
+              required
+              value={discipline}
+              onChange={e => { setDiscipline(e.target.value); clearError('discipline'); clearError('disciplineOther') }}
+              disabled={loading}
+              error={errors.discipline}
+            >
+              <option value="">Select a disciplineâ€¦</option>
+              {DISCIPLINE_OPTIONS.map(d => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </Select>
+            {discipline === 'other' && (
+              <Input
+                type="text"
+                placeholder="Please specify your discipline"
+                value={disciplineOther}
+                onChange={e => { setDisciplineOther(e.target.value); clearError('disciplineOther') }}
+                disabled={loading}
+                error={errors.disciplineOther}
+                className="mt-2"
+              />
+            )}
+          </div>
+
+          <div>
+            <Select
+              id="profession"
+              label="Profession"
+              required
+              value={profession}
+              onChange={e => { setProfession(e.target.value); clearError('profession'); clearError('professionOther') }}
+              disabled={loading}
+              error={errors.profession}
+            >
+              <option value="">Select your professionâ€¦</option>
+              {PROFESSION_OPTIONS.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </Select>
+            {profession === 'other' && (
+              <Input
+                type="text"
+                placeholder="Please describe your profession"
+                value={professionOther}
+                onChange={e => { setProfessionOther(e.target.value); clearError('professionOther') }}
+                disabled={loading}
+                error={errors.professionOther}
+                className="mt-2"
+              />
+            )}
+          </div>
+        </div>
+
+        <PanelFooter
+          onBack={() => isReviewer ? navigate(2, 3) : navigate(2)}
+          onContinue={async () => { await submit() }}
+          continueDisabled={!canContinuePanel3}
           loading={loading}
         />
       </>
@@ -706,7 +712,7 @@ export function OnboardingForm({
         </p>
         <div className="mt-6 mb-10">
           <StepIndicator
-            steps={['Welcome', 'Personal Info', 'Role(s)', 'Finish']}
+            steps={['Welcome', 'Role(s)', 'Personal Info', 'Finish']}
             currentStep={mainStep}
           />
         </div>
