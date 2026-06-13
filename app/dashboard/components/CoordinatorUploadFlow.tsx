@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { UploadDocumentForm } from './UploadDocumentForm'
+import { UploadDocumentForm } from '@/app/author/components/UploadDocumentForm'
 import { AssignReviewersStep } from './AssignReviewersStep'
 
 interface RubricOption {
