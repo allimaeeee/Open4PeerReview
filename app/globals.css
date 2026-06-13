@@ -42,6 +42,16 @@
   --color-info:                     #242d64;
   --color-info-container:           #fef5de;
 
+  /* ── Rating level ── */
+  --color-rating-exceeds-bg:        var(--color-secondary-container);
+  --color-rating-exceeds-text:      var(--color-on-secondary-container);
+  --color-rating-exceeds-border:    var(--color-secondary);
+  --color-rating-exemplifies-bg:    var(--color-primary);
+  --color-rating-exemplifies-text:  var(--color-on-primary);
+  --color-rating-dnm-bg:            var(--color-error-container);
+  --color-rating-dnm-text:          var(--color-on-error-container);
+  --color-rating-dnm-border:        var(--color-error);
+
   /* ── Selection / annotation ── */
   --color-selected:                 #fefaf0;
   --color-annotation:               rgba(254, 214, 91, 0.45);
