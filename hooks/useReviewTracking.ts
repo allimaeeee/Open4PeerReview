@@ -19,6 +19,7 @@ export type ReviewEventType =
   | 'annotation_create'
   | 'annotation_edit'
   | 'annotation_delete'
+  | 'annotation_relink'
   | 'annotation_abandoned'
   | 'note_add'
   | 'note_edit'
