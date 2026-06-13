@@ -31,7 +31,9 @@ export default async function ReviewerPage({
         ...docRow,
         file_url: docRow.file_type === 'html'
           ? docRow.file_url
-          : await getSignedUrl(supabase, docRow.storage_path),
+          : docRow.storage_path
+            ? await getSignedUrl(supabase, docRow.storage_path)
+            : null,
       }
     : null
 
@@ -84,7 +86,7 @@ export default async function ReviewerPage({
         `)
         .eq('document_id', document.id)
         .eq('reviewer_id', user.id)
-        .in('status', ['in_progress', 'submitted'])
+        .in('status', ['assigned', 'in_progress', 'submitted'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
