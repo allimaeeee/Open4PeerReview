@@ -534,7 +534,7 @@ export async function getDocumentsForReviewer(supabase: Client, userId: string) 
     const scope: string[] = (doc.submission_scope ?? []) as string[]
     const authorInstitution = (doc.author as { institution: string | null } | null)?.institution ?? null
 
-    if (scope.includes('public')) return true
+    if (scope.includes('public')) return reviewerInstitution === null
     if (
       scope.includes('organization') &&
       doc.coordinator_released_at &&

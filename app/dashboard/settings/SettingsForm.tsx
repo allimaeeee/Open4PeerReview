@@ -286,6 +286,8 @@ export function SettingsForm({
     e.preventDefault()
     const errs: Record<string, string> = {}
     if (roles.size === 0)   errs.roles       = 'Please select at least one role'
+    if (roles.has('coordinator') && !institution.trim())
+                            errs.roles       = 'Coordinators must belong to an organization. Please set your institution in the Profile section above.'
     if (isReviewer) {
       if (!reviewerType)    errs.reviewerType  = 'Please select your reviewer type'
       if (rubricSpecs.size === 0) errs.rubricSpecs = 'Please select at least one rubric'

@@ -147,7 +147,7 @@ function CriterionCard({
   onDeleteScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => Promise<void>
   onCommentBlur: (rubricItemId: string, comment: string) => void
 }) {
-  const isScored = Boolean(score?.score) || (score?.niComments ?? []).length > 0 || (score?.exceedsComments ?? []).length > 0
+  const isScored = (score?.proficientSelected ?? false) || (score?.niComments ?? []).length > 0 || (score?.exceedsComments ?? []).length > 0
   const subCriteria = parseSubCriteria(item.description)
   const [niDraft, setNiDraft] = useState('')
   const [exceedsDraft, setExceedsDraft] = useState('')
@@ -220,7 +220,7 @@ function CriterionCard({
                   Does Not Meet
                 </span>
               )}
-              {score?.score === 'exemplifies' && (
+              {score?.proficientSelected && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                   Proficient
@@ -369,11 +369,11 @@ function CriterionCard({
                 disabled={isSubmitted}
                 onClick={(e) => {
                   e.stopPropagation()
-                  onScoreChange(item.id, { score: score?.score === 'exemplifies' ? null : 'exemplifies' })
+                  onScoreChange(item.id, { score: score?.proficientSelected ? null : 'exemplifies' })
                 }}
                 className={[
                   'px-6 py-1.5 text-[11px] font-semibold rounded-lg border transition-all duration-100',
-                  score?.score === 'exemplifies'
+                  score?.proficientSelected
                     ? 'bg-amber-50 text-amber-700 ring-2 ring-amber-400 border-transparent'
                     : 'border-slate-200 text-slate-500 bg-white hover:border-slate-300',
                   isSubmitted ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
@@ -726,7 +726,9 @@ export function AnnotationPanel({
     )
   }
 
-  const scoredCount = Object.values(scores).filter((s) => s.score !== null).length
+  const scoredCount = Object.values(scores).filter(
+    (s) => s.proficientSelected || s.niComments.length > 0 || s.exceedsComments.length > 0
+  ).length
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -748,7 +750,10 @@ export function AnnotationPanel({
       <div className="flex-1 overflow-y-auto">
         {groups.map((group) => {
           const isCollapsed = collapsed.has(group.rubricId)
-          const groupScoredCount = group.items.filter((i) => scores[i.id]?.score != null).length
+          const groupScoredCount = group.items.filter((i) => {
+            const s = scores[i.id]
+            return s && (s.proficientSelected || s.niComments.length > 0 || s.exceedsComments.length > 0)
+          }).length
 
           return (
             <div key={group.rubricId}>

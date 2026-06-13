@@ -14,7 +14,7 @@ import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
 import { AnnotationPanel } from './AnnotationPanel'
 import { SubmitButton } from './SubmitButton'
-import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
+import type { OERDocument, Review, Rubric, RubricItem } from './ReviewerApp'
 
 type AnyTextSelection = TextSelection | HtmlTextSelection
 
@@ -36,9 +36,21 @@ export interface LocalScore {
   rubricItemId: string
   score: CriterionScore | null
   comment: string
+  proficientSelected: boolean
   niComments: ScoreCommentItem[]
   exceedsComments: ScoreCommentItem[]
   annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
+}
+
+function computePrimaryScore(
+  proficientSelected: boolean,
+  niComments: ScoreCommentItem[],
+  exceedsComments: ScoreCommentItem[],
+): CriterionScore | null {
+  if (proficientSelected) return 'exemplifies'
+  if (niComments.length > 0) return 'does_not_meet'
+  if (exceedsComments.length > 0) return 'exceeds'
+  return null
 }
 
 export function ReviewerConsole({
@@ -95,16 +107,20 @@ export function ReviewerConsole({
           const itemScoreComments = (review.score_comments ?? []).filter(
             (sc) => sc.rubric_item_id === item.id
           )
+          const niComments = itemScoreComments
+            .filter((sc) => sc.score_level === 'does_not_meet')
+            .map((sc) => ({ id: sc.id, body: sc.body }))
+          const exceedsComments = itemScoreComments
+            .filter((sc) => sc.score_level === 'exceeds')
+            .map((sc) => ({ id: sc.id, body: sc.body }))
+          const proficientSelected = existingScore?.score === 'exemplifies'
           initialScores[item.id] = {
             rubricItemId: item.id,
             score: existingScore?.score ?? null,
             comment: existingScore?.comment ?? '',
-            niComments: itemScoreComments
-              .filter((sc) => sc.score_level === 'does_not_meet')
-              .map((sc) => ({ id: sc.id, body: sc.body })),
-            exceedsComments: itemScoreComments
-              .filter((sc) => sc.score_level === 'exceeds')
-              .map((sc) => ({ id: sc.id, body: sc.body })),
+            proficientSelected,
+            niComments,
+            exceedsComments,
             annotations: existingAnnotations,
           }
         })
@@ -162,13 +178,24 @@ export function ReviewerConsole({
   const handleScoreChange = useCallback(
     (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => {
       setScores((prev) => {
-        const prevScore = prev[rubricItemId]?.score ?? null
-        const updated = { ...prev[rubricItemId], ...changes }
-        onScoreChange({ rubricItemId, score: updated.score, comment: updated.comment })
-        if ('score' in changes && changes.score !== prevScore) {
+        const existing = prev[rubricItemId]
+        const prevScore = existing?.score ?? null
+
+        let proficientSelected = existing?.proficientSelected ?? false
+        if ('score' in changes) {
+          if (changes.score === 'exemplifies') proficientSelected = true
+          else if (changes.score === null) proficientSelected = false
+        }
+
+        const comment = 'comment' in changes ? changes.comment! : (existing?.comment ?? '')
+        const computedScore = computePrimaryScore(proficientSelected, existing?.niComments ?? [], existing?.exceedsComments ?? [])
+        const updated: LocalScore = { ...existing, comment, proficientSelected, score: computedScore }
+
+        onScoreChange({ rubricItemId, score: computedScore, comment })
+        if ('score' in changes && computedScore !== prevScore) {
           track('score_set', {
             rubric_item_id: rubricItemId,
-            score: changes.score ?? null,
+            score: computedScore ?? null,
             prev_score: prevScore,
           })
         }
@@ -399,16 +426,20 @@ export function ReviewerConsole({
       track('score_comment_add', { rubric_item_id: rubricItemId, score_level: scoreLevel, char_count: body.length })
       setScores((prev) => {
         const existing = prev[rubricItemId]
-        const item: ScoreComment = { id, rubric_item_id: rubricItemId, score_level: scoreLevel, body }
+        const newNiComments = scoreLevel === 'does_not_meet'
+          ? [...existing.niComments, { id, body }]
+          : existing.niComments
+        const newExceedsComments = scoreLevel === 'exceeds'
+          ? [...existing.exceedsComments, { id, body }]
+          : existing.exceedsComments
+        const computedScore = computePrimaryScore(existing.proficientSelected, newNiComments, newExceedsComments)
         const updated: LocalScore = {
           ...existing,
-          score: scoreLevel,
-          ...(scoreLevel === 'does_not_meet'
-            ? { niComments: [...existing.niComments, { id: item.id, body: item.body }] }
-            : { exceedsComments: [...existing.exceedsComments, { id: item.id, body: item.body }] }
-          ),
+          score: computedScore,
+          niComments: newNiComments,
+          exceedsComments: newExceedsComments,
         }
-        onScoreChange({ rubricItemId, score: scoreLevel, comment: existing.comment })
+        onScoreChange({ rubricItemId, score: computedScore, comment: existing.comment })
         return { ...prev, [rubricItemId]: updated }
       })
     },
@@ -447,7 +478,9 @@ export function ReviewerConsole({
 
       if (error) return error.message
       track('submit', {
-        scored_criteria: Object.values(scores).filter((s) => s.score !== null).length,
+        scored_criteria: Object.values(scores).filter(
+          (s) => s.proficientSelected || s.niComments.length > 0 || s.exceedsComments.length > 0
+        ).length,
         total_criteria: rubricItems.length,
         overall_comment_length: finalOverallComment.length,
       })
@@ -458,7 +491,9 @@ export function ReviewerConsole({
     [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
   )
 
-  const scoredCount = Object.values(scores).filter((s) => s.score !== null).length
+  const scoredCount = Object.values(scores).filter(
+    (s) => s.proficientSelected || s.niComments.length > 0 || s.exceedsComments.length > 0
+  ).length
   const totalCount = rubricItems.length
 
   // Flatten all saved annotations for PDF highlight overlays
