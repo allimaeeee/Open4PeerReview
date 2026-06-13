@@ -55,10 +55,19 @@ export function AnnotationHoverCard({
   useEffect(() => {
     if (!ref.current) return
     const { offsetWidth: w, offsetHeight: h } = ref.current
+    // Clamp within the nearest positioned ancestor (the viewer container),
+    // not the window — the card is absolute inside that container.
+    const parent = ref.current.offsetParent as HTMLElement | null
+    const containerW  = parent?.clientWidth  ?? window.innerWidth
+    const containerH  = parent?.clientHeight ?? window.innerHeight
+    const scrollTop   = parent?.scrollTop   ?? 0
+    const MARGIN = 8
     let x = position.x
     let y = position.y
-    if (x + w > window.innerWidth - 16) x = window.innerWidth - w - 16
-    if (y + h > window.innerHeight - 16) y = window.innerHeight - h - 16
+    if (x + w > containerW  - MARGIN) x = containerW  - w - MARGIN
+    if (y + h > scrollTop + containerH - MARGIN) y = scrollTop + containerH - h - MARGIN
+    if (x < MARGIN) x = MARGIN
+    if (y < scrollTop + MARGIN) y = scrollTop + MARGIN
     setAdjustedPos({ x, y })
   }, [position.x, position.y])
 
@@ -141,8 +150,25 @@ export function AnnotationHoverCard({
         </>
       ) : (
         <>
-          {/* Criteria selector (conditional) */}
-          {onRelink && criteria && (
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+              Edit annotation
+            </span>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="text-text-muted hover:text-text-primary"
+              aria-label="Close"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Criteria selector */}
+          {criteria && (
             <div className="flex flex-col gap-1">
               <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
                 Link to criteria
@@ -159,7 +185,8 @@ export function AnnotationHoverCard({
           {/* Tag pills */}
           <div className="flex flex-col gap-1">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Tag
+              Tag{' '}
+              <span className="text-text-muted normal-case font-normal tracking-normal">optional</span>
             </span>
             <div className="flex gap-2">
               {TAG_OPTIONS.map(opt => (
@@ -183,7 +210,7 @@ export function AnnotationHoverCard({
           {/* Comment textarea */}
           <div className="flex flex-col gap-1">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Comment
+              Comment <span className="text-error" aria-hidden="true">*</span>
             </span>
             <textarea
               autoFocus
@@ -203,18 +230,9 @@ export function AnnotationHoverCard({
             >
               Delete
             </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="text-body-sm text-text-muted hover:text-text-primary cursor-pointer"
-              >
-                Cancel
-              </button>
-              <Button variant="primary" disabled={!body.trim()} onClick={handleSave}>
-                Save
-              </Button>
-            </div>
+            <Button variant="primary" disabled={!body.trim()} onClick={handleSave}>
+              Save
+            </Button>
           </div>
         </>
       )}

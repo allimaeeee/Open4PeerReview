@@ -20,6 +20,8 @@ export interface CriterionOption {
 interface FreeNotesSectionProps {
   notes: FreeNote[]
   criteria: CriterionOption[]
+  isAdding: boolean
+  onAddingChange: (val: boolean) => void
   onAddNote: (body: string, tag: HighlightTag | null, rubricItemId: string | null) => Promise<string | null>
   onEditNote: (noteId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onMoveNote: (noteId: string, rubricItemId: string) => void
@@ -34,20 +36,21 @@ const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
 export function FreeNotesSection({
   notes,
   criteria,
+  isAdding,
+  onAddingChange,
   onAddNote,
   onEditNote,
   onMoveNote,
   onDeleteNote,
 }: FreeNotesSectionProps) {
   const [expanded, setExpanded] = useState(true)
-  const [adding, setAdding] = useState(false)
   const [newBody, setNewBody] = useState('')
   const [newTag, setNewTag] = useState<HighlightTag | null>(null)
   const [newCriterionId, setNewCriterionId] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
 
   function resetAddPanel() {
-    setAdding(false)
+    onAddingChange(false)
     setNewBody('')
     setNewTag(null)
     setNewCriterionId('')
@@ -65,22 +68,8 @@ export function FreeNotesSection({
 
   return (
     <div>
-      {/* Part 1 — Sticky trigger bar */}
-      <div className="sticky top-0 z-[var(--z-sticky)] bg-surface-card border-b border-border px-4 py-2 flex items-center justify-between">
-        <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-          Free notes
-        </span>
-        <button
-          type="button"
-          onClick={() => adding ? resetAddPanel() : setAdding(true)}
-          className="text-body-sm text-primary hover:underline cursor-pointer"
-        >
-          {adding ? 'Cancel' : '+ Add free note'}
-        </button>
-      </div>
-
-      {/* Add-note panel */}
-      {adding && (
+      {/* Add-note panel — shown when isAdding */}
+      {isAdding && (
         <div className="border-b border-border bg-surface-card px-4 py-3 flex flex-col gap-3">
           <textarea
             autoFocus
@@ -152,8 +141,8 @@ export function FreeNotesSection({
         </div>
       )}
 
-      {/* Part 2 — Expandable notes list */}
-      <div className="rounded-lg border border-border bg-surface-card">
+      {/* Expandable notes list card */}
+      <div className="mx-4 mt-4 rounded-lg border border-border bg-surface-card">
         <div
           className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
           onClick={() => setExpanded(v => !v)}
