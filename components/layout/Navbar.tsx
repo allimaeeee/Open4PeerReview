@@ -52,28 +52,34 @@ export default function Navbar() {
       return
     }
     const supabase = createClient()
-    supabase
-      .from('users')
-      .select('display_name, roles, role')
-      .eq('id', user.id)
-      .single()
-      .then(({ data }) => setProfile(data))
+    const fetchProfile = () =>
+      supabase
+        .from('users')
+        .select('display_name, roles, role')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => setProfile(data))
+
+    fetchProfile()
+    window.addEventListener('roles-updated', fetchProfile)
+    return () => window.removeEventListener('roles-updated', fetchProfile)
   }, [user?.id])
 
   if (loading) return null
 
   const roles = profile?.roles ?? []
-  const isCoordinator = profile?.role === 'admin'
   const availableViews = [
     ...(roles.includes('author') ? ['author'] : []),
     ...(roles.includes('reviewer') ? ['reviewer'] : []),
-    ...(isCoordinator ? ['coordinator'] : []),
+    ...(roles.includes('coordinator') || profile?.role === 'admin' ? ['coordinator'] : []),
   ]
 
   const currentView = pathname.startsWith('/author')
     ? 'author'
     : pathname.startsWith('/reviewer')
     ? 'reviewer'
+    : pathname.startsWith('/coordinator')
+    ? 'coordinator'
     : availableViews[0] ?? ''
 
   const showRightSide =
