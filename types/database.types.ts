@@ -314,6 +314,7 @@ export type Database = {
         Row: {
           comment: string | null
           created_at: string
+          criterion_scores: Database["public"]["Enums"]["criterion_score"][]
           id: string
           review_id: string
           rubric_item_id: string
@@ -323,6 +324,7 @@ export type Database = {
         Insert: {
           comment?: string | null
           created_at?: string
+          criterion_scores?: Database["public"]["Enums"]["criterion_score"][]
           id?: string
           review_id: string
           rubric_item_id: string
@@ -332,6 +334,7 @@ export type Database = {
         Update: {
           comment?: string | null
           created_at?: string
+          criterion_scores?: Database["public"]["Enums"]["criterion_score"][]
           id?: string
           review_id?: string
           rubric_item_id?: string

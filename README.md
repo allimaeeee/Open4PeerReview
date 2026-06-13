@@ -1,4 +1,3 @@
-# OLI Annotation Platform
 # Open4PeerReview
 
 
@@ -6,6 +5,7 @@
 
 npm run dev
 
+<<<<<<< HEAD
 
 
 **COMMIT TO GIT**
@@ -97,3 +97,5 @@ git push origin testing
 │  ├── 📄 database.types.ts
 │  └── 📄 index.ts
 ```
+=======
+>>>>>>> origin/testing

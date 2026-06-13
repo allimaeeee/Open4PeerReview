@@ -24,7 +24,7 @@ import type { PdfTextAnchor } from '@/lib/supabase/types'
 
 export interface ScoreDraft {
   rubricItemId: string
-  score: CriterionScore | null
+  scores: CriterionScore[]
   comment: string
 }
 
@@ -72,7 +72,6 @@ export function useReviewAutoSave({
       // Skip if nothing has changed since last save
       const key = JSON.stringify(draft)
       if (lastSaved.current.get(draft.rubricItemId) === key) return
-      if (!draft.score) return // score is required — don't save an empty state
 
       setSaveStatus('saving')
       const { error } = await supabase
@@ -81,7 +80,8 @@ export function useReviewAutoSave({
           {
             review_id: reviewId,
             rubric_item_id: draft.rubricItemId,
-            score: draft.score,
+            criterion_scores: draft.scores,
+            score: draft.scores[0] ?? null,
             comment: draft.comment.trim() || null,
           },
           { onConflict: 'review_id,rubric_item_id' }

@@ -38,9 +38,21 @@ export interface LocalScore {
   rubricItemId: string
   scores: CriterionScore[]
   comment: string
+  proficientSelected: boolean
   niComments: ScoreCommentItem[]
   exceedsComments: ScoreCommentItem[]
   annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
+}
+
+function computePrimaryScore(
+  proficientSelected: boolean,
+  niComments: ScoreCommentItem[],
+  exceedsComments: ScoreCommentItem[],
+): CriterionScore | null {
+  if (proficientSelected) return 'exemplifies'
+  if (niComments.length > 0) return 'does_not_meet'
+  if (exceedsComments.length > 0) return 'exceeds'
+  return null
 }
 
 export function ReviewerConsole({
@@ -98,16 +110,20 @@ export function ReviewerConsole({
           const itemScoreComments = (review.score_comments ?? []).filter(
             (sc) => sc.rubric_item_id === item.id
           )
+          const niComments = itemScoreComments
+            .filter((sc) => sc.score_level === 'does_not_meet')
+            .map((sc) => ({ id: sc.id, body: sc.body }))
+          const exceedsComments = itemScoreComments
+            .filter((sc) => sc.score_level === 'exceeds')
+            .map((sc) => ({ id: sc.id, body: sc.body }))
+          const proficientSelected = (existingScore?.criterion_scores ?? []).includes('exemplifies')
           initialScores[item.id] = {
             rubricItemId: item.id,
-            scores: existingScore?.score ? [existingScore.score] : [],
+            scores: existingScore?.criterion_scores ?? [],
             comment: existingScore?.comment ?? '',
-            niComments: itemScoreComments
-              .filter((sc) => sc.score_level === 'does_not_meet')
-              .map((sc) => ({ id: sc.id, body: sc.body })),
-            exceedsComments: itemScoreComments
-              .filter((sc) => sc.score_level === 'exceeds')
-              .map((sc) => ({ id: sc.id, body: sc.body })),
+            proficientSelected,
+            niComments,
+            exceedsComments,
             annotations: existingAnnotations,
           }
         })
