@@ -68,6 +68,7 @@ export function OnboardingForm({
   const router = useRouter()
   const supabase = createClient()
   const isReviewer = roles.has('reviewer')
+  const isCoordinator = roles.has('coordinator')
 
   function clearError(key: string) {
     setErrors(prev => { const next = { ...prev }; delete next[key]; return next })
@@ -127,6 +128,8 @@ export function OnboardingForm({
     if (profession === 'other' && !professionOther.trim())
                                 errs.professionOther = 'Please specify your profession'
     if (roles.size === 0)       errs.roles           = 'Please select at least one role'
+    if (isCoordinator && !institution.trim())
+                                errs.institution     = 'Coordinators must belong to an organization'
     if (isReviewer) {
       if (!reviewerType)        errs.reviewerType    = 'Please select your reviewer type'
       if (rubricSpecs.size === 0) errs.rubricSpecs   = 'Please select at least one rubric'
@@ -218,7 +221,10 @@ export function OnboardingForm({
           <div>
             <label htmlFor="institution" className="block text-sm font-medium text-slate-700 mb-1.5">
               Institution
-              <span className="ml-1.5 text-xs font-normal text-slate-400">optional</span>
+              {isCoordinator
+                ? <span className="text-red-500 ml-1">*</span>
+                : <span className="ml-1.5 text-xs font-normal text-slate-400">optional</span>
+              }
             </label>
             <input
               id="institution"
@@ -227,13 +233,14 @@ export function OnboardingForm({
               autoComplete="organization"
               placeholder="Your university or organization"
               value={institution}
-              onChange={e => setInstitution(e.target.value)}
+              onChange={e => { setInstitution(e.target.value); clearError('institution') }}
               disabled={loading}
               className={inputBase}
             />
             <datalist id="institutions-list">
               {institutions.map(name => <option key={name} value={name} />)}
             </datalist>
+            {errors.institution && <p className="mt-1 text-xs text-red-600">{errors.institution}</p>}
           </div>
 
           {/* Primary discipline */}
