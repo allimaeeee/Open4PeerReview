@@ -34,7 +34,7 @@ export interface ScoreCommentItem {
 
 export interface LocalScore {
   rubricItemId: string
-  score: CriterionScore | null
+  scores: CriterionScore[]
   comment: string
   niComments: ScoreCommentItem[]
   exceedsComments: ScoreCommentItem[]
@@ -97,7 +97,7 @@ export function ReviewerConsole({
           )
           initialScores[item.id] = {
             rubricItemId: item.id,
-            score: existingScore?.score ?? null,
+            scores: existingScore?.score ? [existingScore.score] : [],
             comment: existingScore?.comment ?? '',
             niComments: itemScoreComments
               .filter((sc) => sc.score_level === 'does_not_meet')
@@ -160,16 +160,15 @@ export function ReviewerConsole({
 
   // ── Score / comment change ─────────────────────────────────────────────────
   const handleScoreChange = useCallback(
-    (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => {
+    (rubricItemId: string, changes: { scores?: CriterionScore[]; comment?: string }) => {
       setScores((prev) => {
-        const prevScore = prev[rubricItemId]?.score ?? null
         const updated = { ...prev[rubricItemId], ...changes }
-        onScoreChange({ rubricItemId, score: updated.score, comment: updated.comment })
-        if ('score' in changes && changes.score !== prevScore) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(onScoreChange as any)({ rubricItemId, scores: updated.scores, comment: updated.comment })
+        if ('scores' in changes) {
           track('score_set', {
             rubric_item_id: rubricItemId,
-            score: changes.score ?? null,
-            prev_score: prevScore,
+            scores: changes.scores,
           })
         }
         return { ...prev, [rubricItemId]: updated }
@@ -244,13 +243,29 @@ export function ReviewerConsole({
     [pendingSelection, scores, review.id, saveAnnotation, setGeneralAnnotations, track]
   )
 
-  const handleAddGeneralNote = useCallback(async (body: string): Promise<string | null> => {
-    const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor: {}, body, tag: null })
-    if (!newId) return 'Failed to save note. Please try again.'
-    track('note_add', { annotation_id: newId, char_count: body.length })
-    setGeneralAnnotations((prev) => [...prev, { id: newId, anchor: {}, body, tag: null }])
-    return null
-  }, [review.id, saveAnnotation, track])
+  const handleAddGeneralNote = useCallback(
+    async (body: string, tag: HighlightTag | null, rubricItemId: string | null): Promise<string | null> => {
+      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId, anchor: {}, body, tag })
+      if (!newId) return 'Failed to save note. Please try again.'
+      track('note_add', { annotation_id: newId, char_count: body.length, rubric_item_id: rubricItemId })
+      if (rubricItemId && scoresRef.current[rubricItemId]) {
+        setScores(prev => ({
+          ...prev,
+          [rubricItemId]: {
+            ...prev[rubricItemId],
+            annotations: [
+              ...prev[rubricItemId].annotations,
+              { id: newId, anchor: {}, body, tag },
+            ],
+          },
+        }))
+      } else {
+        setGeneralAnnotations(prev => [...prev, { id: newId, anchor: {}, body, tag }])
+      }
+      return null
+    },
+    [review.id, saveAnnotation, track]
+  )
 
   const handleDeleteGeneralAnnotation = useCallback(async (annotationId: string) => {
     track('note_delete', { annotation_id: annotationId })
@@ -329,14 +344,99 @@ export function ReviewerConsole({
     [updateAnnotation, track]
   )
 
+  const handleAnnotationRelink = useCallback(
+    async (annotationId: string, newRubricItemIds: string[]) => {
+      const allAnns = [
+        ...Object.entries(scoresRef.current).flatMap(([rubricItemId, s]) =>
+          s.annotations.map(ann => ({ ...ann, rubricItemId }))
+        ),
+        ...generalAnnotationsRef.current.map(ann => ({ ...ann, rubricItemId: null as null })),
+      ]
+      const target = allAnns.find(a => a.id === annotationId)
+      if (!target) return
+
+      const anchorStr = JSON.stringify(target.anchor)
+      const siblings = allAnns.filter(a => JSON.stringify(a.anchor) === anchorStr)
+
+      track('annotation_relink', {
+        annotation_id: annotationId,
+        old_rubric_item_ids: siblings.map(s => s.rubricItemId),
+        new_rubric_item_ids: newRubricItemIds,
+      })
+
+      await Promise.all(siblings.map(s => deleteAnnotation(s.id)))
+
+      const insertIds: (string | null)[] = newRubricItemIds.length > 0 ? newRubricItemIds : [null]
+      const results = await Promise.all(
+        insertIds.map(id =>
+          saveAnnotation({
+            reviewId: review.id,
+            rubricItemId: id,
+            anchor: target.anchor,
+            body: target.body,
+            tag: target.tag as HighlightTag | null,
+          })
+        )
+      )
+
+      setScores(prev => {
+        const next = { ...prev }
+        for (const sib of siblings) {
+          if (sib.rubricItemId && next[sib.rubricItemId]) {
+            next[sib.rubricItemId] = {
+              ...next[sib.rubricItemId],
+              annotations: next[sib.rubricItemId].annotations.filter(a => a.id !== sib.id),
+            }
+          }
+        }
+        insertIds.forEach((rubricItemId, i) => {
+          const newId = results[i]
+          if (!newId || !rubricItemId || !next[rubricItemId]) return
+          next[rubricItemId] = {
+            ...next[rubricItemId],
+            annotations: [
+              ...next[rubricItemId].annotations,
+              { id: newId, anchor: target.anchor, body: target.body, tag: target.tag },
+            ],
+          }
+        })
+        return next
+      })
+
+      const oldGeneralIds = siblings.filter(s => !s.rubricItemId).map(s => s.id)
+      if (oldGeneralIds.length > 0) {
+        setGeneralAnnotations(prev => prev.filter(a => !oldGeneralIds.includes(a.id)))
+      }
+      const newGeneralEntries = insertIds
+        .map((rubricItemId, i) => ({ rubricItemId, newId: results[i] }))
+        .filter(({ rubricItemId, newId }) => !rubricItemId && newId)
+      if (newGeneralEntries.length > 0) {
+        setGeneralAnnotations(prev => [
+          ...prev,
+          ...newGeneralEntries.map(({ newId }) => ({
+            id: newId!,
+            anchor: target.anchor,
+            body: target.body,
+            tag: target.tag,
+          })),
+        ])
+      }
+    },
+    [deleteAnnotation, saveAnnotation, track, review.id]
+  )
+
   const handleEditFreeNote = useCallback(
-    async (annotationId: string, changes: { body: string; rubricItemId: string | null }) => {
+    async (annotationId: string, changes: { body: string; rubricItemId: string | null; tag?: HighlightTag | null }) => {
       if (changes.rubricItemId) {
         track('note_categorize', { annotation_id: annotationId, to_rubric_item_id: changes.rubricItemId, char_count: changes.body.length })
       } else {
         track('note_edit', { annotation_id: annotationId, char_count: changes.body.length })
       }
-      await updateAnnotation(annotationId, { body: changes.body, rubricItemId: changes.rubricItemId })
+      await updateAnnotation(annotationId, {
+        body: changes.body,
+        rubricItemId: changes.rubricItemId,
+        ...(changes.tag !== undefined && { tag: changes.tag }),
+      })
       if (changes.rubricItemId && scores[changes.rubricItemId]) {
         // Move from free notes into a criterion
         const note = generalAnnotations.find((a) => a.id === annotationId)
@@ -355,7 +455,11 @@ export function ReviewerConsole({
         }
       } else {
         setGeneralAnnotations((prev) =>
-          prev.map((a) => (a.id === annotationId ? { ...a, body: changes.body } : a))
+          prev.map((a) =>
+            a.id === annotationId
+              ? { ...a, body: changes.body, ...(changes.tag !== undefined && { tag: changes.tag }) }
+              : a
+          )
         )
       }
     },
@@ -400,15 +504,19 @@ export function ReviewerConsole({
       setScores((prev) => {
         const existing = prev[rubricItemId]
         const item: ScoreComment = { id, rubric_item_id: rubricItemId, score_level: scoreLevel, body }
+        const updatedScores = existing.scores.includes(scoreLevel)
+          ? existing.scores
+          : [...existing.scores, scoreLevel]
         const updated: LocalScore = {
           ...existing,
-          score: scoreLevel,
+          scores: updatedScores,
           ...(scoreLevel === 'does_not_meet'
             ? { niComments: [...existing.niComments, { id: item.id, body: item.body }] }
             : { exceedsComments: [...existing.exceedsComments, { id: item.id, body: item.body }] }
           ),
         }
-        onScoreChange({ rubricItemId, score: scoreLevel, comment: existing.comment })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(onScoreChange as any)({ rubricItemId, scores: updatedScores, comment: existing.comment })
         return { ...prev, [rubricItemId]: updated }
       })
     },
@@ -421,19 +529,24 @@ export function ReviewerConsole({
       await deleteScoreComment(commentId)
       setScores((prev) => {
         const existing = prev[rubricItemId]
+        const key = scoreLevel === 'does_not_meet' ? 'niComments' : 'exceedsComments'
+        const updatedComments = existing[key].filter((c) => c.id !== commentId)
+        const updatedScores = updatedComments.length === 0
+          ? existing.scores.filter((s) => s !== scoreLevel)
+          : existing.scores
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(onScoreChange as any)({ rubricItemId, scores: updatedScores, comment: existing.comment })
         return {
           ...prev,
           [rubricItemId]: {
             ...existing,
-            ...(scoreLevel === 'does_not_meet'
-              ? { niComments: existing.niComments.filter((c) => c.id !== commentId) }
-              : { exceedsComments: existing.exceedsComments.filter((c) => c.id !== commentId) }
-            ),
+            [key]: updatedComments,
+            scores: updatedScores,
           },
         }
       })
     },
-    [deleteScoreComment, track]
+    [deleteScoreComment, onScoreChange, track]
   )
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -447,7 +560,7 @@ export function ReviewerConsole({
 
       if (error) return error.message
       track('submit', {
-        scored_criteria: Object.values(scores).filter((s) => s.score !== null).length,
+        scored_criteria: Object.values(scores).filter((s) => s.scores.length > 0).length,
         total_criteria: rubricItems.length,
         overall_comment_length: finalOverallComment.length,
       })
@@ -458,7 +571,7 @@ export function ReviewerConsole({
     [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
   )
 
-  const scoredCount = Object.values(scores).filter((s) => s.score !== null).length
+  const scoredCount = Object.values(scores).filter((s) => s.scores.length > 0).length
   const totalCount = rubricItems.length
 
   // Flatten all saved annotations for PDF highlight overlays
