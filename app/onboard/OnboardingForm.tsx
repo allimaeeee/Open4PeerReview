@@ -321,13 +321,13 @@ export function OnboardingForm({
   // â”€â”€ Panel renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function renderPanel() {
 
-    // Panel 1 â€” Welcome
+    // Panel 1 — Welcome
     if (mainStep === 1) return (
       <>
         <img src="/welcome-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Welcome to Open4PeerReview</h1>
         <p className="text-body-md text-text-muted mt-2">
-          Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them â€” your contribution strengthens learning for everyone.
+          Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.
         </p>
         <p className="text-body-md text-text-muted mt-1">This takes about 3 minutes.</p>
         <PanelFooter
@@ -337,7 +337,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 2 â€” Personal info
+    // Panel 2 — Personal info
     if (mainStep === 2) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
@@ -442,12 +442,12 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3 â€” Role selection
+    // Panel 3 — Role selection
     if (mainStep === 3 && sub === 0) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">How do you participate in OER?</h1>
         <p className="text-body-md text-text-muted mt-2">
-          Pick all that apply â€” many people both create and review. You can always add roles later from your profile settings.
+          Pick all that apply — many people both create and review. You can always add roles later from your profile settings.
         </p>
 
         <div className="space-y-3 mt-6">
@@ -497,7 +497,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.1 â€” Reviewer type
+    // Panel 3.1 — Reviewer type
     if (mainStep === 3 && sub === 1) return (
       <>
         <ReviewerEyebrow n={1} />
@@ -523,7 +523,7 @@ export function OnboardingForm({
             disabled={loading}
             icon={<IndustryIcon />}
             title="Industry Expert"
-            description="You bring workforce and industry perspective â€” evaluating whether OERs prepare learners for real-world professional contexts."
+            description="You bring workforce and industry perspective — evaluating whether OERs prepare learners for real-world professional contexts."
           />
         </div>
 
@@ -538,13 +538,13 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.2 â€” Expertise tags
+    // Panel 3.2 — Expertise tags
     if (mainStep === 3 && sub === 2) return (
       <>
         <ReviewerEyebrow n={2} />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">What are your areas of expertise?</h1>
         <p className="text-body-md text-text-muted mt-2">
-          These tags surface tasks that match your knowledge. Add at least two â€” you can always update them in Settings.
+          These tags surface tasks that match your knowledge. Add at least two — you can always update them in Settings.
         </p>
 
         <div className="mt-6">
@@ -621,7 +621,7 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3.3 â€” Rubric specialization
+    // Panel 3.3 — Rubric specialization
     if (mainStep === 3 && sub === 3) return (
       <>
         <ReviewerEyebrow n={3} />
@@ -657,44 +657,37 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 4 â€” Finish
+    // Panel 4 — Finish
     if (mainStep === 4) return (
       <>
         <img src="/celebration-icon.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">You're all set, {displayName}!</h1>
         <p className="text-body-md text-text-muted mt-2">
-          You're ready to go. Explore your dashboard to see what's waiting for you â€” and if anything changes, you can always update your profile in Settings.
+          You're ready to go. Explore your dashboard to see what's waiting for you — and if anything changes, you can always update your profile in Settings.
         </p>
 
-        <div className="flex justify-end gap-3 mt-8">
-          {roles.has('reviewer') && (
-            <Button
-              type="button"
-              variant={roles.has('author') || roles.has('coordinator') ? 'secondary' : 'primary'}
-              onClick={() => router.push('/reviewer')}
-            >
-              Go to reviewer dashboard
-            </Button>
-          )}
-          {roles.has('coordinator') && (
-            <Button
-              type="button"
-              variant={roles.has('author') ? 'secondary' : 'primary'}
-              onClick={() => router.push('/coordinator')}
-            >
-              Go to coordinator dashboard
-            </Button>
-          )}
-          {roles.has('author') && (
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => router.push('/author')}
-            >
-              Go to author dashboard
-            </Button>
-          )}
-        </div>
+        {(() => {
+          const priorityOrder = ['coordinator', 'author', 'reviewer'] as const
+          const selected = priorityOrder.filter(r => roles.has(r))
+          const primary = selected[0]
+          const secondary = selected[1]
+          const routes = { coordinator: '/coordinator', author: '/author', reviewer: '/reviewer' }
+          const labels = { coordinator: 'Go to coordinator dashboard', author: 'Go to author dashboard', reviewer: 'Go to reviewer dashboard' }
+          return (
+            <div className="flex justify-end gap-3 mt-8">
+              {secondary && (
+                <Button type="button" variant="secondary" onClick={() => router.push(routes[secondary])}>
+                  {labels[secondary]}
+                </Button>
+              )}
+              {primary && (
+                <Button type="button" variant="primary" onClick={() => router.push(routes[primary])}>
+                  {labels[primary]}
+                </Button>
+              )}
+            </div>
+          )
+        })()}
       </>
     )
 

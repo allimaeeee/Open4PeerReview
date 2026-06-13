@@ -117,7 +117,7 @@ export function SettingsModal({ open, onClose }: Props) {
   const [passwordSaved, setPasswordSaved]             = useState(false)
 
   // ── Roles section ─────────────────────────────────────────────────────────────
-  const [roles, setRoles]                         = useState<Set<'author' | 'reviewer'>>(new Set())
+  const [roles, setRoles]                         = useState<Set<'author' | 'reviewer' | 'coordinator'>>(new Set())
   const [reviewerType, setReviewerType]           = useState('')
   const [expertiseTags, setExpertiseTags]         = useState<Set<string>>(new Set())
   const [tagInput, setTagInput]                   = useState('')
@@ -152,7 +152,7 @@ export function SettingsModal({ open, onClose }: Props) {
       setDisciplineOther(isKnownDiscipline ? '' : (profile?.primary_discipline ?? ''))
       setProfession(isKnownProfession ? (profile?.profession ?? '') : (profile?.profession ? 'other' : ''))
       setProfessionOther(isKnownProfession ? '' : (profile?.profession ?? ''))
-      setRoles(new Set((profile?.roles ?? []) as ('author' | 'reviewer')[]))
+      setRoles(new Set((profile?.roles ?? []) as ('author' | 'reviewer' | 'coordinator')[]))
       setReviewerType(profile?.reviewer_type ?? '')
       setExpertiseTags(new Set(profile?.expertise_tags ?? []))
       setRubricSpecs(new Set(profile?.rubric_specializations ?? []))
@@ -171,7 +171,7 @@ export function SettingsModal({ open, onClose }: Props) {
     setProfileSaved(false)
   }
 
-  function toggleRole(role: 'author' | 'reviewer') {
+  function toggleRole(role: 'author' | 'reviewer' | 'coordinator') {
     setRoles(prev => {
       const next = new Set(prev)
       if (next.has(role)) next.delete(role)
@@ -337,6 +337,7 @@ export function SettingsModal({ open, onClose }: Props) {
     setRolesLoading(false)
     if (error) { setRolesServerError(error.message); return }
     setRolesSaved(true)
+    window.dispatchEvent(new CustomEvent('roles-updated'))
     router.refresh()
   }
 
@@ -580,18 +581,31 @@ export function SettingsModal({ open, onClose }: Props) {
                         Indicate how you participate in OER. Your role determines which dashboards you can access.
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {(['author', 'reviewer'] as const).map(role => (
-                        <SelectionCard
-                          key={role}
-                          selectionMode="checkbox"
-                          isSelected={roles.has(role)}
-                          onChange={() => toggleRole(role)}
-                          disabled={rolesLoading}
-                          title={role === 'author' ? 'Author' : 'Reviewer'}
-                          description={role === 'author' ? 'Submit work for peer review' : 'Review and evaluate submissions'}
-                        />
-                      ))}
+                    <div className="grid grid-cols-1 gap-3">
+                      <SelectionCard
+                        selectionMode="checkbox"
+                        isSelected={roles.has('author')}
+                        onChange={() => toggleRole('author')}
+                        disabled={rolesLoading}
+                        title="Author"
+                        description="Submit work for peer review"
+                      />
+                      <SelectionCard
+                        selectionMode="checkbox"
+                        isSelected={roles.has('reviewer')}
+                        onChange={() => toggleRole('reviewer')}
+                        disabled={rolesLoading}
+                        title="Reviewer"
+                        description="Review and evaluate submissions"
+                      />
+                      <SelectionCard
+                        selectionMode="checkbox"
+                        isSelected={roles.has('coordinator')}
+                        onChange={() => toggleRole('coordinator')}
+                        disabled={rolesLoading}
+                        title="Coordinator"
+                        description="Manage OER submissions for your organization"
+                      />
                     </div>
                     {rolesErrors.roles && <Alert variant="error" message={rolesErrors.roles} className="mt-1.5" />}
 
