@@ -225,16 +225,16 @@ export function ReviewerConsole({
   const handleAnnotationConfirm = useCallback(
     async (payload: AnnotationConfirmPayload) => {
       if (!pendingSelection) return
-      const { body, rubricItemIds, tag } = payload
+      const { body, rubricItemId, tag } = payload
 
       const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
         ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
         : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
 
-      const validItemIds = rubricItemIds.filter((id) => scores[id])
+      const validItemId = rubricItemId && scores[rubricItemId] ? rubricItemId : null
 
-      if (validItemIds.length === 0) {
+      if (!validItemId) {
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         track('annotation_create', { annotation_id: newId, rubric_item_id: null, tag, char_count: body.length })
@@ -243,24 +243,16 @@ export function ReviewerConsole({
         return null
       }
 
-      const results = await Promise.all(
-        validItemIds.map((id) => saveAnnotation({ reviewId: review.id, rubricItemId: id, anchor, body, tag }))
-      )
-      if (results.some((id) => !id)) return 'Failed to save evidence. Please try again.'
-
-      results.forEach((newId, i) => {
-        if (newId) track('annotation_create', { annotation_id: newId, rubric_item_id: validItemIds[i], tag, char_count: body.length })
-      })
-
-      setScores((prev) => {
-        let next = { ...prev }
-        validItemIds.forEach((id, i) => {
-          const newId = results[i]
-          if (!newId || !next[id]) return
-          next = { ...next, [id]: { ...next[id], annotations: [...next[id].annotations, { id: newId, anchor, body, tag }] } }
-        })
-        return next
-      })
+      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: validItemId, anchor, body, tag })
+      if (!newId) return 'Failed to save evidence. Please try again.'
+      track('annotation_create', { annotation_id: newId, rubric_item_id: validItemId, tag, char_count: body.length })
+      setScores((prev) => ({
+        ...prev,
+        [validItemId]: {
+          ...prev[validItemId],
+          annotations: [...prev[validItemId].annotations, { id: newId, anchor, body, tag }],
+        },
+      }))
       setPendingSelection(null)
       return null
     },
@@ -369,7 +361,7 @@ export function ReviewerConsole({
   )
 
   const handleAnnotationRelink = useCallback(
-    async (annotationId: string, newRubricItemIds: string[]) => {
+    async (annotationId: string, newRubricItemIds: string[], updates: { body: string; tag: HighlightTag | null }) => {
       const allAnns = [
         ...Object.entries(scoresRef.current).flatMap(([rubricItemId, s]) =>
           s.annotations.map(ann => ({ ...ann, rubricItemId }))
@@ -397,8 +389,8 @@ export function ReviewerConsole({
             reviewId: review.id,
             rubricItemId: id,
             anchor: target.anchor as Json,
-            body: target.body,
-            tag: target.tag as HighlightTag | null,
+            body: updates.body,
+            tag: updates.tag,
           })
         )
       )
@@ -420,7 +412,7 @@ export function ReviewerConsole({
             ...next[rubricItemId],
             annotations: [
               ...next[rubricItemId].annotations,
-              { id: newId, anchor: target.anchor, body: target.body, tag: target.tag },
+              { id: newId, anchor: target.anchor, body: updates.body, tag: updates.tag },
             ],
           }
         })
@@ -440,8 +432,8 @@ export function ReviewerConsole({
           ...newGeneralEntries.map(({ newId }) => ({
             id: newId!,
             anchor: target.anchor,
-            body: target.body,
-            tag: target.tag,
+            body: updates.body,
+            tag: updates.tag,
           })),
         ])
       }
@@ -605,12 +597,24 @@ export function ReviewerConsole({
   const [activeRubricId, setActiveRubricId] = useState<string | null>(firstRubricId)
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [pulseAnnotationId, setPulseAnnotationId] = useState<string | null>(null)
+  const [panelScrollAnnotationId, setPanelScrollAnnotationId] = useState<string | null>(null)
 
   useEffect(() => {
     if (firstRubricId && activeRubricId === null) {
       setActiveRubricId(firstRubricId)
     }
   }, [firstRubricId])
+
+  // Scroll the rubric panel to the target annotation card, expanding its criterion if needed
+  useEffect(() => {
+    if (!panelScrollAnnotationId) return
+    const timer = setTimeout(() => {
+      const el = window.document.getElementById(`annotation-card-${panelScrollAnnotationId}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      setPanelScrollAnnotationId(null)
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [panelScrollAnnotationId])
 
   const activeViewerCriteria = useMemo(
     () => activeRubricId
@@ -641,6 +645,18 @@ export function ReviewerConsole({
     ),
     ...generalAnnotations.map((ann) => ({ ...ann, rubricItemId: null })),
   ], [scores, generalAnnotations])
+
+  function handleViewFullComment(annotationId: string) {
+    const ann = savedAnnotations.find(a => a.id === annotationId)
+    if (!ann) return
+    if (ann.rubricItemId) {
+      const item = rubricItems.find(r => r.id === ann.rubricItemId)
+      if (item && item.rubric_id !== activeRubricId) {
+        setActiveRubricId(item.rubric_id)
+      }
+    }
+    setPanelScrollAnnotationId(annotationId)
+  }
 
   return (
     <div className="h-screen flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
@@ -677,6 +693,7 @@ export function ReviewerConsole({
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
                 pulseAnnotationId={pulseAnnotationId}
                 onPulseComplete={() => setPulseAnnotationId(null)}
+                onAnnotationViewFull={handleViewFullComment}
               />
             ) : document.file_url ? (
               <PDFViewer
@@ -695,6 +712,7 @@ export function ReviewerConsole({
                 disabled={isSubmitted}
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
+                onAnnotationViewFull={handleViewFullComment}
               />
             ) : null}
           </div>
@@ -718,6 +736,7 @@ export function ReviewerConsole({
               onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id) }}
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
+              expandToAnnotationId={panelScrollAnnotationId}
             />
           </div>
         }

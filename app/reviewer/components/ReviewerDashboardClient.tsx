@@ -50,7 +50,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   // ── My Reviews ──────────────────────────────────────────────────────────────
 
   const getCardStatus = (card: typeof activeCards[number]) =>
-    card.rubrics.some(r => r.completionPercent > 0) ? 'in-progress' : 'not-started'
+    card.rubrics.some(r => r.ratedCount > 0) ? 'in-progress' : 'not-started'
 
   const filterOptions = [
     { value: 'all',         label: 'All',         count: activeCards.length },

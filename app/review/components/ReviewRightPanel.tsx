@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { TabBar } from '@/components/ui/TabBar'
 import { CriterionCard } from './CriterionCard'
 import { FreeNotesSection } from './FreeNotesSection'
+import { UnlinkedHighlightsSection } from './UnlinkedHighlightsSection'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
 import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
@@ -27,6 +28,7 @@ interface ReviewRightPanelProps {
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
+  expandToAnnotationId?: string | null
 }
 
 export function ReviewRightPanel({
@@ -46,6 +48,7 @@ export function ReviewRightPanel({
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
+  expandToAnnotationId,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
@@ -71,6 +74,17 @@ export function ReviewRightPanel({
     [activeRubricItems]
   )
 
+  // Split generalAnnotations: actual highlights have a non-empty anchor object;
+  // plain free notes are saved with anchor={} (empty).
+  const freeNotes = useMemo(
+    () => generalAnnotations.filter(a => Object.keys(a.anchor).length === 0),
+    [generalAnnotations]
+  )
+  const unlinkedHighlights = useMemo(
+    () => generalAnnotations.filter(a => Object.keys(a.anchor).length > 0),
+    [generalAnnotations]
+  )
+
   function handleEditNote(noteId: string, changes: { body: string; tag: HighlightTag | null }) {
     onEditFreeNote(noteId, { body: changes.body, tag: changes.tag, rubricItemId: null })
   }
@@ -79,6 +93,12 @@ export function ReviewRightPanel({
     const note = generalAnnotations.find(n => n.id === noteId)
     if (!note) return
     onEditFreeNote(noteId, { body: note.body, tag: note.tag as HighlightTag | null, rubricItemId })
+  }
+
+  function handleLinkHighlight(annotationId: string, criterionId: string) {
+    const ann = generalAnnotations.find(a => a.id === annotationId)
+    if (!ann) return
+    onEditFreeNote(annotationId, { body: ann.body, tag: ann.tag as HighlightTag | null, rubricItemId: criterionId })
   }
 
   return (
@@ -108,12 +128,21 @@ export function ReviewRightPanel({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <FreeNotesSection
-          notes={generalAnnotations}
+          notes={freeNotes}
           criteria={criteriaOptions}
           onAddNote={onAddNote}
           onEditNote={handleEditNote}
           onMoveNote={handleMoveNote}
           onDeleteNote={onDeleteNote}
+        />
+
+        <UnlinkedHighlightsSection
+          annotations={unlinkedHighlights}
+          criteria={criteriaOptions}
+          onGoTo={onGoToAnnotation}
+          onEdit={onEditAnnotation}
+          onDelete={onDeleteAnnotation}
+          onLink={handleLinkHighlight}
         />
 
         <div className="flex flex-col gap-2 p-4">
@@ -133,6 +162,7 @@ export function ReviewRightPanel({
                 onGoToAnnotation={onGoToAnnotation}
                 onEditAnnotation={onEditAnnotation}
                 onDeleteAnnotation={onDeleteAnnotation}
+                expandToAnnotationId={expandToAnnotationId}
               />
             )
           })}

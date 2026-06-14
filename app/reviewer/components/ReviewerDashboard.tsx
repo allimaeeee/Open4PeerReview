@@ -13,7 +13,8 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const supabase = await createClient()
   const documents = await getAllDocumentsWithRubrics(supabase)
 
-  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null }
+  type ReviewScoreRow = { id: string; rubric_item_id: string; criterion_scores: string[] }
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; review_scores: ReviewScoreRow[] }
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
@@ -23,10 +24,27 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     return fileType?.toUpperCase() ?? ''
   }
 
+  type RubricRow = { id: string; title: string; rubric_items?: { id: string }[] }
+
   function mapRubrics(doc: Doc) {
     return (doc.document_rubrics ?? [])
-      .map(dr => dr.rubric)
-      .filter((r): r is { id: string; title: string } => r !== null)
+      .map(dr => dr.rubric as RubricRow | null)
+      .filter((r): r is RubricRow => r !== null)
+  }
+
+  function mapRubricsWithProgress(doc: Doc) {
+    const reviews = (doc.reviews ?? []) as ReviewRow[]
+    // One review covers all rubrics — find by reviewer_id only, not rubric_id
+    const myReview = reviews.find(rev => rev.reviewer_id === userId)
+    const myScores = myReview?.review_scores ?? []
+    return mapRubrics(doc).map(r => {
+      const rubricItemIds = new Set((r.rubric_items ?? []).map(item => item.id))
+      const totalCount = rubricItemIds.size
+      const ratedCount = myScores.filter(
+        rs => rubricItemIds.has(rs.rubric_item_id) && (rs.criterion_scores ?? []).length > 0
+      ).length
+      return { rubricId: r.id, rubricTitle: r.title, ratedCount, totalCount }
+    })
   }
 
   // Exclude documents the reviewer authored
@@ -62,7 +80,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
       description: doc.third_party_content_disclosure ?? '',
       claimedAt: doc.created_at,
-      rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title, completionPercent: 0 })),
+      rubrics: mapRubricsWithProgress(doc),
       reviewUrl: `/review?document=${doc.id}`,
     }
   })
