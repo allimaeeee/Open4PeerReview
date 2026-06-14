@@ -132,6 +132,7 @@ function markRange(
 
     const mark = doc.createElement('mark')
     mark.dataset.annotationId = annotationId
+    mark.classList.add('annotation-highlight')
     mark.style.cssText =
       `background:${color};border-radius:2px;cursor:pointer;padding:0;`
 

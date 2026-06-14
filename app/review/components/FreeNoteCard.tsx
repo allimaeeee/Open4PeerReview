@@ -3,7 +3,9 @@
 import { useState } from 'react'
 import type { HighlightTag } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { Textarea } from '@/components/ui/Textarea'
 import type { FreeNote, CriterionOption } from './FreeNotesSection'
+import { TagChip, TagSelector } from './TagChip'
 
 interface FreeNoteCardProps {
   note: FreeNote
@@ -11,20 +13,11 @@ interface FreeNoteCardProps {
   onEdit: (noteId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onMove: (noteId: string, rubricItemId: string) => void
   onDelete: (noteId: string) => void
+  showMoveDropdown?: boolean
 }
 
-const TAG_LABELS: Record<string, string> = {
-  action_item: 'Action item',
-  quick_fix:   'Quick fix',
-}
-
-const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
-  { value: 'action_item', label: 'Action item' },
-  { value: 'quick_fix',   label: 'Quick fix'   },
-]
-
-export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete }: FreeNoteCardProps) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'moving'>('view')
+export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMoveDropdown = true }: FreeNoteCardProps) {
+  const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [body, setBody] = useState(note.body)
   const [tag, setTag] = useState<HighlightTag | null>((note.tag as HighlightTag) ?? null)
   const [selectedCriterionId, setSelectedCriterionId] = useState('')
@@ -32,83 +25,56 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete }: FreeN
   function handleCancel() {
     setBody(note.body)
     setTag((note.tag as HighlightTag) ?? null)
-    setSelectedCriterionId('')
     setMode('view')
   }
 
   if (mode === 'edit') {
     return (
-      <div className="rounded-md border border-border bg-surface-container-low p-3 flex flex-col gap-2">
-        <textarea
+      <div className="rounded-none border border-border bg-surface-container-low p-3 flex flex-col gap-2">
+        <Textarea
           autoFocus
           rows={3}
+          variant="default"
           value={body}
           onChange={e => setBody(e.target.value)}
-          className="w-full resize-none rounded-md border border-border bg-transparent p-2 text-body-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none transition-colors"
         />
-
-        {/* Tag pills */}
-        <div className="flex gap-2">
-          {TAG_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setTag(prev => prev === opt.value ? null : opt.value)}
-              className={[
-                'px-3 py-1 rounded-full text-body-sm border transition-colors cursor-pointer',
-                tag === opt.value
-                  ? 'bg-surface-container border-primary text-primary'
-                  : 'bg-transparent border-border text-text-muted hover:border-primary hover:text-text-primary',
-              ].join(' ')}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => onDelete(note.id)}
-            className="text-body-sm text-error hover:underline cursor-pointer"
+        <TagSelector value={tag} onChange={setTag} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" shape="square" onClick={handleCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            shape="square"
+            disabled={!body.trim()}
+            onClick={() => {
+              onEdit(note.id, { body: body.trim(), tag })
+              setMode('view')
+            }}
           >
-            Delete
-          </button>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="text-body-sm text-text-muted hover:text-text-primary cursor-pointer"
-            >
-              Cancel
-            </button>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!body.trim()}
-              onClick={() => {
-                onEdit(note.id, { body: body.trim(), tag })
-                setMode('view')
-              }}
-            >
-              Save
-            </Button>
-          </div>
+            Save
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-md border border-border bg-surface-container-low p-3 flex flex-col gap-2">
-      {/* Header row */}
+    <div className="rounded-none border border-border bg-surface-container-low p-3 flex flex-col gap-2">
+      {/* Top row: comment + edit/delete icons */}
       <div className="flex items-start justify-between gap-2">
-        <p className="text-body-sm text-text-primary flex-1">{note.body}</p>
+        <div className="flex flex-col flex-1 min-w-0">
+          <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mb-1">
+            Free Note
+          </span>
+          <p className="text-body-sm text-text-primary">{note.body}</p>
+        </div>
         <div className="flex-shrink-0 flex items-center gap-1">
           <button
             type="button"
             onClick={() => setMode('edit')}
-            className="text-text-muted hover:text-text-primary"
+            className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
             aria-label="Edit note"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -119,7 +85,7 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete }: FreeN
           <button
             type="button"
             onClick={() => onDelete(note.id)}
-            className="text-text-muted hover:text-text-primary"
+            className="opacity-70 hover:opacity-100 transition-opacity text-error"
             aria-label="Delete note"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -129,52 +95,57 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete }: FreeN
         </div>
       </div>
 
-      {/* Tag pill */}
-      {note.tag && TAG_LABELS[note.tag] && (
-        <span className="self-start px-2 py-0.5 rounded-full text-label-sm border border-border text-text-secondary bg-surface-container">
-          {TAG_LABELS[note.tag]}
-        </span>
+      {/* Tags row — only when a tag exists */}
+      {note.tag && (
+        <>
+          <hr className="border-0 border-t border-border" />
+          <div className="flex items-center gap-2">
+            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+              Tags
+            </span>
+            <TagChip tag={note.tag} />
+          </div>
+        </>
       )}
 
-      {/* Move to criterion */}
-      {mode === 'moving' ? (
-        <div className="flex flex-col gap-1">
-          <select
-            value={selectedCriterionId}
-            onChange={e => setSelectedCriterionId(e.target.value)}
-            className="w-full border-0 border-b-2 border-border bg-transparent pb-2 text-body-sm text-text-primary focus:border-primary focus:outline-none appearance-none cursor-pointer"
-          >
-            <option value="">Select a criterion...</option>
-            {criteria.map(c => (
-              <option key={c.id} value={c.id}>{c.label}</option>
-            ))}
-          </select>
-          <div className="flex justify-end gap-2 mt-1">
-            <button
-              type="button"
-              onClick={() => { setMode('view'); setSelectedCriterionId('') }}
-              className="text-body-sm text-text-muted hover:text-text-primary cursor-pointer"
+
+      {/* Move-to criterion — hidden when rendered inside a criterion card */}
+      {showMoveDropdown && (
+        <>
+          <hr className="border-0 border-t border-border" />
+          <div className="relative">
+            <select
+              value={selectedCriterionId}
+              onChange={e => setSelectedCriterionId(e.target.value)}
+              className="w-full border-0 border-b-2 border-border bg-transparent pb-2 pr-6 text-body-sm text-text-primary focus:border-primary focus:outline-none appearance-none cursor-pointer"
             >
-              Cancel
-            </button>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!selectedCriterionId}
-              onClick={() => onMove(note.id, selectedCriterionId)}
-            >
-              Move
-            </Button>
+              <option value="">Move to criterion...</option>
+              {criteria.map(c => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-0 top-0 bottom-2 flex items-center text-text-muted">
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setMode('moving')}
-          className="text-body-sm text-primary hover:underline cursor-pointer self-start"
-        >
-          Move to criterion →
-        </button>
+          {selectedCriterionId && (
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" shape="square" onClick={() => setSelectedCriterionId('')}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                shape="square"
+                onClick={() => onMove(note.id, selectedCriterionId)}
+              >
+                Move
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

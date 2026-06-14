@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { TabBar } from '@/components/ui/TabBar'
 import { CriterionCard } from './CriterionCard'
 import { FreeNotesSection } from './FreeNotesSection'
@@ -25,6 +25,8 @@ interface ReviewRightPanelProps {
   onEditFreeNote: (noteId: string, changes: { body: string; rubricItemId: string | null; tag?: HighlightTag | null }) => void
   onDeleteNote: (noteId: string) => void
   onGoToAnnotation: (annotationId: string) => void
+  onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
+  onDeleteAnnotation: (annotationId: string) => void
 }
 
 export function ReviewRightPanel({
@@ -42,18 +44,22 @@ export function ReviewRightPanel({
   onEditFreeNote,
   onDeleteNote,
   onGoToAnnotation,
+  onEditAnnotation,
+  onDeleteAnnotation,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
-    const result: { id: string; title: string }[] = []
+    const result: { id: string; title: string; rated: number; total: number }[] = []
     for (const item of rubricItems) {
       if (!seen.has(item.rubric_id)) {
         seen.add(item.rubric_id)
-        result.push({ id: item.rubric_id, title: item.rubric_title ?? item.rubric_id })
+        const items = rubricItems.filter(i => i.rubric_id === item.rubric_id)
+        const rated = items.filter(i => (scores[i.id]?.scores?.length ?? 0) > 0).length
+        result.push({ id: item.rubric_id, title: item.rubric_title ?? item.rubric_id, rated, total: items.length })
       }
     }
     return result
-  }, [rubricItems])
+  }, [rubricItems, scores])
 
   const activeRubricItems = useMemo(
     () => rubricItems.filter(item => item.rubric_id === activeRubricId),
@@ -61,11 +67,9 @@ export function ReviewRightPanel({
   )
 
   const criteriaOptions: CriterionOption[] = useMemo(
-    () => activeRubricItems.map((item, i) => ({ id: item.id, label: `C${i + 1} ${item.label}` })),
+    () => activeRubricItems.map(item => ({ id: item.id, label: item.label })),
     [activeRubricItems]
   )
-
-  const [isAddingNote, setIsAddingNote] = useState(false)
 
   function handleEditNote(noteId: string, changes: { body: string; tag: HighlightTag | null }) {
     onEditFreeNote(noteId, { body: changes.body, tag: changes.tag, rubricItemId: null })
@@ -78,33 +82,26 @@ export function ReviewRightPanel({
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden bg-surface">
       {/* Fixed header: rubric tabs */}
       <div className="flex-shrink-0">
         <TabBar
-          tabs={rubrics.map(r => ({ id: r.id, label: r.title }))}
+          tabs={rubrics.map(r => ({
+            id: r.id,
+            label: r.title,
+            badge: (
+              <span className={[
+                'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
+                r.rated === r.total
+                  ? 'bg-success-container text-success border border-success'
+                  : 'bg-amber-100 text-amber-800 border border-amber-800',
+              ].join(' ')}>
+                {r.rated}/{r.total}
+              </span>
+            ),
+          }))}
           activeId={activeRubricId ?? ''}
           onChange={onActiveRubricChange}
-          rightSlot={
-            <button
-              type="button"
-              onClick={() => setIsAddingNote(v => !v)}
-              className={[
-                'flex items-center gap-1.5 text-label-sm font-label font-semibold whitespace-nowrap px-3 py-1.5 rounded-md transition-colors',
-                isAddingNote
-                  ? 'bg-surface-container text-text-secondary'
-                  : 'bg-primary text-on-primary hover:bg-primary-hover',
-              ].join(' ')}
-            >
-              {isAddingNote ? 'Free note' : '+ Free note'}
-              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                {isAddingNote
-                  ? <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                  : <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                }
-              </svg>
-            </button>
-          }
         />
       </div>
 
@@ -113,8 +110,6 @@ export function ReviewRightPanel({
         <FreeNotesSection
           notes={generalAnnotations}
           criteria={criteriaOptions}
-          isAdding={isAddingNote}
-          onAddingChange={setIsAddingNote}
           onAddNote={onAddNote}
           onEditNote={handleEditNote}
           onMoveNote={handleMoveNote}
@@ -128,6 +123,7 @@ export function ReviewRightPanel({
             return (
               <CriterionCard
                 key={item.id}
+                criterionIndex={index + 1}
                 rubricItem={item}
                 score={score}
                 onScoreToggle={onScoreToggle}
@@ -135,6 +131,8 @@ export function ReviewRightPanel({
                 onEditComment={onEditComment}
                 onDeleteComment={onDeleteComment}
                 onGoToAnnotation={onGoToAnnotation}
+                onEditAnnotation={onEditAnnotation}
+                onDeleteAnnotation={onDeleteAnnotation}
               />
             )
           })}

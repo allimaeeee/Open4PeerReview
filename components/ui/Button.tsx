@@ -8,6 +8,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg'
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
+  shape?: 'rounded' | 'square'
   /** Shows a spinner and blocks interaction */
   loading?: boolean
   /** Stretches the button to fill its container */
@@ -42,6 +43,7 @@ function Spinner() {
 export function Button({
   variant = 'primary',
   size = 'md',
+  shape = 'rounded',
   loading = false,
   fullWidth = false,
   active = false,
@@ -135,6 +137,9 @@ export function Button({
 
         // ── Width ─────────────────────────────────────────────────────────
         fullWidth && 'w-full',
+
+        // ── Shape ─────────────────────────────────────────────────────────
+        shape === 'square' && 'rounded-none',
 
         className,
       )}

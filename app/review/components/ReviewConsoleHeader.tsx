@@ -8,6 +8,7 @@ interface ReviewConsoleHeaderProps {
   scoredCount: number
   totalCount: number
   lastSavedAt: Date | null
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error'
   onBack: () => void
   onSubmit: () => Promise<void>
   isSubmitted: boolean
@@ -40,6 +41,7 @@ export function ReviewConsoleHeader({
   scoredCount,
   totalCount,
   lastSavedAt,
+  saveStatus,
   onBack,
   onSubmit,
   isSubmitted,
@@ -58,11 +60,7 @@ export function ReviewConsoleHeader({
   return (
     <header className="flex-shrink-0 bg-surface-card border-b border-border px-6 py-3 flex items-center justify-between gap-4">
       {/* Left — back button */}
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-body-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-      >
+      <Button variant="secondary" onClick={onBack}>
         <svg
           className="w-4 h-4"
           viewBox="0 0 24 24"
@@ -76,24 +74,28 @@ export function ReviewConsoleHeader({
           <path d="M15 18l-6-6 6-6" />
         </svg>
         Back to dashboard
-      </button>
+      </Button>
 
       {/* Right */}
       <div className="flex items-center gap-4 flex-shrink-0">
-        {/* Last saved */}
-        <span className="text-body-sm text-text-muted">
-          {formatLastSaved(lastSavedAt)}
-        </span>
-
-        {/* Criteria rated count */}
-        <span className={[
-          'text-body-sm font-medium',
-          scoredCount === totalCount && totalCount > 0
-            ? 'text-success'
-            : 'text-text-muted',
-        ].join(' ')}>
-          {scoredCount}/{totalCount} criteria rated
-        </span>
+        {/* Save status */}
+        <div className="flex items-center gap-1.5">
+          {saveStatus === 'saving' && (
+            <svg className="w-3.5 h-3.5 animate-spin text-text-muted" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+              <path d="M8 2A6 6 0 0114 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          )}
+          {saveStatus === 'saved' && (
+            <svg className="w-3.5 h-3.5 text-success" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="6" />
+              <path d="M5 8.5L7 10.5L11 6" />
+            </svg>
+          )}
+          <span className="text-body-sm text-text-muted">
+            {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : formatLastSaved(lastSavedAt)}
+          </span>
+        </div>
 
         {/* Submit button */}
         <Button
