@@ -49,6 +49,8 @@ interface HtmlViewerCanvasProps {
   disabled: boolean
   onGoToAnnotation?: (annotationId: string) => void
   scrollToAnnotationId?: string | null
+  pulseAnnotationId?: string | null
+  onPulseComplete?: () => void
 }
 
 export default function HtmlViewerCanvas({
@@ -67,6 +69,8 @@ export default function HtmlViewerCanvas({
   disabled,
   onGoToAnnotation,
   scrollToAnnotationId,
+  pulseAnnotationId,
+  onPulseComplete,
 }: HtmlViewerCanvasProps) {
 
   // ── New-annotation tooltip state ───────────────────────────────────────────
@@ -206,6 +210,21 @@ export default function HtmlViewerCanvas({
     originalHtmlRef.current = doc.body.innerHTML
     setIframeReady(true)
 
+    // Inject pulse animation CSS — parent stylesheet doesn't apply inside the iframe document
+    const style = doc.createElement('style')
+    style.textContent = [
+      '@keyframes highlight-pulse {',
+      '  0%   { background-color: rgba(115,92,0,0.35); box-shadow: 0 0 0 3px rgba(115,92,0,0.25); }',
+      '  40%  { background-color: rgba(254,214,91,0.80); box-shadow: 0 0 0 1px rgba(115,92,0,0.15); }',
+      '  100% { background-color: rgba(254,214,91,0.80); box-shadow: none; }',
+      '}',
+      '.annotation-highlight.active {',
+      '  background-color: rgba(254,214,91,0.80);',
+      '  animation: highlight-pulse 1.6s ease-out 2 forwards;',
+      '}',
+    ].join('\n')
+    doc.head.appendChild(style)
+
     const handleMouseUp = () => {
       if (disabled) return
       const win = iframe.contentWindow
@@ -257,6 +276,32 @@ export default function HtmlViewerCanvas({
   useEffect(() => {
     if (scrollToAnnotationId) handleGoToAnnotation(scrollToAnnotationId)
   }, [scrollToAnnotationId])
+
+  // ── Pulse active annotation after scroll completes ─────────────────────────
+  useEffect(() => {
+    if (!pulseAnnotationId) return
+
+    let cleanupTimer: ReturnType<typeof setTimeout>
+
+    const timer = setTimeout(() => {
+      const iframeDoc = iframeRef.current?.contentDocument
+      const mark = iframeDoc?.querySelector(`[data-annotation-id="${pulseAnnotationId}"]`)
+      if (!mark) return
+
+      mark.classList.add('active')
+
+      cleanupTimer = setTimeout(() => {
+        mark.classList.remove('active')
+        onPulseComplete?.()
+      }, 3300)
+    }, 400)
+
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(cleanupTimer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulseAnnotationId])
 
   const activeItemLabel = rubricItems.find(r => r.id === activeItemId)?.label ?? null
   const containerWidth  = containerRef.current?.clientWidth ?? 600

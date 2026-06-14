@@ -5,6 +5,7 @@ import type { HighlightTag } from '@/types'
 import type { SavedAnnotation } from './PDFViewerCanvas'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { Button } from '@/components/ui/Button'
+import { TagChip, TagSelector } from './TagChip'
 
 interface AnnotationHoverCardProps {
   annotation: SavedAnnotation
@@ -17,16 +18,6 @@ interface AnnotationHoverCardProps {
   position: { x: number; y: number }
   onMouseEnter?: () => void
   onMouseLeave?: () => void
-}
-
-const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
-  { value: 'action_item', label: 'Action item' },
-  { value: 'quick_fix',   label: 'Quick fix'   },
-]
-
-const TAG_LABELS: Record<string, string> = {
-  action_item: 'Action item',
-  quick_fix:   'Quick fix',
 }
 
 function sameIds(a: string[], b: string[]) {
@@ -137,15 +128,7 @@ export function AnnotationHoverCard({
               </button>
             </div>
           </div>
-
-          {/* Tag pill */}
-          {annotation.tag && TAG_LABELS[annotation.tag] && (
-            <span className="self-start px-2 py-0.5 rounded-full text-label-sm border border-border text-text-secondary bg-surface-container">
-              {TAG_LABELS[annotation.tag]}
-            </span>
-          )}
-
-          {/* Comment */}
+          {annotation.tag && <TagChip tag={annotation.tag} />}
           <p className="text-body-sm text-text-primary">{commentPreview}</p>
         </>
       ) : (
@@ -182,29 +165,13 @@ export function AnnotationHoverCard({
             </div>
           )}
 
-          {/* Tag pills */}
+          {/* Tag selector */}
           <div className="flex flex-col gap-1">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
               Tag{' '}
               <span className="text-text-muted normal-case font-normal tracking-normal">optional</span>
             </span>
-            <div className="flex gap-2">
-              {TAG_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setTag(prev => prev === opt.value ? null : opt.value)}
-                  className={[
-                    'px-3 py-1 rounded-full text-body-sm border transition-colors cursor-pointer',
-                    tag === opt.value
-                      ? 'bg-surface-container border-primary text-primary'
-                      : 'bg-transparent border-border text-text-muted hover:border-primary hover:text-text-primary',
-                  ].join(' ')}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <TagSelector value={tag} onChange={setTag} />
           </div>
 
           {/* Comment textarea */}

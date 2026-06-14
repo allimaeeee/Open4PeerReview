@@ -117,9 +117,17 @@ export function ReviewerConsole({
             .filter((sc) => sc.score_level === 'exceeds')
             .map((sc) => ({ id: sc.id, body: sc.body }))
           const proficientSelected = (existingScore?.criterion_scores ?? []).includes('exemplifies')
+          // Derive scores from both saved criterion_scores and comment presence.
+          // score_comments are persisted immediately; criterion_scores go through a
+          // 1500ms debounce and may not have been written if the user exited quickly.
+          // Merging the two sources keeps badge state consistent across sessions.
+          const derivedScores: CriterionScore[] = [...(existingScore?.criterion_scores ?? [])]
+          if (exceedsComments.length > 0 && !derivedScores.includes('exceeds')) derivedScores.push('exceeds')
+          if (niComments.length > 0 && !derivedScores.includes('does_not_meet')) derivedScores.push('does_not_meet')
+          if (proficientSelected && !derivedScores.includes('exemplifies')) derivedScores.push('exemplifies')
           initialScores[item.id] = {
             rubricItemId: item.id,
-            scores: existingScore?.criterion_scores ?? [],
+            scores: derivedScores,
             comment: existingScore?.comment ?? '',
             proficientSelected,
             niComments,
@@ -596,6 +604,7 @@ export function ReviewerConsole({
 
   const [activeRubricId, setActiveRubricId] = useState<string | null>(firstRubricId)
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
+  const [pulseAnnotationId, setPulseAnnotationId] = useState<string | null>(null)
 
   useEffect(() => {
     if (firstRubricId && activeRubricId === null) {
@@ -634,18 +643,19 @@ export function ReviewerConsole({
   ], [scores, generalAnnotations])
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 overflow-hidden print:h-auto print:overflow-visible print:block">
+    <div className="h-screen flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
       <ReviewConsoleHeader
         scoredCount={scoredCount}
         totalCount={totalCount}
         lastSavedAt={lastSavedAt ? new Date(lastSavedAt) : null}
-        onBack={() => router.push('/reviewer')}
+        saveStatus={saveStatus}
+        onBack={() => { saveDraft().then(() => router.push('/reviewer')) }}
         onSubmit={async () => { await handleSubmit('') }}
         isSubmitted={isSubmitted}
       />
 
       <ResizablePanelLayout
-        defaultLeftPercent={60}
+        defaultLeftPercent={50}
         leftPanel={
           <div className="h-full overflow-hidden print:hidden">
             {document.file_type === 'html' && document.content_fingerprint ? (
@@ -665,6 +675,8 @@ export function ReviewerConsole({
                 disabled={isSubmitted}
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
+                pulseAnnotationId={pulseAnnotationId}
+                onPulseComplete={() => setPulseAnnotationId(null)}
               />
             ) : document.file_url ? (
               <PDFViewer
@@ -703,7 +715,9 @@ export function ReviewerConsole({
               onAddNote={handleAddGeneralNote}
               onEditFreeNote={handleEditFreeNote}
               onDeleteNote={handleDeleteGeneralAnnotation}
-              onGoToAnnotation={(id) => setScrollToAnnotationId(id)}
+              onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id) }}
+              onEditAnnotation={handleAnnotationEditFromPDF}
+              onDeleteAnnotation={handleAnnotationDeleteFromPDF}
             />
           </div>
         }

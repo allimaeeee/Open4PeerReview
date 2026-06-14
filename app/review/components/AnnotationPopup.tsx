@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { HighlightTag } from '@/types'
 import { MultiSelect } from '@/components/ui/MultiSelect'
 import { Button } from '@/components/ui/Button'
+import { TagSelector } from './TagChip'
 
 interface CriterionOption {
   id: string
@@ -22,11 +23,6 @@ interface AnnotationPopupProps {
   onCancel: () => void
   position: { x: number; selectionTop: number; selectionBottom: number }
 }
-
-const TAG_OPTIONS: { value: HighlightTag; label: string }[] = [
-  { value: 'action_item', label: 'Action item' },
-  { value: 'quick_fix',   label: 'Quick fix'   },
-]
 
 export function AnnotationPopup({
   criteria,
@@ -104,29 +100,13 @@ export function AnnotationPopup({
         />
       </div>
 
-      {/* Tag pills */}
+      {/* Tag selector */}
       <div className="flex flex-col gap-1">
         <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
           Tag{' '}
           <span className="text-text-muted normal-case font-normal tracking-normal">optional</span>
         </span>
-        <div className="flex gap-2">
-          {TAG_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setTag(prev => prev === opt.value ? null : opt.value)}
-              className={[
-                'px-3 py-1 rounded-full text-body-sm border transition-colors cursor-pointer',
-                tag === opt.value
-                  ? 'bg-surface-container border-primary text-primary'
-                  : 'bg-transparent border-border text-text-muted hover:border-primary hover:text-text-primary',
-              ].join(' ')}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <TagSelector value={tag} onChange={setTag} />
       </div>
 
       {/* Comment textarea */}

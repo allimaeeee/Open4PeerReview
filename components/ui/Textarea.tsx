@@ -9,6 +9,7 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   optional?: boolean
   rows?: number
   resize?: 'none' | 'vertical' | 'both'
+  variant?: 'default' | 'exceeds' | 'does-not-meet'
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -21,7 +22,8 @@ export function Textarea({
   helperText,
   optional,
   rows = 3,
-  resize = 'none',
+  resize = 'vertical',
+  variant = 'default',
   className,
   id: idProp,
   ...props
@@ -30,6 +32,12 @@ export function Textarea({
   const id = idProp ?? autoId
 
   const resizeClass = resize === 'none' ? 'resize-none' : resize === 'vertical' ? 'resize-y' : 'resize'
+
+  const variantClass = {
+    'default':       'border-border focus:border-primary',
+    'exceeds':       'border-secondary/40 focus:border-secondary',
+    'does-not-meet': 'border-error/40 focus:border-error',
+  }[variant]
 
   return (
     <div className="flex flex-col">
@@ -51,14 +59,14 @@ export function Textarea({
         id={id}
         rows={rows}
         className={cx(
-          'w-full bg-transparent border-0 border-b-2 outline-none',
+          'w-full bg-transparent border-0 border-b outline-none',
           'px-0 pb-2',
-          'text-body-md font-body text-text-primary',
-          'placeholder:text-text-muted',
+          'text-body-sm font-body text-text-primary',
+          'placeholder:text-text-secondary placeholder:opacity-50',
           'transition-colors duration-[var(--transition-duration-fast)]',
           'disabled:text-text-muted disabled:cursor-not-allowed disabled:opacity-60',
           resizeClass,
-          error ? 'border-error' : 'border-border focus:border-primary',
+          error ? 'border-error focus:border-error' : variantClass,
           className,
         )}
         {...props}
