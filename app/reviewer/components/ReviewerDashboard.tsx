@@ -13,6 +13,14 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const supabase = await createClient()
   const documents = await getAllDocumentsWithRubrics(supabase)
 
+  // Fetch coordinator assignments for this reviewer (non-declined only)
+  const { data: assignmentsData } = await supabase
+    .from('document_assignments')
+    .select('document_id')
+    .eq('reviewer_id', userId)
+    .is('declined_at', null)
+  const assignedIds = new Set((assignmentsData ?? []).map(a => a.document_id))
+
   type ReviewScoreRow = { id: string; rubric_item_id: string; criterion_scores: string[] }
   type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; review_scores: ReviewScoreRow[] }
   type AuthorRow = { display_name: string | null; email: string } | null
@@ -47,26 +55,22 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     })
   }
 
-  // Exclude documents the reviewer authored
-  // NOTE: author.id is not currently selected in getAllDocumentsWithRubrics —
-  // add `id` to `author:users!author_id (...)` in the query for this to take effect.
-  const reviewable = documents.filter(d => {
-    const author = d.author as AuthorRow & { id?: string }
-    const reviews = (d.reviews ?? []) as ReviewRow[]
-    return author?.id !== userId || reviews.some(r => r.reviewer_id === userId)
-  })
-
   const activeReviews: Doc[] = []
   const taskPool: Doc[] = []
   const completedReviews: Doc[] = []
 
-  for (const doc of reviewable) {
+  for (const doc of documents) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReview = reviews.find(r => r.reviewer_id === userId)
     if (myReview?.status === 'in_progress') activeReviews.push(doc)
     else if (myReview?.status === 'submitted') completedReviews.push(doc)
-    else taskPool.push(doc)
+    else if (assignedIds.has(doc.id)) taskPool.push(doc)
   }
+
+  const byTitle = (a: Doc, b: Doc) => a.title.localeCompare(b.title)
+  activeReviews.sort(byTitle)
+  completedReviews.sort(byTitle)
+  taskPool.sort(byTitle)
 
   // Map to client prop shapes
   const activeCards = activeReviews.map(doc => {

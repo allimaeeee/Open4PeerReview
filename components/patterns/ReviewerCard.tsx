@@ -43,7 +43,7 @@ export function ReviewerCard({
     anyStarted  ? 'in-progress' :
     'not-started'
 
-  const ctaLabel = anyStarted ? 'Continue' : 'Start review'
+  const ctaLabel = anyStarted ? 'Continue review' : 'Start review'
 
   const formattedDate = new Date(claimedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
