@@ -81,11 +81,7 @@ export function selectionToAnchor(win: Window): HtmlCharOffsetAnchor | null {
 
 // ── Highlight injection ───────────────────────────────────────────────────────
 
-const TAG_COLOR: Record<string, string> = {
-  action_item: 'rgba(253,186,116,0.50)',
-  quick_fix:   'rgba(147,197,253,0.50)',
-}
-const DEFAULT_COLOR = 'rgba(148,163,184,0.40)'
+const HIGHLIGHT_COLOR = 'rgba(254,214,91,0.45)'
 
 /**
  * Wrap text nodes covered by `range` in <mark> elements with click/hover
@@ -166,7 +162,7 @@ export function applyHighlights(
     const range = resolveCharOffset(doc.body, ann.start, ann.end)
     if (!range) continue
 
-    const color = ann.tag ? (TAG_COLOR[ann.tag] ?? DEFAULT_COLOR) : DEFAULT_COLOR
+    const color = HIGHLIGHT_COLOR
 
     markRange(
       doc,
