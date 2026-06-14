@@ -19,6 +19,8 @@ export interface DocumentCardProps {
   description: string
   submittedAt: string
   rubrics: RubricReview[]
+  onDelete?: () => void
+  deleteDisabled?: boolean
 }
 
 const PRIORITY_ORDER: RubricReview['status'][] = [
@@ -47,6 +49,8 @@ export function DocumentCard({
   description,
   submittedAt,
   rubrics,
+  onDelete,
+  deleteDisabled,
 }: DocumentCardProps) {
   const allCertified = rubrics.length > 0 && rubrics.every(r => r.status === 'certified')
 
@@ -175,6 +179,19 @@ export function DocumentCard({
         <p className="mt-2 text-body-sm text-text-secondary line-clamp-3">
           {description}
         </p>
+
+        {(onDelete || deleteDisabled) && (
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={onDelete}
+              disabled={deleteDisabled}
+            >
+              Delete submission
+            </Button>
+          </div>
+        )}
 
       </div>
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { acceptDocument, declineDocument } from '@/app/coordinator/actions'
+import { Modal } from '@/components/ui/Modal'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
 import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
@@ -30,6 +32,7 @@ function EmptyState({ message, sub }: { message: string; sub: string }) {
 
 export function ReviewerDashboardClient({ displayName: _displayName, activeCards, completedCards, taskCards }: Props) {
   const [activeTab, setActiveTab] = useState<'my-reviews' | 'completed' | 'task-pool'>('my-reviews')
+  const [confirmModal, setConfirmModal] = useState<'accepted' | 'declined' | null>(null)
 
   // My Reviews filters
   const [activeFilter, setActiveFilter] = useState('all')
@@ -192,8 +195,16 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
                   <TaskPoolCard
                     key={card.id}
                     {...card}
-                    onAccept={(id) => console.log('Accept', id)}
-                    onDecline={(id, reason, note) => console.log('Decline', id, reason, note)}
+                    onAccept={async (id) => {
+                      await acceptDocument(id)
+                      setActiveTab('my-reviews')
+                      setConfirmModal('accepted')
+                    }}
+                    onDecline={async (id, reason, note) => {
+                      const fullNote = [reason, note].filter(Boolean).join(': ')
+                      await declineDocument(id, fullNote)
+                      setConfirmModal('declined')
+                    }}
                   />
                 ))
               )}
@@ -202,6 +213,28 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         )}
 
       </div>
+      <Modal open={confirmModal !== null} onClose={() => setConfirmModal(null)}>
+        <div
+          onClick={e => e.stopPropagation()}
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-surface-card rounded-lg shadow-4 p-6"
+        >
+          <button
+            type="button"
+            onClick={() => setConfirmModal(null)}
+            aria-label="Close"
+            className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <p className="text-body-md text-text-primary pr-6">
+            {confirmModal === 'accepted'
+              ? 'Assignment accepted. You can find it in your My Reviews tab.'
+              : 'Assignment declined. It has been removed from your task pool.'}
+          </p>
+        </div>
+      </Modal>
     </DashboardShell>
   )
 }

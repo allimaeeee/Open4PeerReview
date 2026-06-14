@@ -117,6 +117,15 @@ export async function deleteDocument(documentId: string) {
 
   if (!doc || doc.author_id !== user.id) throw new Error('Not authorized')
 
+  // Block deletion once any reviewer has started or submitted a review
+  const { count } = await supabase
+    .from('reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('document_id', documentId)
+    .in('status', ['in_progress', 'submitted'])
+
+  if (count && count > 0) throw new Error('Cannot delete a submission that is under review or has been reviewed.')
+
   if (doc.storage_path && doc.file_type === 'pdf') {
     await supabase.storage.from('documents').remove([doc.storage_path])
   }
@@ -265,15 +274,40 @@ export async function assignAndReleaseDocument(documentId: string, reviewerIds: 
   revalidatePath('/coordinator')
 }
 
-/** Reviewer accepts a document — dismisses the accept/decline prompt permanently */
+/** Reviewer accepts a document — creates an in_progress review and moves it to My Reviews */
 export async function acceptDocument(documentId: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
-  await supabase
-    .from('document_acceptances')
-    .upsert({ document_id: documentId, reviewer_id: user.id }, { onConflict: 'document_id,reviewer_id', ignoreDuplicates: true })
+  // Resolve rubric: prefer document-assigned rubrics, fall back to preset (mirrors ReviewerApp logic)
+  const { data: docRubrics } = await supabase
+    .from('document_rubrics')
+    .select('rubric_id')
+    .eq('document_id', documentId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  let rubricId = docRubrics?.[0]?.rubric_id ?? null
+
+  if (!rubricId) {
+    const { data: presets } = await supabase
+      .from('rubrics')
+      .select('id')
+      .eq('is_preset', true)
+      .order('title')
+      .limit(1)
+    rubricId = presets?.[0]?.id ?? null
+  }
+
+  if (!rubricId) throw new Error('No rubric available for this document')
+
+  const { error } = await supabase
+    .from('reviews')
+    .insert({ document_id: documentId, reviewer_id: user.id, rubric_id: rubricId, status: 'in_progress' })
+
+  // Ignore unique violations — reviewer already has a review (e.g., opened the console first)
+  if (error && error.code !== '23505') throw error
 
   revalidatePath('/reviewer')
 }

@@ -8,6 +8,8 @@ import { DocumentCard } from '@/components/patterns/DocumentCard'
 import type { DocumentCardProps, RubricReview } from '@/components/patterns/DocumentCard'
 import { Card } from '@/components/ui/Card'
 import { SubmissionModal } from './SubmissionModal'
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { deleteDocument } from '@/app/coordinator/actions'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 
@@ -73,6 +75,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
   const [activeTab, setActiveTab] = useState('active')
   const [activeFilter, setActiveFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const allCards = documents.map(mapDocumentToCardProps)
 
@@ -184,9 +187,17 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                 </p>
               </div>
             ) : (
-              filteredCards.map(card => (
-                <DocumentCard key={card.id} {...card} />
-              ))
+              filteredCards.map(card => {
+                const canDelete = card.rubrics.every(r => r.status === 'unassigned' || r.status === 'assigned')
+                return (
+                  <DocumentCard
+                    key={card.id}
+                    {...card}
+                    onDelete={activeTab === 'active' && canDelete ? () => setDeletingId(card.id) : undefined}
+                    deleteDisabled={activeTab === 'active' && !canDelete}
+                  />
+                )
+              })
             )}
           </div>
 
@@ -199,6 +210,20 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
         rubrics={rubrics}
         customSubjectMatters={customSubjectMatters}
         displayName={displayName}
+      />
+
+      <ConfirmationDialog
+        isOpen={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        title="Delete submission?"
+        message="This will permanently remove the submission and all associated reviews. This cannot be undone."
+        discardLabel="Delete"
+        confirmLabel="Cancel"
+        onDiscard={async () => {
+          if (deletingId) await deleteDocument(deletingId)
+          setDeletingId(null)
+        }}
+        onConfirm={() => setDeletingId(null)}
       />
     </>
   )
