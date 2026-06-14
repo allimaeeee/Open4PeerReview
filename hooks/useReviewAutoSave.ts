@@ -248,10 +248,26 @@ export function useReviewAutoSave({
 
   useEffect(() => {
     return () => {
+      // Cancel timers and flush any pending saves (fire-and-forget; handles
+      // client-side navigation where the component unmounts without a saveDraft call)
       debounceTimers.current.forEach((timer) => clearTimeout(timer))
+      debounceTimers.current.clear()
       if (notesTimer.current) clearTimeout(notesTimer.current)
+      pendingScores.current.forEach(draft => { upsertScore(draft) })
+      pendingScores.current.clear()
     }
-  }, [])
+  }, [upsertScore])
+
+  // ── Warn before tab close / browser refresh when saves are pending ──────────
+
+  useEffect(() => {
+    if (saveStatus !== 'saving') return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [saveStatus])
 
   // ── Reset saved → idle after 3 s ──────────────────────────────────────────
 
