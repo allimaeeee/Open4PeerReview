@@ -224,6 +224,7 @@ export default function HtmlViewerCanvas({
       '  background-color: rgba(254,214,91,0.80);',
       '  animation: highlight-pulse 1.6s ease-out 2 forwards;',
       '}',
+      '::selection { background: rgba(254,214,91,0.45); }',
     ].join('\n')
     doc.head.appendChild(style)
 

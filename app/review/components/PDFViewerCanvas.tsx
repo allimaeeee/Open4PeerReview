@@ -38,11 +38,6 @@ export interface SavedAnnotation {
   tag: string | null
 }
 
-const HIGHLIGHT_BG: Record<string, string> = {
-  action_item: 'bg-orange-300/40',
-  quick_fix:   'bg-blue-300/40',
-}
-const HIGHLIGHT_BG_DEFAULT = 'bg-slate-400/30'
 
 interface TooltipPosition {
   x: number
@@ -326,7 +321,7 @@ export default function PDFViewerCanvas({
 
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto relative flex justify-center py-6 px-4"
+        className="flex-1 overflow-auto relative flex justify-center py-6 px-4 [&_::selection]:bg-annotation"
         onMouseUp={handleMouseUp}
       >
         {loadError ? (
@@ -361,8 +356,7 @@ export default function PDFViewerCanvas({
               <div
                 key={`${ann.id}-${i}`}
                 className={[
-                  'absolute z-[3] rounded-sm transition-opacity',
-                  ann.tag ? (HIGHLIGHT_BG[ann.tag] ?? HIGHLIGHT_BG_DEFAULT) : HIGHLIGHT_BG_DEFAULT,
+                  'absolute z-[3] rounded-sm transition-opacity bg-annotation',
                   disabled ? 'pointer-events-none' : 'cursor-pointer hover:opacity-70',
                 ].join(' ')}
                 style={{
