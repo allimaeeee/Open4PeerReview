@@ -26,7 +26,7 @@ export interface TextSelection {
 
 export interface AnnotationConfirmPayload {
   body: string
-  rubricItemIds: string[]
+  rubricItemId: string | null
   tag: HighlightTag | null
 }
 
@@ -61,10 +61,11 @@ interface PDFViewerCanvasProps {
   onPendingSelectionClear: () => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAnnotationDelete: (annotationId: string) => Promise<void>
-  onAnnotationRelink?: (annotationId: string, newRubricItemIds: string[]) => Promise<void>
+  onAnnotationRelink?: (annotationId: string, newRubricItemIds: string[], updates: { body: string; tag: HighlightTag | null }) => Promise<void>
   onTrackEvent: (type: ReviewEventType, data?: Json) => void
   disabled: boolean
   onGoToAnnotation?: (annotationId: string) => void
+  onAnnotationViewFull?: (annotationId: string) => void
   scrollToAnnotationId?: string | null
 }
 
@@ -83,6 +84,7 @@ export default function PDFViewerCanvas({
   onTrackEvent,
   disabled,
   onGoToAnnotation,
+  onAnnotationViewFull,
   scrollToAnnotationId,
 }: PDFViewerCanvasProps) {
   const [numPages, setNumPages] = useState<number>(0)
@@ -405,13 +407,14 @@ export default function PDFViewerCanvas({
               position={hoverCardPos}
               onSave={(updates) => onAnnotationEdit(hoveringAnnotation.id, updates)}
               onRelink={onAnnotationRelink
-                ? (newIds) => onAnnotationRelink(hoveringAnnotation.id, newIds)
+                ? (newIds, updates) => onAnnotationRelink(hoveringAnnotation.id, newIds, updates)
                 : undefined}
               onDelete={() => {
                 onAnnotationDelete(hoveringAnnotation.id)
                 setHoveringAnnotation(null)
                 setHoverCardPos(null)
               }}
+              onViewFullComment={onAnnotationViewFull ? () => onAnnotationViewFull(hoveringAnnotation.id) : undefined}
               onMouseEnter={() => {
                 if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
                 setHoveringCard(true)
@@ -434,6 +437,7 @@ export default function PDFViewerCanvas({
         {pendingSelection && tooltipPos && (
           <AnnotationPopup
             criteria={rubricItems.map(r => ({ id: r.id, label: r.label }))}
+            selectedText={pendingSelection.text}
             position={{
               x:               Math.max(8, Math.min(tooltipPos.x - 160, containerWidth - 328)),
               selectionTop:    tooltipPos.selectionTop,

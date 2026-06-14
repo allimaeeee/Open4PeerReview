@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect } from 'react'
 import type { HighlightTag } from '@/types'
 import type { SavedAnnotation } from './PDFViewerCanvas'
-import { MultiSelect } from '@/components/ui/MultiSelect'
 import { Button } from '@/components/ui/Button'
 import { TagChip, TagSelector } from './TagChip'
+import { Textarea } from '@/components/ui/Textarea'
+import { Modal } from '@/components/ui/Modal'
 
 interface AnnotationHoverCardProps {
   annotation: SavedAnnotation
@@ -13,15 +14,12 @@ interface AnnotationHoverCardProps {
   criteria?: { id: string; label: string }[]
   linkedCriteriaIds?: string[]
   onSave: (updates: { tag: HighlightTag | null; body: string }) => void
-  onRelink?: (newRubricItemIds: string[]) => void
+  onRelink?: (newRubricItemIds: string[], updates: { body: string; tag: HighlightTag | null }) => void
   onDelete: () => void
+  onViewFullComment?: () => void
   position: { x: number; y: number }
   onMouseEnter?: () => void
   onMouseLeave?: () => void
-}
-
-function sameIds(a: string[], b: string[]) {
-  return [...a].sort().join(',') === [...b].sort().join(',')
 }
 
 export function AnnotationHoverCard({
@@ -32,6 +30,7 @@ export function AnnotationHoverCard({
   onSave,
   onRelink,
   onDelete,
+  onViewFullComment,
   position,
   onMouseEnter,
   onMouseLeave,
@@ -39,44 +38,94 @@ export function AnnotationHoverCard({
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [tag, setTag] = useState<HighlightTag | null>((annotation.tag as HighlightTag) ?? null)
   const [body, setBody] = useState(annotation.body)
-  const [relinkIds, setRelinkIds] = useState<string[]>(linkedCriteriaIds ?? [])
+  const [relinkId, setRelinkId] = useState<string | null>(annotation.rubricItemId ?? null)
   const [adjustedPos, setAdjustedPos] = useState(position)
+  const [showDiscardModal, setShowDiscardModal] = useState(false)
+  const [snapshot, setSnapshot] = useState<{ body: string; tag: HighlightTag | null; relinkId: string | null } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
+  // Re-clamp position when mode changes (edit card is larger than view card)
   useEffect(() => {
     if (!ref.current) return
     const { offsetWidth: w, offsetHeight: h } = ref.current
-    // Clamp within the nearest positioned ancestor (the viewer container),
-    // not the window — the card is absolute inside that container.
     const parent = ref.current.offsetParent as HTMLElement | null
-    const containerW  = parent?.clientWidth  ?? window.innerWidth
-    const containerH  = parent?.clientHeight ?? window.innerHeight
-    const scrollTop   = parent?.scrollTop   ?? 0
+    const containerW = parent?.clientWidth  ?? window.innerWidth
+    const containerH = parent?.clientHeight ?? window.innerHeight
+    const scrollTop  = parent?.scrollTop   ?? 0
     const MARGIN = 8
     let x = position.x
     let y = position.y
-    if (x + w > containerW  - MARGIN) x = containerW  - w - MARGIN
+    if (x + w > containerW - MARGIN) x = containerW - w - MARGIN
     if (y + h > scrollTop + containerH - MARGIN) y = scrollTop + containerH - h - MARGIN
     if (x < MARGIN) x = MARGIN
     if (y < scrollTop + MARGIN) y = scrollTop + MARGIN
     setAdjustedPos({ x, y })
-  }, [position.x, position.y])
+  }, [position.x, position.y, mode])
 
-  function handleCancel() {
-    setTag((annotation.tag as HighlightTag) ?? null)
+  // Click-outside detection — only active in edit mode
+  useEffect(() => {
+    if (mode !== 'edit') return
+    function handleMouseDown(e: MouseEvent) {
+      if (showDiscardModal) return
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        const changed = snapshot !== null && (
+          body !== snapshot.body ||
+          tag !== snapshot.tag ||
+          relinkId !== snapshot.relinkId
+        )
+        if (changed) {
+          setShowDiscardModal(true)
+        } else {
+          doResetToView()
+        }
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [mode, body, tag, relinkId, snapshot, annotation, showDiscardModal])
+
+  function hasUnsavedChanges() {
+    if (!snapshot) return false
+    return body !== snapshot.body || tag !== snapshot.tag || relinkId !== snapshot.relinkId
+  }
+
+  function enterEditMode() {
+    setSnapshot({ body, tag, relinkId })
+    setMode('edit')
+  }
+
+  function doResetToView() {
     setBody(annotation.body)
-    setRelinkIds(linkedCriteriaIds ?? [])
+    setTag((annotation.tag as HighlightTag) ?? null)
+    setRelinkId(annotation.rubricItemId ?? null)
+    setSnapshot(null)
     setMode('view')
+  }
+
+  function attemptClose() {
+    if (hasUnsavedChanges()) {
+      setShowDiscardModal(true)
+    } else {
+      doResetToView()
+    }
   }
 
   function handleSave() {
     if (!body.trim()) return
-    onSave({ tag, body: body.trim() })
-    if (onRelink && !sameIds(relinkIds, linkedCriteriaIds ?? [])) {
-      onRelink(relinkIds)
+    const newBody = body.trim()
+    if (onRelink && relinkId !== annotation.rubricItemId) {
+      // Pass body/tag into the relink so the newly-inserted annotation uses the
+      // updated values. Calling onSave separately would race against onRelink's
+      // state read, causing the new annotation to inherit the stale comment.
+      onRelink(relinkId ? [relinkId] : [], { body: newBody, tag })
+    } else {
+      onSave({ tag, body: newBody })
     }
+    setSnapshot(null)
     setMode('view')
   }
+
+  const highlightedText = (annotation.anchor as Record<string, unknown>).text as string | undefined
 
   const extraCount = (linkedCriteriaIds?.length ?? 0) - 1
   const criterionDisplay = criterionLabel === null
@@ -90,120 +139,173 @@ export function AnnotationHoverCard({
     : annotation.body
 
   return (
-    <div
-      ref={ref}
-      className="absolute z-[var(--z-popover)] w-72 bg-surface-card rounded-lg shadow-3 border border-border p-3 flex flex-col gap-2"
-      style={{ left: adjustedPos.x, top: adjustedPos.y }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {mode === 'view' ? (
-        <>
-          {/* Header row */}
-          <div className="flex items-center justify-between gap-2">
-            <span className={criterionDisplay !== null ? 'text-label-sm font-semibold text-text-primary truncate' : 'text-label-sm text-text-muted'}>
-              {criterionDisplay ?? 'No criterion linked'}
-            </span>
-            <div className="flex items-center gap-1 flex-shrink-0">
+    <>
+      <div
+        ref={ref}
+        className={mode === 'edit'
+          ? 'absolute z-[var(--z-popover)] min-w-[280px] max-w-[360px] rounded-none bg-surface-card border border-border shadow-3 flex flex-col'
+          : 'absolute z-[var(--z-popover)] min-w-[220px] max-w-[300px] rounded-none bg-surface-card border border-border shadow-3 flex flex-col'
+        }
+        style={{ left: adjustedPos.x, top: adjustedPos.y }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={mode === 'edit' ? undefined : onMouseLeave}
+      >
+        {mode === 'view' ? (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between bg-surface px-4 py-3 border-b border-border/40">
+              <span className={criterionDisplay !== null
+                ? 'text-label-sm font-label font-semibold uppercase tracking-wide text-secondary truncate'
+                : 'text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary'}>
+                {criterionDisplay ?? 'UNLINKED HIGHLIGHT'}
+              </span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={enterEditMode}
+                  className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
+                  aria-label="Edit annotation"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="opacity-70 hover:opacity-100 transition-opacity text-error"
+                  aria-label="Delete annotation"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {/* Comment */}
+            <p className="px-4 pt-3 pb-1 text-body-sm text-text-primary leading-relaxed">{commentPreview}</p>
+            {/* View full comment link */}
+            {onViewFullComment && (
+              <div className="px-4 pb-3">
+                <button
+                  type="button"
+                  onClick={onViewFullComment}
+                  className="inline-flex items-center gap-1 p-0 opacity-70 hover:opacity-100 transition-opacity cursor-pointer text-secondary"
+                >
+                  <span className="text-body-sm font-body whitespace-nowrap">View full comment</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M7 17L17 7"/>
+                    <path d="M7 7h10v10"/>
+                  </svg>
+                </button>
+              </div>
+            )}
+            {/* Tag */}
+            {annotation.tag && (
+              <div className="px-4 pb-3">
+                <TagChip tag={annotation.tag} />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between bg-surface px-4 py-3 border-b border-border/40">
+              <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+                EDIT HIGHLIGHT
+              </span>
               <button
                 type="button"
-                onClick={() => setMode('edit')}
+                onClick={attemptClose}
                 className="text-text-muted hover:text-text-primary"
-                aria-label="Edit annotation"
+                aria-label="Close"
               >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                className="text-text-muted hover:text-text-primary"
-                aria-label="Delete annotation"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </button>
             </div>
-          </div>
-          {annotation.tag && <TagChip tag={annotation.tag} />}
-          <p className="text-body-sm text-text-primary">{commentPreview}</p>
-        </>
-      ) : (
-        <>
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Edit annotation
-            </span>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="text-text-muted hover:text-text-primary"
-              aria-label="Close"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
 
-          {/* Criteria selector */}
-          {criteria && (
-            <div className="flex flex-col gap-1">
-              <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-                Link to criteria
-              </span>
-              <MultiSelect
-                options={criteria.map(c => ({ value: c.id, label: c.label }))}
-                value={relinkIds}
-                onChange={setRelinkIds}
-                placeholder="Select criteria..."
+            {/* Comment */}
+            <div className="px-4 py-3">
+              <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
+                COMMENT
+              </p>
+              <Textarea
+                autoFocus
+                placeholder="Describe what this evidence shows..."
+                variant="default"
+                rows={4}
+                resize="vertical"
+                value={body}
+                onChange={e => setBody(e.target.value)}
               />
             </div>
-          )}
 
-          {/* Tag selector */}
-          <div className="flex flex-col gap-1">
-            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Tag{' '}
-              <span className="text-text-muted normal-case font-normal tracking-normal">optional</span>
-            </span>
-            <TagSelector value={tag} onChange={setTag} />
-          </div>
+            {/* Tags */}
+            <div className="px-4 py-3 border-t border-border/40 flex items-center gap-3">
+              <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary shrink-0">
+                TAGS:
+              </span>
+              <TagSelector value={tag} onChange={setTag} />
+            </div>
 
-          {/* Comment textarea */}
-          <div className="flex flex-col gap-1">
-            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Comment <span className="text-error" aria-hidden="true">*</span>
-            </span>
-            <textarea
-              autoFocus
-              rows={3}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              className="w-full resize-none rounded-md border border-border bg-transparent p-2 text-body-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none transition-colors"
-            />
-          </div>
+            {/* Link to Criteria */}
+            {criteria && (
+              <div className="px-4 py-3 border-t border-border/40">
+                <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
+                  LINK TO CRITERIA{' '}
+                  <span className="text-text-muted normal-case font-normal tracking-normal">(OPTIONAL)</span>
+                </p>
+                <select
+                  value={relinkId ?? ''}
+                  onChange={e => setRelinkId(e.target.value || null)}
+                  className="w-full border border-border bg-surface-card px-2 py-1.5 text-body-sm text-text-primary focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">(save to unlinked highlights)</option>
+                  {criteria.map(c => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-          {/* Footer */}
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onDelete}
-              className="text-body-sm text-error hover:underline cursor-pointer"
-            >
-              Delete
-            </button>
-            <Button variant="primary" disabled={!body.trim()} onClick={handleSave}>
-              Save
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-border/40 flex justify-between">
+              <Button variant="secondary" size="sm" shape="square" onClick={attemptClose}>
+                CANCEL
+              </Button>
+              <Button variant="primary" size="sm" shape="square" disabled={!body.trim()} onClick={handleSave}>
+                SAVE CHANGES
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Discard changes confirmation modal */}
+      <Modal open={showDiscardModal} onClose={() => setShowDiscardModal(false)}>
+        <div
+          onClick={e => e.stopPropagation()}
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-xs bg-surface-card border border-border shadow-3 rounded-none p-6 z-[var(--z-modal)]"
+        >
+          <h3 className="font-heading text-title-sm text-text-primary mb-2">Discard changes?</h3>
+          <p className="text-body-sm text-text-secondary mb-6">Your edits to this annotation won&apos;t be saved.</p>
+          <div className="flex justify-between gap-3">
+            <Button variant="primary" shape="square" onClick={() => setShowDiscardModal(false)}>
+              KEEP EDITING
+            </Button>
+            <Button variant="secondary" shape="square" onClick={() => {
+              setShowDiscardModal(false)
+              doResetToView()
+            }}>
+              DISCARD
             </Button>
           </div>
-        </>
-      )}
-    </div>
+        </div>
+      </Modal>
+    </>
   )
 }
 

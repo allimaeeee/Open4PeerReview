@@ -13,11 +13,19 @@ interface AnnotationSummary {
   tag: string | null
 }
 
+interface CriterionOption {
+  id: string
+  label: string
+}
+
 interface AnnotationListCardProps {
   annotation: AnnotationSummary
   onGoTo: (annotationId: string) => void
   onEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDelete: (annotationId: string) => void
+  showCriterionLink?: boolean
+  criteria?: CriterionOption[]
+  onLink?: (annotationId: string, criterionId: string) => void
 }
 
 function ArrowUpRightIcon() {
@@ -29,11 +37,20 @@ function ArrowUpRightIcon() {
   )
 }
 
-export function AnnotationListCard({ annotation, onGoTo, onEdit, onDelete }: AnnotationListCardProps) {
+export function AnnotationListCard({
+  annotation,
+  onGoTo,
+  onEdit,
+  onDelete,
+  showCriterionLink,
+  criteria,
+  onLink,
+}: AnnotationListCardProps) {
   const anchorText = (annotation.anchor as any).text as string | undefined ?? null
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [editBody, setEditBody] = useState(annotation.body)
   const [editTag, setEditTag] = useState<HighlightTag | null>((annotation.tag as HighlightTag) ?? null)
+  const [selectedCriterionId, setSelectedCriterionId] = useState('')
 
   function enterEdit() {
     setEditBody(annotation.body)
@@ -160,6 +177,52 @@ export function AnnotationListCard({ annotation, onGoTo, onEdit, onDelete }: Ann
           >
             Save
           </Button>
+        </div>
+      )}
+
+      {/* Criterion link section — only shown in view mode when showCriterionLink is true */}
+      {showCriterionLink && mode === 'view' && (
+        <div className="border-t border-border pt-2">
+          <div className="relative">
+            <select
+              value={selectedCriterionId}
+              onChange={e => setSelectedCriterionId(e.target.value)}
+              className="w-full border-0 border-b-2 border-border bg-transparent pb-2 pr-6 text-body-sm text-text-primary focus:border-primary focus:outline-none appearance-none cursor-pointer"
+            >
+              <option value="">Move to criterion...</option>
+              {(criteria ?? []).map(c => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-0 top-0 bottom-2 flex items-center text-text-muted">
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </div>
+          {selectedCriterionId && (
+            <div className="flex justify-end gap-2 mt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                shape="square"
+                onClick={() => setSelectedCriterionId('')}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                shape="square"
+                onClick={() => {
+                  onLink?.(annotation.id, selectedCriterionId)
+                  setSelectedCriterionId('')
+                }}
+              >
+                Move
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

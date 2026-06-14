@@ -161,14 +161,15 @@ export function FreeNotesSection({
           )}
 
           {notes.map(note => (
-            <FreeNoteCard
-              key={note.id}
-              note={note}
-              criteria={criteria}
-              onEdit={onEditNote}
-              onMove={onMoveNote}
-              onDelete={onDeleteNote}
-            />
+            <div key={note.id} id={`annotation-card-${note.id}`}>
+              <FreeNoteCard
+                note={note}
+                criteria={criteria}
+                onEdit={onEditNote}
+                onMove={onMoveNote}
+                onDelete={onDeleteNote}
+              />
+            </div>
           ))}
         </div>
       )}

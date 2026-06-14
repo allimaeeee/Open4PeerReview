@@ -19,7 +19,7 @@ export interface HtmlTextSelection {
 
 export interface AnnotationConfirmPayload {
   body: string
-  rubricItemIds: string[]
+  rubricItemId: string | null
   tag: HighlightTag | null
 }
 
@@ -44,10 +44,11 @@ interface HtmlViewerCanvasProps {
   onPendingSelectionClear: () => void
   onAnnotationEdit: (id: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
   onAnnotationDelete: (id: string) => Promise<void>
-  onAnnotationRelink?: (annotationId: string, newRubricItemIds: string[]) => Promise<void>
+  onAnnotationRelink?: (annotationId: string, newRubricItemIds: string[], updates: { body: string; tag: HighlightTag | null }) => Promise<void>
   onTrackEvent: (type: ReviewEventType, data?: Json) => void
   disabled: boolean
   onGoToAnnotation?: (annotationId: string) => void
+  onAnnotationViewFull?: (annotationId: string) => void
   scrollToAnnotationId?: string | null
   pulseAnnotationId?: string | null
   onPulseComplete?: () => void
@@ -68,6 +69,7 @@ export default function HtmlViewerCanvas({
   onTrackEvent,
   disabled,
   onGoToAnnotation,
+  onAnnotationViewFull,
   scrollToAnnotationId,
   pulseAnnotationId,
   onPulseComplete,
@@ -370,13 +372,14 @@ export default function HtmlViewerCanvas({
               position={hoverPos}
               onSave={(updates) => onAnnotationEdit(hoverAnnotation.id, updates)}
               onRelink={onAnnotationRelink
-                ? (newIds) => onAnnotationRelink(hoverAnnotation.id, newIds)
+                ? (newIds, updates) => onAnnotationRelink(hoverAnnotation.id, newIds, updates)
                 : undefined}
               onDelete={() => {
                 onAnnotationDelete(hoverAnnotation.id)
                 setHoverAnnotation(null)
                 setHoverPos(null)
               }}
+              onViewFullComment={onAnnotationViewFull ? () => onAnnotationViewFull(hoverAnnotation.id) : undefined}
               onMouseEnter={() => {
                 if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
                 setHoveringCard(true)
@@ -399,6 +402,7 @@ export default function HtmlViewerCanvas({
         {pendingSelection && tooltipPos && !disabled && (
           <AnnotationPopup
             criteria={rubricItems.map(r => ({ id: r.id, label: r.label }))}
+            selectedText={pendingSelection.text}
             position={{
               x:               Math.max(8, Math.min(tooltipPos.x - 160, containerWidth - 328)),
               selectionTop:    tooltipPos.selectionTop,

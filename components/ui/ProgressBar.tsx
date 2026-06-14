@@ -5,10 +5,11 @@ function cx(...parts: (string | false | null | undefined)[]) {
 export interface ProgressBarProps {
   value: number
   showLabel?: boolean
+  label?: string
   className?: string
 }
 
-export function ProgressBar({ value, showLabel = true, className }: ProgressBarProps) {
+export function ProgressBar({ value, showLabel = true, label, className }: ProgressBarProps) {
   const clamped = Math.min(100, Math.max(0, value))
 
   return (
@@ -21,7 +22,7 @@ export function ProgressBar({ value, showLabel = true, className }: ProgressBarP
       </div>
       {showLabel && (
         <span className="text-label-sm font-label text-text-secondary whitespace-nowrap">
-          {clamped}% complete
+          {label ?? `${clamped}% complete`}
         </span>
       )}
     </div>

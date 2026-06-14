@@ -73,13 +73,6 @@ export function TaskPoolCard({
           </span>
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 4a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L3 8.414A2 2 0 012 7V4z" />
-              <circle cx="5.5" cy="5.5" r="0.75" fill="currentColor" />
-            </svg>
-            {discipline}
-          </span>
-          <span className="flex items-center gap-1">
-            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 3H3a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M9 2h5v5M14 2L7 9" />
             </svg>
             {platform}
@@ -107,6 +100,14 @@ export function TaskPoolCard({
       {/* Section 1 — Metadata + description */}
       <div>
         <div className="flex items-center gap-4 flex-wrap text-body-sm text-text-secondary">
+
+          <span className="flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 4a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L3 8.414A2 2 0 012 7V4z" />
+              <circle cx="5.5" cy="5.5" r="0.75" fill="currentColor" />
+            </svg>
+            {discipline}
+          </span>
 
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

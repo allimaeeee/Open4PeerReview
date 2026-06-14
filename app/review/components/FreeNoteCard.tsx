@@ -101,7 +101,7 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
           <hr className="border-0 border-t border-border" />
           <div className="flex items-center gap-2">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Tags
+              Tags:
             </span>
             <TagChip tag={note.tag} />
           </div>

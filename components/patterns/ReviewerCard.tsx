@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { ProgressBar } from '@/components/ui/ProgressBar'
 import { RubricTagList } from '@/components/ui/RubricTagList'
 
 export interface RubricProgress {
   rubricId: string
   rubricTitle: string
-  completionPercent: number
+  ratedCount: number
+  totalCount: number
 }
 
 export interface ReviewerCardProps {
@@ -34,15 +34,16 @@ export function ReviewerCard({
   rubrics,
   reviewUrl,
 }: ReviewerCardProps) {
-  const allComplete = rubrics.every(r => r.completionPercent === 100)
-  const anyStarted  = rubrics.some(r => r.completionPercent > 0)
+  const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
+  const allComplete = rubrics.every(r => pct(r) === 100)
+  const anyStarted  = rubrics.some(r => pct(r) > 0)
 
   const cardStatus: 'not-started' | 'in-progress' | 'completed' =
     allComplete ? 'completed' :
     anyStarted  ? 'in-progress' :
     'not-started'
 
-  const ctaLabel = anyStarted ? 'Resume review' : 'Start review'
+  const ctaLabel = anyStarted ? 'Continue' : 'Start review'
 
   const formattedDate = new Date(claimedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -71,13 +72,6 @@ export function ReviewerCard({
               <path d="M8 7a3 3 0 100-6 3 3 0 000 6zM2 14a6 6 0 0112 0" />
             </svg>
             {authorName}
-          </span>
-          <span className="flex items-center gap-1">
-            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 4a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L3 8.414A2 2 0 012 7V4z" />
-              <circle cx="5.5" cy="5.5" r="0.75" fill="currentColor" />
-            </svg>
-            {discipline}
           </span>
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -126,7 +120,16 @@ export function ReviewerCard({
             <span className="text-body-md text-text-primary font-medium">
               {rubric.rubricTitle}
             </span>
-            <ProgressBar value={rubric.completionPercent} className="max-w-[200px] w-full" />
+            <span className={[
+              'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
+              pct(rubric) === 100
+                ? 'bg-success-container text-success border border-success'
+                : pct(rubric) === 0
+                  ? 'bg-gray-100 text-gray-500 border border-gray-400'
+                  : 'bg-amber-100 text-amber-800 border border-amber-800',
+            ].join(' ')}>
+              {rubric.ratedCount}/{rubric.totalCount} criteria rated
+            </span>
           </div>
         ))}
       </div>
@@ -135,6 +138,13 @@ export function ReviewerCard({
       <div className="border-t border-[var(--color-border)] mt-3 pt-3">
 
         <div className="flex items-center gap-4 flex-wrap text-body-sm text-text-secondary">
+          <span className="flex items-center gap-1">
+            <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 4a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L3 8.414A2 2 0 012 7V4z" />
+              <circle cx="5.5" cy="5.5" r="0.75" fill="currentColor" />
+            </svg>
+            {discipline}
+          </span>
           <span className="flex items-center gap-1">
             <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="8" cy="8" r="6" />

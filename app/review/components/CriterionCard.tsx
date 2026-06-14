@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { CriterionScore, HighlightTag } from '@/types'
 import type { LocalScore } from './ReviewerConsole'
 import type { RubricItem } from './ReviewerApp'
@@ -27,6 +27,7 @@ interface CriterionCardProps {
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
+  expandToAnnotationId?: string | null
 }
 
 function TrendingUpIcon({ size }: { size: number }) {
@@ -95,8 +96,16 @@ export function CriterionCard({
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
+  expandToAnnotationId,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!expandToAnnotationId) return
+    if (score.annotations.some(a => a.id === expandToAnnotationId)) {
+      setExpanded(true)
+    }
+  }, [expandToAnnotationId, score.annotations])
   const isRated = score.scores.length > 0
 
   return (
@@ -214,25 +223,27 @@ export function CriterionCard({
                 Evidence ({score.annotations.length})
               </span>
               {(score.annotations as AnnotationSummary[]).map(ann => {
-                const isFreeNote = !(ann.anchor as any).type
-                return isFreeNote ? (
-                  <FreeNoteCard
-                    key={ann.id}
-                    note={ann as unknown as FreeNote}
-                    criteria={[]}
-                    onEdit={onEditAnnotation}
-                    onMove={() => {}}
-                    onDelete={onDeleteAnnotation}
-                    showMoveDropdown={false}
-                  />
-                ) : (
-                  <AnnotationListCard
-                    key={ann.id}
-                    annotation={ann}
-                    onGoTo={onGoToAnnotation}
-                    onEdit={onEditAnnotation}
-                    onDelete={onDeleteAnnotation}
-                  />
+                const isFreeNote = Object.keys(ann.anchor).length === 0
+                return (
+                  <div key={ann.id} id={`annotation-card-${ann.id}`}>
+                    {isFreeNote ? (
+                      <FreeNoteCard
+                        note={ann as unknown as FreeNote}
+                        criteria={[]}
+                        onEdit={onEditAnnotation}
+                        onMove={() => {}}
+                        onDelete={onDeleteAnnotation}
+                        showMoveDropdown={false}
+                      />
+                    ) : (
+                      <AnnotationListCard
+                        annotation={ann}
+                        onGoTo={onGoToAnnotation}
+                        onEdit={onEditAnnotation}
+                        onDelete={onDeleteAnnotation}
+                      />
+                    )}
+                  </div>
                 )
               })}
             </div>

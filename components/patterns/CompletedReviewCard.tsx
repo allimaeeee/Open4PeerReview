@@ -18,7 +18,6 @@ export function CompletedReviewCard({
   title,
   platform,
   authorName,
-  discipline,
   rubrics,
   completedAt,
   reviewUrl,
@@ -51,13 +50,6 @@ export function CompletedReviewCard({
                 <path d="M8 7a3 3 0 100-6 3 3 0 000 6zM2 14a6 6 0 0112 0" />
               </svg>
               {authorName}
-            </span>
-            <span className="flex items-center gap-1">
-              <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 4a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L3 8.414A2 2 0 012 7V4z" />
-                <circle cx="5.5" cy="5.5" r="0.75" fill="currentColor" />
-              </svg>
-              {discipline}
             </span>
             <span className="flex items-center gap-1">
               <svg viewBox="0 0 16 16" fill="none" className="w-3.5 h-3.5 shrink-0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
