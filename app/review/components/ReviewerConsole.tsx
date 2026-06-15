@@ -65,6 +65,7 @@ export function ReviewerConsole({
   const [scores, setScores] = useState<Record<string, LocalScore>>({})
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
+  const [focusAnnotationId, setFocusAnnotationId] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
   const [generalAnnotations, setGeneralAnnotations] = useState<
@@ -585,6 +586,7 @@ export function ReviewerConsole({
               onAnnotationDelete={handleAnnotationDeleteFromPDF}
               onTrackEvent={track}
               disabled={isSubmitted}
+              focusAnnotationId={focusAnnotationId}
             />
           ) : document.file_url ? (
             <PDFViewer
@@ -626,6 +628,7 @@ export function ReviewerConsole({
             onDeleteScoreComment={handleDeleteScoreComment}
             onCommentBlur={handleCommentBlur}
             onTrackEvent={track}
+            onAnnotationFocus={setFocusAnnotationId}
           />
         </div>
       </div>

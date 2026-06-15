@@ -51,6 +51,7 @@ interface HtmlViewerCanvasProps {
   activeItemId: string | null
   pendingSelection: HtmlTextSelection | null
   savedAnnotations: SavedAnnotation[]
+  focusAnnotationId?: string | null
   onTextSelected: (sel: HtmlTextSelection) => void
   onAnnotationConfirm: (payload: AnnotationConfirmPayload) => Promise<string | null | undefined>
   onPendingSelectionClear: () => void
@@ -69,6 +70,7 @@ export default function HtmlViewerCanvas({
   activeItemId,
   pendingSelection,
   savedAnnotations,
+  focusAnnotationId,
   onTextSelected,
   onAnnotationConfirm,
   onPendingSelectionClear,
@@ -241,6 +243,40 @@ export default function HtmlViewerCanvas({
 
     doc.defaultView?.scrollTo(scrollX, scrollY)
   }, [savedAnnotations, iframeReady, currentPageIndex])
+
+  // ── Navigate to focused annotation: switch page if needed ────────────────
+  useEffect(() => {
+    if (!focusAnnotationId) return
+    const ann = savedAnnotations.find(a => a.id === focusAnnotationId)
+    if (!ann) return
+    const targetPage = (ann.anchor as any)?.pageIndex ?? 0
+    if (targetPage !== currentPageIndex) setCurrentPageIndex(targetPage)
+  // Only re-run when the focused annotation changes, not on every page change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusAnnotationId])
+
+  // ── Scroll to and pulse the mark once the right page is loaded ───────────
+  useEffect(() => {
+    if (!focusAnnotationId || !iframeReady) return
+    const ann = savedAnnotations.find(a => a.id === focusAnnotationId)
+    if (!ann) return
+    const targetPage = (ann.anchor as any)?.pageIndex ?? 0
+    if (targetPage !== currentPageIndex) return  // still waiting for page switch
+
+    // Marks are injected synchronously in the effect above; query after a tick
+    const t = setTimeout(() => {
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const mark = doc.querySelector(`[data-annotation-id="${focusAnnotationId}"]`) as HTMLElement | null
+      if (!mark) return
+      mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      mark.style.outline = '3px solid rgba(234,179,8,0.7)'
+      mark.style.outlineOffset = '2px'
+      mark.style.borderRadius = '2px'
+      setTimeout(() => { mark.style.outline = ''; mark.style.outlineOffset = '' }, 1500)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [focusAnnotationId, iframeReady, currentPageIndex, savedAnnotations])
 
   // ── Wire up iframe after load ──────────────────────────────────────────────
   const handleIframeLoad = useCallback(() => {
