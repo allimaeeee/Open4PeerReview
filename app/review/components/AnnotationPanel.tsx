@@ -105,6 +105,7 @@ interface AnnotationPanelProps {
   onScoreChange: (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => void
   onAnnotationDelete: (rubricItemId: string, annotationId: string) => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
+  onAnnotationFocus?: (annotationId: string) => void
   onEditFreeNote: (id: string, changes: { body: string; rubricItemId: string | null }) => Promise<void>
   onAddGeneralNote: (body: string) => Promise<string | null>
   onDeleteGeneralAnnotation: (id: string) => void
@@ -127,6 +128,7 @@ function CriterionCard({
   onScoreChange,
   onAnnotationDelete,
   onAnnotationEdit,
+  onAnnotationFocus,
   onAddScoreComment,
   onEditScoreComment,
   onDeleteScoreComment,
@@ -142,6 +144,7 @@ function CriterionCard({
   onScoreChange: (rubricItemId: string, changes: { score?: CriterionScore | null; comment?: string }) => void
   onAnnotationDelete: (rubricItemId: string, annotationId: string) => void
   onAnnotationEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => Promise<void>
+  onAnnotationFocus?: (annotationId: string) => void
   onAddScoreComment: (rubricItemId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
   onEditScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => Promise<void>
   onDeleteScoreComment: (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => Promise<void>
@@ -593,6 +596,14 @@ function CriterionCard({
                               &ldquo;{(ann.anchor as any).text.slice(0, 60)}&hellip;&rdquo;
                             </p>
                           )}
+                          {onAnnotationFocus && (ann.anchor as any)?.type === 'html-char-offset' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onAnnotationFocus(ann.id) }}
+                              className="mt-1 text-[10px] font-medium text-[#1e3a5f]/60 hover:text-[#1e3a5f] transition-colors"
+                            >
+                              ↗ Go to
+                            </button>
+                          )}
                         </div>
                         {!isSubmitted && (
                           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity flex-shrink-0">
@@ -661,6 +672,7 @@ export function AnnotationPanel({
   onScoreChange,
   onAnnotationDelete,
   onAnnotationEdit,
+  onAnnotationFocus,
   onEditFreeNote,
   onAddGeneralNote,
   onDeleteGeneralAnnotation,
@@ -807,6 +819,7 @@ export function AnnotationPanel({
                   onScoreChange={onScoreChange}
                   onAnnotationDelete={onAnnotationDelete}
                   onAnnotationEdit={onAnnotationEdit}
+                  onAnnotationFocus={onAnnotationFocus}
                   onAddScoreComment={onAddScoreComment}
                   onEditScoreComment={onEditScoreComment}
                   onDeleteScoreComment={onDeleteScoreComment}
