@@ -31,10 +31,21 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getSession()
   const { pathname } = request.nextUrl
 
-  // Logged-in users hitting auth pages → send to review experience
+  // Logged-in users hitting auth pages → send to their role-based dashboard
   const authPaths = ['/', '/login']
   if (session && authPaths.includes(pathname)) {
-    return NextResponse.redirect(new URL('/review', request.url))
+    const { data: profile } = await supabase
+      .from('users')
+      .select('roles')
+      .eq('id', session.user.id)
+      .maybeSingle()
+
+    const roles: string[] = profile?.roles ?? []
+    let destination = '/reviewer'
+    if (roles.includes('coordinator')) destination = '/coordinator'
+    else if (roles.includes('author')) destination = '/author'
+
+    return NextResponse.redirect(new URL(destination, request.url))
   }
 
   // Unauthenticated users hitting protected pages → send to login
