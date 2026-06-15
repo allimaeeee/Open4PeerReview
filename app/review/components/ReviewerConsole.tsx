@@ -233,7 +233,7 @@ export function ReviewerConsole({
 
       const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
-        ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
+        ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text, pageIndex: pendingSelection.pageIndex }
         : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
 
       const validItemIds = rubricItemIds.filter((id) => scores[id])
@@ -573,6 +573,7 @@ export function ReviewerConsole({
           {document.file_type === 'html' && document.content_fingerprint ? (
             <HtmlViewerCanvas
               snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+              additionalPages={document.pages ?? undefined}
               rubricItems={rubricItems.map(({ id, label }) => ({ id, label }))}
               activeItemId={activeItemId}
               pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}

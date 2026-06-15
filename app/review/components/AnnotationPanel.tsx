@@ -571,15 +571,22 @@ function CriterionCard({
                             clipRule="evenodd" />
                         </svg>
                         <div className="flex-1 min-w-0">
-                          {ann.tag && TAG_LABELS[ann.tag as HighlightTag] && (
-                            <span className={[
-                              'inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide mb-0.5',
-                              TAG_LABELS[ann.tag as HighlightTag].bg,
-                              TAG_LABELS[ann.tag as HighlightTag].text,
-                            ].join(' ')}>
-                              {TAG_LABELS[ann.tag as HighlightTag].label}
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1 mb-0.5">
+                            {ann.tag && TAG_LABELS[ann.tag as HighlightTag] && (
+                              <span className={[
+                                'inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide',
+                                TAG_LABELS[ann.tag as HighlightTag].bg,
+                                TAG_LABELS[ann.tag as HighlightTag].text,
+                              ].join(' ')}>
+                                {TAG_LABELS[ann.tag as HighlightTag].label}
+                              </span>
+                            )}
+                            {((ann.anchor as any)?.pageIndex ?? 0) > 0 && (
+                              <span className="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide bg-slate-100 text-slate-500">
+                                Page {(ann.anchor as any).pageIndex + 1}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-amber-800 leading-snug">{ann.body}</p>
                           {(ann.anchor as any)?.text && (
                             <p className="mt-0.5 text-[10px] text-amber-600 italic truncate">

@@ -2,15 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { submitOpenStaxLink, updateDocumentContent } from '@/lib/supabase/queries'
 import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
-
-async function fingerprintHtml(html: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(html)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
+import { fetchAndSnapshot } from '@/lib/snapshot-utils'
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -30,6 +22,7 @@ export async function POST(req: NextRequest) {
     isDraft?: boolean
     coordinatorUpload?: boolean
     documentId?: string
+    additionalPageUrls?: string[]
   }
 
   try {
@@ -38,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, documentId } = body
+  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, documentId, additionalPageUrls } = body
 
   if (!url || !isKnownOerUrl(url)) {
     return NextResponse.json(
@@ -47,48 +40,29 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const platform = detectPlatform(url)
-
-  // Fetch the OER page
-  let html: string
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Open4PeerReview/1.0)',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      redirect: 'follow',
-    })
-    if (!res.ok) {
+  const validAdditionalUrls = (additionalPageUrls ?? []).filter(u => u.trim())
+  for (const pageUrl of validAdditionalUrls) {
+    if (!isKnownOerUrl(pageUrl)) {
       return NextResponse.json(
-        { error: `Failed to fetch page: ${res.status} ${res.statusText}` },
-        { status: 502 }
+        { error: `Additional page URL is not from a supported OER platform: ${pageUrl}` },
+        { status: 400 }
       )
     }
-    html = await res.text()
-  } catch (err) {
-    return NextResponse.json(
-      { error: `Could not reach URL: ${err instanceof Error ? err.message : 'network error'}` },
-      { status: 502 }
-    )
   }
 
-  const fingerprint = await fingerprintHtml(html)
-  const storagePath = `${fingerprint}.html`
+  const platform = detectPlatform(url)
 
-  // Upload to openstax-snapshots bucket — skip if identical content already stored
-  const { error: uploadError } = await supabase.storage
-    .from('openstax-snapshots')
-    .upload(storagePath, new Blob([html], { type: 'text/html' }), {
-      contentType: 'text/html',
-      upsert: false,
-    })
+  // Snapshot primary page
+  const primary = await fetchAndSnapshot(supabase, url)
+  if ('error' in primary) return NextResponse.json({ error: primary.error }, { status: primary.status })
+  const { fingerprint, storagePath } = primary
 
-  // 409 (Duplicate) means the snapshot already exists — that's fine
-  if (uploadError && !uploadError.message.includes('already exists') && uploadError.message !== 'The resource already exists') {
-    console.error('Snapshot upload error:', uploadError)
-    return NextResponse.json({ error: 'Failed to store snapshot' }, { status: 500 })
+  // Snapshot each additional page URL
+  const additionalPages: Array<{ url: string; fingerprint: string; storagePath: string }> = []
+  for (const pageUrl of validAdditionalUrls) {
+    const result = await fetchAndSnapshot(supabase, pageUrl)
+    if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status })
+    additionalPages.push({ url: pageUrl, fingerprint: result.fingerprint, storagePath: result.storagePath })
   }
 
   try {
@@ -134,6 +108,7 @@ export async function POST(req: NextRequest) {
       submissionScope: submissionScope ?? ['public'],
       isDraft: isDraft ?? false,
       coordinatorUpload: coordinatorUpload ?? false,
+      additionalPages: additionalPages.length ? additionalPages : undefined,
     })
     return NextResponse.json({ documentId: doc.id, fingerprint })
   } catch (err) {

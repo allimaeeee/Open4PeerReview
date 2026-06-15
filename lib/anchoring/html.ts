@@ -7,6 +7,7 @@ export interface HtmlCharOffsetAnchor {
   start: number
   end: number
   text: string
+  pageIndex?: number  // 0 = primary page; undefined treated as 0 for backward compat
 }
 
 /**
