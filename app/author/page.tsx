@@ -16,7 +16,9 @@ export default async function AuthorPage() {
   if (!profile?.onboarding_completed) redirect('/onboard')
 
   const roles: string[] = profile.roles ?? []
-  if (!roles.includes('author')) redirect('/reviewer')
+  if (!roles.includes('author')) {
+    redirect(roles.includes('coordinator') ? '/coordinator' : '/reviewer')
+  }
 
   return <AuthorDashboard displayName={profile?.display_name ?? ''} />
 }

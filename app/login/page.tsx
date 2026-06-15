@@ -28,11 +28,22 @@ export default function LoginPage() {
     setLoading(true)
 
     if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
         setError(error.message.endsWith('.') ? error.message : error.message + '.')
       } else {
-        router.push('/author')
+        const { data: profileData } = await supabase
+          .from('users')
+          .select('roles')
+          .eq('id', data.user.id)
+          .maybeSingle()
+
+        const roles: string[] = profileData?.roles ?? []
+        let destination = '/reviewer'
+        if (roles.includes('coordinator')) destination = '/coordinator'
+        else if (roles.includes('author')) destination = '/author'
+
+        router.push(destination)
         router.refresh()
       }
 

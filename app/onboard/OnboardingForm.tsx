@@ -102,7 +102,7 @@ function IndustryIcon() {
 function ReviewerEyebrow({ n }: { n: number }) {
   return (
     <p className="text-label-sm font-label uppercase tracking-widest text-text-muted mb-2">
-      Reviewer Setup Â· {n} of 3
+      Reviewer Setup · {n} of 3
     </p>
   )
 }
