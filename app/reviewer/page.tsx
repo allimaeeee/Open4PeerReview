@@ -17,7 +17,9 @@ export default async function ReviewerPage() {
 
   const roles: string[] = profile.roles ?? []
   if (!roles.includes('reviewer')) {
-    redirect(roles.includes('coordinator') ? '/coordinator' : '/author')
+    if (roles.includes('coordinator')) redirect('/coordinator')
+    else if (roles.includes('author')) redirect('/author')
+    else redirect('/onboard')
   }
 
   return <ReviewerDashboard userId={user.id} displayName={profile?.display_name ?? ''} />

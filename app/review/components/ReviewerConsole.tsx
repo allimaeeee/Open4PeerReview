@@ -666,7 +666,10 @@ export function ReviewerConsole({
         lastSavedAt={lastSavedAt ? new Date(lastSavedAt) : null}
         saveStatus={saveStatus}
         onBack={() => { saveDraft().then(() => router.push('/reviewer')) }}
-        onSubmit={async () => { await handleSubmit('') }}
+        onSubmit={async () => {
+          const err = await handleSubmit('')
+          if (!err) router.push('/reviewer?tab=completed&submitted=true')
+        }}
         isSubmitted={isSubmitted}
       />
 
