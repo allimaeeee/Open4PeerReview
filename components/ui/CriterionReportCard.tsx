@@ -20,7 +20,7 @@ interface RubricItem {
 interface ScoreComment {
   id: string
   rubric_item_id: string
-  score_level: 'does_not_meet' | 'exceeds'
+  score_level: string
   body: string
 }
 
