@@ -2,3 +2,182 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@theme {
+  /* ── Surfaces ── */
+  --color-surface:                  #f4f1ea;
+  --color-surface-container:        #f1eee7;
+  --color-surface-container-low:    #f6f3ec;
+  --color-surface-container-high:   #ebe8e1;
+  --color-surface-bright:           #fcf9f2;
+  --color-surface-card:             #ffffff;
+  --color-surface-warm:             #fefaf0;
+
+  /* ── Text ── */
+  --color-text-primary:             #1c1c18;
+  --color-text-secondary:           #44474c;
+  --color-text-muted:               #74777d;
+  --color-text-on-brand:            #ffffff;
+
+  /* ── Borders ── */
+  --color-border:                   #c4c6cd;
+  --color-border-strong:            #74777d;
+
+  /* ── Brand ── */
+  --color-primary:                  #041627;
+  --color-primary-hover:            #1a2b3c;
+  --color-on-primary:               #ffffff;
+  --color-secondary:                #735c00;
+  --color-secondary-container:      #fed65b;
+  --color-on-secondary-container:   #735c00;
+
+  /* ── Feedback ── */
+  --color-error:                    #ba1a1a;
+  --color-on-error:                 #ffffff;
+  --color-error-hover:              #b71c1c;
+  --color-error-container:          #ffdad6;
+  --color-on-error-container:       #93000a;
+  --color-success:                  #1a5c1a;
+  --color-success-container:        #d4f0d4;
+  --color-info:                     #242d64;
+  --color-info-container:           #fef5de;
+
+  /* ── Rating level ── */
+  --color-rating-exceeds-bg:        var(--color-secondary-container);
+  --color-rating-exceeds-text:      var(--color-on-secondary-container);
+  --color-rating-exceeds-border:    var(--color-secondary);
+  --color-rating-exemplifies-bg:    var(--color-primary);
+  --color-rating-exemplifies-text:  var(--color-on-primary);
+  --color-rating-dnm-bg:            var(--color-error-container);
+  --color-rating-dnm-text:          var(--color-on-error-container);
+  --color-rating-dnm-border:        var(--color-error);
+
+  /* ── Selection / annotation ── */
+  --color-selected:                 #fefaf0;
+  --color-annotation:               rgba(254, 214, 91, 0.45);
+  --color-annotation-active:        rgba(254, 214, 91, 0.75);
+
+  /* ── Status (pipeline) ── */
+  --color-status-draft-bg:            #ebe8e1;
+  --color-status-draft-text:          #44474c;
+  --color-status-unassigned-bg:       #f1eee7;
+  --color-status-unassigned-text:     #44474c;
+  --color-status-assigned-bg:         rgba(210, 228, 251, 0.4);
+  --color-status-assigned-text:       #041627;
+  --color-status-under-review-bg:     rgba(210, 228, 251, 0.4);
+  --color-status-under-review-text:   #041627;
+  --color-status-feedback-ready-bg:   rgba(254, 214, 91, 0.6);
+  --color-status-feedback-ready-text: #735c00;
+  --color-status-certified-bg:        #d4f0d4;
+  --color-status-certified-text:      #1a5c1a;
+  --color-status-not-started-bg:      rgba(210, 228, 251, 0.4);
+  --color-status-not-started-text:    #041627;
+  --color-status-in-progress-bg:      rgba(254, 214, 91, 0.6);
+  --color-status-in-progress-text:    #735c00;
+  --color-status-completed-bg:        #d4f0d4;
+  --color-status-completed-text:      #1a5c1a;
+
+  /* ── Role accents ── */
+  --color-role-author:              #0c3b1a;
+  --color-role-reviewer:            #242d64;
+  --color-role-coordinator:         #5e0831;
+
+  /* ── Font families ── */
+  --font-display:   var(--font-newsreader), Georgia, 'Iowan Old Style', serif;
+  --font-heading:   var(--font-newsreader), Georgia, 'Iowan Old Style', serif;
+  --font-body:      var(--font-lato), system-ui, -apple-system, sans-serif;
+  --font-label:     var(--font-lato), system-ui, -apple-system, sans-serif;
+  --font-code:      'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Font sizes ── */
+  --text-display-lg: 3.5rem;
+  --text-display-md: 2.75rem;
+  --text-heading-lg: 2rem;
+  --text-heading-md: 1.75rem;
+  --text-heading-sm: 1.5rem;
+  --text-title-lg:   1.25rem;
+  --text-title-md:   1rem;
+  --text-title-sm:   0.875rem;
+  --text-body-lg:    1rem;
+  --text-body-md:    0.875rem;
+  --text-body-sm:    0.75rem;
+  --text-label-md:   0.75rem;
+  --text-label-sm:   0.6875rem;
+
+  /* ── Font weights ── */
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+
+  /* ── Line heights ── */
+  --leading-tight:   1.2;
+  --leading-snug:    1.35;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.6;
+
+  /* ── Letter spacing ── */
+  --tracking-tight:  -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide:   0.1em;
+
+  /* ── Spacing ── */
+  --spacing-1:  4px;
+  --spacing-2:  8px;
+  --spacing-3:  12px;
+  --spacing-4:  16px;
+  --spacing-5:  20px;
+  --spacing-6:  24px;
+  --spacing-8:  32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* ── Border radius ── */
+  --radius-none: 0px;
+  --radius-sm:   2px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-1: 0 2px 8px rgba(28, 28, 24, 0.05);
+  --shadow-2: 0 4px 16px rgba(28, 28, 24, 0.04);
+  --shadow-3: 0 12px 40px rgba(28, 28, 24, 0.06);
+  --shadow-4: 0 20px 56px rgba(28, 28, 24, 0.08);
+
+  /* ── Z-index ── */
+  --z-base:    0;
+  --z-popover: 30;
+  --z-sticky:  50;
+  --z-modal:   80;
+  --z-overlay: 100;
+  --z-tooltip: 9999;
+
+  /* ── Motion ── */
+  --transition-duration-fast: 120ms;
+  --transition-duration-base: 200ms;
+  --transition-duration-slow: 320ms;
+  --transition-timing-function-brand: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes highlight-pulse {
+  0%   { background-color: rgba(115, 92, 0, 0.35);
+          box-shadow: 0 0 0 3px rgba(115, 92, 0, 0.25); }
+  40%  { background-color: rgba(254, 214, 91, 0.80);
+          box-shadow: 0 0 0 1px rgba(115, 92, 0, 0.15); }
+  100% { background-color: rgba(254, 214, 91, 0.80);
+          box-shadow: none; }
+}
+
+.annotation-highlight {
+  background-color: rgba(254, 214, 91, 0.45);
+  cursor: default;
+  border-radius: 1px;
+  transition: background-color 150ms ease;
+}
+
+.annotation-highlight.active {
+  background-color: rgba(254, 214, 91, 0.80);
+  animation: highlight-pulse 1.6s ease-out;
+}
