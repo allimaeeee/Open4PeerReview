@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useUser } from '@/lib/supabase/useUser'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
@@ -69,9 +69,10 @@ export default function Navbar() {
   const { user, loading } = useUser()
   const [profile, setProfile] = useState<Profile | null>(null)
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { saveStatus, lastSavedAt } = useReviewSaveStatus()
   const [, setTick] = useState(0)
-  const inReviewConsole = pathname.startsWith('/review')
+  const inReviewConsole = pathname.startsWith('/review') && !pathname.startsWith('/reviewer')
 
   useEffect(() => {
     if (!inReviewConsole) return
@@ -107,7 +108,12 @@ export default function Navbar() {
     ...(roles.includes('coordinator') || profile?.role === 'admin' ? ['coordinator'] : []),
   ]
 
-  const currentView = pathname.startsWith('/author')
+  const fromParam = pathname.startsWith('/author/feedback') ? searchParams.get('from') : null
+  const currentView = inReviewConsole
+    ? 'reviewer'
+    : fromParam === 'reviewer' || fromParam === 'coordinator'
+    ? fromParam
+    : pathname.startsWith('/author')
     ? 'author'
     : pathname.startsWith('/reviewer')
     ? 'reviewer'

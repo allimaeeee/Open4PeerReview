@@ -369,7 +369,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id, storage_path, file_type, content_fingerprint, author:users!author_id(institution)')
+    .select('id, title, author_id, storage_path, file_type, content_fingerprint, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
     .eq('id', documentId)
     .single()
 
@@ -391,7 +391,16 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
       !!viewer?.institution &&
       viewer.institution === authorInstitution
 
-    if (!isCoordinator) throw new Error('Not authorised')
+    // Reviewers can view feedback for documents they have reviewed
+    const { count: reviewCount } = await supabase
+      .from('reviews')
+      .select('id', { count: 'exact', head: true })
+      .eq('document_id', documentId)
+      .eq('reviewer_id', user.id)
+
+    const isReviewer = (reviewCount ?? 0) > 0
+
+    if (!isCoordinator && !isReviewer) throw new Error('Not authorised')
   }
 
   const { data, error } = await supabase
@@ -401,17 +410,22 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
       reviewer:users!reviewer_id ( display_name, email ),
       rubric:rubrics ( id, title ),
       review_scores (
-        id, score, comment,
+        id, score, criterion_scores, comment,
         rubric_item:rubric_items ( id, label, sort_order, description )
       ),
-      annotations ( id, body, tag, rubric_item_id, anchor )
+      annotations ( id, body, tag, rubric_item_id, anchor ),
+      score_comments ( id, rubric_item_id, score_level, body )
     `)
     .eq('document_id', documentId)
     .eq('status', 'submitted')
     .order('submitted_at', { ascending: true })
 
   if (error) throw error
-  return { document: doc, reviews: data ?? [], isAuthor }
+  const allRubrics = ((doc as { document_rubrics?: { rubric: { id: string; title: string; rubric_items?: { id: string }[] } | null }[] }).document_rubrics ?? [])
+    .map(dr => dr.rubric)
+    .filter((r): r is { id: string; title: string; rubric_items?: { id: string }[] } => r !== null)
+    .map(r => ({ id: r.id, title: r.title, itemIds: (r.rubric_items ?? []).map(item => item.id) }))
+  return { document: doc, reviews: data ?? [], isAuthor, allRubrics }
 }
 
 /** All distinct subject_matter values stored across documents (used to populate the custom options list) */

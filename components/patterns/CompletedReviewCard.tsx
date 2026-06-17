@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -22,14 +25,19 @@ export function CompletedReviewCard({
   completedAt,
   reviewUrl,
 }: CompletedReviewCardProps) {
+  const [isOpen, setIsOpen] = useState(false)
+
   const formattedDate = new Date(completedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
   })
 
   return (
     <Card>
-      <div className="p-5 flex items-start justify-between gap-4">
-
+      {/* Header — always visible, clickable to toggle */}
+      <div
+        className="p-5 flex items-start justify-between gap-4 cursor-pointer select-none"
+        onClick={() => setIsOpen(prev => !prev)}
+      >
         {/* Left column */}
         <div className="flex-1 min-w-0">
 
@@ -71,16 +79,45 @@ export function CompletedReviewCard({
 
         </div>
 
-        {/* Right column */}
-        <div className="shrink-0 flex flex-col items-end gap-2">
-          <Link
-            href={reviewUrl}
-            className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md font-semibold bg-primary text-on-primary shadow-1 hover:bg-primary-hover hover:shadow-2 active:scale-[0.99] px-3 py-1.5 text-label-md"
+        {/* Right column: chevron */}
+        <div className="shrink-0 flex flex-col items-end">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden="true"
+            className={`w-4 h-4 text-[var(--color-text-muted)] transition-transform duration-200${isOpen ? ' rotate-180' : ''}`}
           >
-            View Submitted Review
-          </Link>
+            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </div>
+      </div>
 
+      {/* Expandable body */}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="border-t border-[var(--color-border)] px-5 pb-5">
+            {rubrics.map(r => (
+              <div
+                key={r.rubricId}
+                className="flex items-center justify-between gap-4 py-3 border-b border-[var(--color-border)] last:border-b-0"
+              >
+                <span className="text-body-md text-text-primary font-medium">
+                  {r.rubricTitle}
+                </span>
+                <Link
+                  href={reviewUrl}
+                  onClick={e => e.stopPropagation()}
+                  className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md font-semibold bg-primary text-on-primary shadow-1 hover:bg-primary-hover hover:shadow-2 active:scale-[0.99] px-3 py-1.5 text-label-md"
+                >
+                  View Submitted Review
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </Card>
   )

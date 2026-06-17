@@ -25,6 +25,7 @@ export default async function FeedbackPage({
         <FeedbackView
           document={data.document}
           reviews={data.reviews}
+          allRubrics={data.allRubrics}
           pdfUrl={pdfUrl}
           includeAuthorNotes={data.isAuthor}
         />

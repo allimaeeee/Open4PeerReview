@@ -105,7 +105,7 @@ function DocCard({
             <div className="flex items-center gap-2">
               {submitted > 0 && (
                 <Link
-                  href={`/author/feedback/${doc.id}`}
+                  href={`/author/feedback/${doc.id}?from=coordinator`}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   View Feedback

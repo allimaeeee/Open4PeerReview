@@ -18,9 +18,9 @@ export function FilterPill({ label, count, selected = false, size = 'default', o
       onClick={onClick}
       className={cx(
         'inline-flex items-center gap-1.5 rounded-full border cursor-pointer',
-        'font-label font-semibold uppercase tracking-widest',
+        'font-sans font-medium',
         'transition-colors duration-150',
-        size === 'sm' ? 'px-3 py-1 text-xs' : 'px-3.5 py-1.5 text-label-sm',
+        size === 'sm' ? 'px-3 py-1 text-xs' : 'px-3.5 py-1.5 text-body-sm',
         selected
           ? 'bg-[var(--color-primary)] text-[var(--color-on-primary)] border-[var(--color-primary)]'
           : 'bg-[var(--color-surface-container)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:bg-[var(--color-surface-container-high)]',

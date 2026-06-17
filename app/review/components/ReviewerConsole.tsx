@@ -575,12 +575,18 @@ export function ReviewerConsole({
   const handleSubmit = useCallback(
     async (finalOverallComment: string): Promise<string | null> => {
       await saveDraft()
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from('reviews')
-        .update({ status: 'submitted', overall_comment: finalOverallComment })
+        .update({
+          status: 'submitted',
+          overall_comment: finalOverallComment,
+          submitted_at: new Date().toISOString(),
+        })
         .eq('id', review.id)
+        .select('id')
+        .single()
 
-      if (error) return error.message
+      if (error || !updated) return error?.message ?? 'Submit failed — please try again'
       track('submit', {
         scored_criteria: Object.values(scores).filter((s) => s.scores.length > 0).length,
         total_criteria: rubricItems.length,
@@ -731,7 +737,9 @@ export function ReviewerConsole({
               totalCount={totalCount}
               onSubmit={async () => {
                 const err = await handleSubmit('')
-                if (!err) router.push('/reviewer?tab=completed&submitted=true')
+                if (err) throw new Error(err)
+                router.refresh()
+                router.push('/reviewer?tab=completed&submitted=true')
               }}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { StepIndicator } from '@/components/ui/StepIndicator'
@@ -41,6 +42,7 @@ const STATUS_TO_STEP: Record<RubricReview['status'], number> = {
 }
 
 export function DocumentCard({
+  id,
   title,
   platform,
   authors,
@@ -131,9 +133,13 @@ export function DocumentCard({
                 {rubric.rubricTitle}
               </span>
               {rubric.status === 'feedback-ready' && (
-                <Button variant="secondary" size="sm">
+                <Link
+                  href={`/author/feedback/${id}?from=author`}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-border bg-surface-card text-text-secondary hover:bg-surface-container hover:border-border-strong px-3 py-1.5 text-xs"
+                >
                   View Feedback
-                </Button>
+                </Link>
               )}
             </div>
 
