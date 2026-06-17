@@ -19,6 +19,7 @@ export function SubmitReviewButton({
 }: SubmitReviewButtonProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const submitDisabled = scoredCount < totalCount || isSubmitted
 
@@ -56,7 +57,7 @@ export function SubmitReviewButton({
         )}
       </Button>
 
-      <Modal open={confirmOpen} onClose={() => !submitting && setConfirmOpen(false)}>
+      <Modal open={confirmOpen} onClose={() => { if (!submitting) { setConfirmOpen(false); setSubmitError(null) } }}>
         <div
           onClick={e => e.stopPropagation()}
           className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-surface-card rounded-lg shadow-4 p-6 flex flex-col gap-4"
@@ -67,6 +68,9 @@ export function SubmitReviewButton({
               This will share your review with the author. You won't be able to make further edits after submitting.
             </p>
           </div>
+          {submitError && (
+            <p className="text-body-sm text-[var(--color-rating-dnm-text)]">{submitError}</p>
+          )}
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
@@ -81,9 +85,15 @@ export function SubmitReviewButton({
               disabled={submitting}
               onClick={async () => {
                 setSubmitting(true)
-                await onSubmit()
-                setSubmitting(false)
-                setConfirmOpen(false)
+                setSubmitError(null)
+                try {
+                  await onSubmit()
+                  setConfirmOpen(false)
+                } catch (e) {
+                  setSubmitError(e instanceof Error ? e.message : 'Submit failed — please try again')
+                } finally {
+                  setSubmitting(false)
+                }
               }}
             >
               {submitting ? 'Submitting…' : 'Submit'}

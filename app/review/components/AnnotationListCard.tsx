@@ -126,8 +126,6 @@ export function AnnotationListCard({
         </div>
       </div>
 
-      <hr className="border-0 border-t border-border" />
-
       {/* Comment section */}
       <div>
         <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mb-1">
@@ -145,8 +143,6 @@ export function AnnotationListCard({
           <p className="text-body-sm text-text-secondary">{annotation.body}</p>
         )}
       </div>
-
-      {(mode === 'edit' || annotation.tag) && <hr className="border-0 border-t border-border" />}
 
       {/* Tags section — always shown in edit mode; shown in view mode only when a tag exists */}
       {(mode === 'edit' || annotation.tag) && (
@@ -182,7 +178,7 @@ export function AnnotationListCard({
 
       {/* Criterion link section — only shown in view mode when showCriterionLink is true */}
       {showCriterionLink && mode === 'view' && (
-        <div className="border-t border-border pt-2">
+        <div>
           <div className="relative">
             <select
               value={selectedCriterionId}

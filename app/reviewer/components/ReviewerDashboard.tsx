@@ -42,8 +42,10 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
 
   function mapRubricsWithProgress(doc: Doc) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
-    // One review covers all rubrics — find by reviewer_id only, not rubric_id
-    const myReview = reviews.find(rev => rev.reviewer_id === userId)
+    const myReviews = reviews.filter(rev => rev.reviewer_id === userId)
+    const myReview = myReviews.find(r => r.status === 'submitted')
+      ?? myReviews.find(r => r.status === 'in_progress')
+      ?? myReviews[0]
     const myScores = myReview?.review_scores ?? []
     return mapRubrics(doc).map(r => {
       const rubricItemIds = new Set((r.rubric_items ?? []).map(item => item.id))
@@ -61,7 +63,12 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
 
   for (const doc of documents) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
-    const myReview = reviews.find(r => r.reviewer_id === userId)
+    const myReviews = reviews.filter(r => r.reviewer_id === userId)
+    // Prefer submitted over in_progress — a reviewer may have multiple reviews
+    // (e.g. a stale one from a reassigned rubric plus a newly-submitted one).
+    const myReview = myReviews.find(r => r.status === 'submitted')
+      ?? myReviews.find(r => r.status === 'in_progress')
+      ?? myReviews[0]
     if (myReview?.status === 'in_progress') activeReviews.push(doc)
     else if (myReview?.status === 'submitted') completedReviews.push(doc)
     else if (assignedIds.has(doc.id)) taskPool.push(doc)
@@ -93,7 +100,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const completedCards = completedReviews.map(doc => {
     const author = doc.author as AuthorRow
     const reviews = (doc.reviews ?? []) as ReviewRow[]
-    const myReview = reviews.find(r => r.reviewer_id === userId)
+    const myReview = reviews.filter(r => r.reviewer_id === userId).find(r => r.status === 'submitted')
     return {
       id: doc.id,
       title: doc.title,
@@ -102,7 +109,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
       completedAt: myReview?.submitted_at ?? doc.created_at,
-      reviewUrl: `/author/feedback/${doc.id}`,
+      reviewUrl: `/author/feedback/${doc.id}?from=reviewer`,
     }
   })
 

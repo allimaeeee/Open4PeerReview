@@ -98,7 +98,6 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
       {/* Tags row — only when a tag exists */}
       {note.tag && (
         <>
-          <hr className="border-0 border-t border-border" />
           <div className="flex items-center gap-2">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
               Tags:
@@ -112,7 +111,6 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
       {/* Move-to criterion — hidden when rendered inside a criterion card */}
       {showMoveDropdown && (
         <>
-          <hr className="border-0 border-t border-border" />
           <div className="relative">
             <select
               value={selectedCriterionId}

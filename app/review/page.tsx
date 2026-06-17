@@ -79,8 +79,13 @@ export default async function ReviewerPage({
     criteria_count: Array.isArray(rubric_items) ? rubric_items.length : 0,
   }))
 
-  // Existing in-progress review by this reviewer on this document
-  const { data: existingReview } = document
+  // Existing in-progress review by this reviewer on this document.
+  // Filter by rubric_id to avoid loading a stale review whose rubric_id no longer
+  // matches the document's assigned rubrics — the DB submit trigger validates
+  // criteria based on the review's rubric_id, so a mismatched review causes a
+  // spurious "unscored criteria" error from the wrong rubric.
+  const rubricIds = rubricsRaw.map(r => r.id)
+  const { data: existingReview } = document && rubricIds.length > 0
     ? await supabase
         .from('reviews')
         .select(`
@@ -93,6 +98,7 @@ export default async function ReviewerPage({
         `)
         .eq('document_id', document.id)
         .eq('reviewer_id', user.id)
+        .in('rubric_id', rubricIds)
         .in('status', ['assigned', 'in_progress', 'submitted'])
         .order('created_at', { ascending: false })
         .limit(1)
