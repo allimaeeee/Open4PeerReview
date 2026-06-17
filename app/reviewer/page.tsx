@@ -16,9 +16,8 @@ export default async function ReviewerPage() {
   if (!profile?.onboarding_completed) redirect('/onboard')
 
   const roles: string[] = profile.roles ?? []
-  if (!roles.includes('reviewer')) {
-    if (roles.includes('coordinator')) redirect('/coordinator')
-    else if (roles.includes('author')) redirect('/author')
+  if (!roles.includes('reviewer') && !roles.includes('coordinator')) {
+    if (roles.includes('author')) redirect('/author')
     else redirect('/onboard')
   }
 

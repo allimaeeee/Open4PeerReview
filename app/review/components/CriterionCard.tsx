@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import type { CriterionScore, HighlightTag } from '@/types'
 import type { LocalScore } from './ReviewerConsole'
 import type { RubricItem } from './ReviewerApp'
@@ -99,6 +99,7 @@ export function CriterionCard({
   expandToAnnotationId,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [focusedBox, setFocusedBox] = useState<'exceeds' | 'does_not_meet' | null>(null)
 
   useEffect(() => {
     if (!expandToAnnotationId) return
@@ -107,6 +108,27 @@ export function CriterionCard({
     }
   }, [expandToAnnotationId, score.annotations])
   const isRated = score.scores.length > 0
+
+  const getColumnStyle = (variant: 'exceeds' | 'exemplifies' | 'does_not_meet'): CSSProperties => {
+    const transition = 'flex 150ms ease, max-width 150ms ease, opacity 150ms ease, padding 150ms ease'
+    if (focusedBox === null) {
+      return { flex: '1 1 0%', transition }
+    }
+    if (variant === 'exemplifies') {
+      return { flex: '1 1 0%', transition }
+    }
+    if (variant === focusedBox) {
+      return { flex: '2 1 0%', transition }
+    }
+    return {
+      flex: '0 0 0%',
+      maxWidth: 0,
+      opacity: 0,
+      overflow: 'hidden',
+      padding: 0,
+      transition,
+    }
+  }
 
   return (
     <div className="rounded-lg border border-border bg-surface-card transition-colors">
@@ -190,6 +212,7 @@ export function CriterionCard({
           <div className="flex gap-3">
             <RatingBox
               variant="exceeds"
+              style={getColumnStyle('exceeds')}
               isActive={score.scores.includes('exceeds')}
               comments={score.exceedsComments}
               onAddComment={(body) => onAddComment(rubricItem.id, 'exceeds', body)}
@@ -197,9 +220,12 @@ export function CriterionCard({
               onDeleteComment={(id) => onDeleteComment(rubricItem.id, id, 'exceeds')}
               onActivate={() => { if (!score.scores.includes('exceeds')) onScoreToggle(rubricItem.id, 'exceeds') }}
               onDeactivate={() => { if (score.scores.includes('exceeds')) onScoreToggle(rubricItem.id, 'exceeds') }}
+              onTextareaFocus={() => setFocusedBox('exceeds')}
+              onTextareaBlur={() => setFocusedBox(null)}
             />
             <RatingBox
               variant="exemplifies"
+              style={getColumnStyle('exemplifies')}
               isActive={score.scores.includes('exemplifies')}
               standardText={rubricItem.description ?? undefined}
               criterionLabel={`C${criterionIndex} · ${rubricItem.label.replace(/^C\d+\s+/, '')}`}
@@ -207,6 +233,7 @@ export function CriterionCard({
             />
             <RatingBox
               variant="does_not_meet"
+              style={getColumnStyle('does_not_meet')}
               isActive={score.scores.includes('does_not_meet')}
               comments={score.niComments}
               onAddComment={(body) => onAddComment(rubricItem.id, 'does_not_meet', body)}
@@ -214,6 +241,8 @@ export function CriterionCard({
               onDeleteComment={(id) => onDeleteComment(rubricItem.id, id, 'does_not_meet')}
               onActivate={() => { if (!score.scores.includes('does_not_meet')) onScoreToggle(rubricItem.id, 'does_not_meet') }}
               onDeactivate={() => { if (score.scores.includes('does_not_meet')) onScoreToggle(rubricItem.id, 'does_not_meet') }}
+              onTextareaFocus={() => setFocusedBox('does_not_meet')}
+              onTextareaBlur={() => setFocusedBox(null)}
             />
           </div>
 

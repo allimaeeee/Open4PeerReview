@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { ScoreCommentItem } from './ReviewerConsole'
 import { Modal, ModalContent } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Textarea'
@@ -17,6 +17,9 @@ interface RatingBoxProps {
   criterionLabel?: string
   isActive: boolean
   onToggle?: () => void
+  style?: CSSProperties
+  onTextareaFocus?: () => void
+  onTextareaBlur?: () => void
 }
 
 const LABELS: Record<string, string> = {
@@ -52,6 +55,9 @@ export function RatingBox({
   criterionLabel,
   isActive,
   onToggle,
+  style,
+  onTextareaFocus,
+  onTextareaBlur,
 }: RatingBoxProps) {
   const [localText, setLocalText] = useState(comments?.[0]?.body ?? '')
   const [showModal, setShowModal] = useState(false)
@@ -125,30 +131,20 @@ export function RatingBox({
             'cursor-pointer text-left w-full transition-colors',
             !isActive ? 'hover:border-primary hover:bg-surface-container' : '',
           ].join(' ')}
+          style={style}
           onClick={onToggle}
         >
           <div className="flex items-center gap-1">
             <span className={labelClass}>{LABELS.exemplifies}</span>
-            {standardText && (
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setShowModal(true) }}
-                className="text-text-secondary/60 hover:text-text-secondary transition-colors"
-                aria-label="View full standard"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                  <line x1="8" y1="7.5" x2="8" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <circle cx="8" cy="4.5" r="1" fill="currentColor" />
-                </svg>
-              </button>
-            )}
           </div>
-          <p className={`line-clamp-4 ${standardText ? 'text-body-sm text-text-secondary' : 'text-body-sm text-text-muted'}`}>
-            {standardText ? standardText.replace(/\d+\.\s+/g, '') : 'No standard defined'}
-          </p>
+          <div className="overflow-y-auto max-h-[5.5rem] pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-secondary/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-secondary/60">
+            <p className={standardText ? 'text-body-sm text-text-secondary' : 'text-body-sm text-text-muted'}>
+              {standardText ? standardText.replace(/\d+\.\s+/g, '') : 'No standard defined'}
+            </p>
+          </div>
         </div>
 
+        {/* Info modal — trigger removed, preserved for future use */}
         {showModal && (
           <Modal open={showModal} onClose={() => setShowModal(false)}>
             <ModalContent className="max-w-xl">
@@ -214,7 +210,7 @@ export function RatingBox({
   }
 
   return (
-    <div className={`${containerBase} ${borderClass}`}>
+    <div className={`${containerBase} ${borderClass}`} style={style}>
       <span className={labelClass}>{LABELS[variant]}</span>
       <Textarea
         variant={variant === 'exceeds' ? 'exceeds' : 'does-not-meet'}
@@ -222,7 +218,10 @@ export function RatingBox({
         value={localText}
         onChange={e => setLocalText(e.target.value)}
         rows={4}
-        className="flex-1 bg-transparent"
+        resize="none"
+        onFocus={onTextareaFocus}
+        onBlur={onTextareaBlur}
+        className="flex-1 bg-transparent [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-secondary/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-secondary/60"
       />
     </div>
   )

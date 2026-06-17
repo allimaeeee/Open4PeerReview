@@ -72,13 +72,13 @@ export function AnnotationListCard({
 
   return (
     <div className="rounded-none border border-border bg-surface-container-low p-3 flex flex-col gap-2">
-      {/* Top row: highlighted text section + edit/delete controls */}
+      {/* Top row: annotated text section + edit/delete controls */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col flex-1 min-w-0">
-          {/* Header row: label + go to highlight inline */}
+          {/* Header row: label + go to annotation inline */}
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Highlighted Text
+              Annotated Text
             </span>
             <button
               type="button"
@@ -86,7 +86,7 @@ export function AnnotationListCard({
               className="inline-flex items-center gap-1 p-0 opacity-70 hover:opacity-100 transition-opacity cursor-pointer text-secondary"
             >
               <span className="text-body-sm font-body whitespace-nowrap">
-                Go to highlight
+                Go to annotation
               </span>
               <ArrowUpRightIcon />
             </button>
@@ -98,7 +98,7 @@ export function AnnotationListCard({
               <span className="text-secondary font-heading not-italic">&rdquo;</span>
             </p>
           ) : (
-            <p className="text-body-sm text-text-muted italic">No highlighted text</p>
+            <p className="text-body-sm text-text-muted italic">No annotated text</p>
           )}
         </div>
         <div className="flex-shrink-0 flex items-center gap-1">

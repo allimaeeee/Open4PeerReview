@@ -12,9 +12,10 @@ export interface TabBarProps {
   onChange: (id: string) => void
   rightSlot?: ReactNode
   className?: string
+  tabClassName?: string
 }
 
-export function TabBar({ tabs, activeId, onChange, rightSlot, className }: TabBarProps) {
+export function TabBar({ tabs, activeId, onChange, rightSlot, className, tabClassName }: TabBarProps) {
   return (
     <div className={cx('flex items-center border-b border-border bg-surface-card', className)}>
       {/* Scrollable tab strip */}
@@ -27,13 +28,17 @@ export function TabBar({ tabs, activeId, onChange, rightSlot, className }: TabBa
               type="button"
               role="tab"
               aria-selected={active}
-              onClick={() => { if (!active) onChange(tab.id) }}
               className={cx(
                 'inline-flex items-center gap-2 px-4 py-2.5 text-body-sm font-body -mb-px border-b-2 transition-colors duration-[var(--transition-duration-fast)] whitespace-nowrap flex-shrink-0',
+                tabClassName,
                 active
                   ? 'border-primary text-primary font-semibold bg-surface'
                   : 'border-transparent text-text-muted hover:text-text-primary hover:border-border',
               )}
+              onClick={e => {
+                if (!active) onChange(tab.id)
+                e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+              }}
             >
               {tab.label}
               {tab.badge}
@@ -44,7 +49,7 @@ export function TabBar({ tabs, activeId, onChange, rightSlot, className }: TabBa
 
       {/* Pinned right slot — does not scroll with tabs */}
       {rightSlot && (
-        <div className="flex-shrink-0 border-l border-border px-3 flex items-center self-stretch">
+        <div className="flex-shrink-0 px-3 flex items-center self-stretch">
           {rightSlot}
         </div>
       )}

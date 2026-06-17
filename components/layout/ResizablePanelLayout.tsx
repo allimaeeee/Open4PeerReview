@@ -66,34 +66,41 @@ export default function ResizablePanelLayout({
     setIsDragging(false)
   }
 
-  const leftWidth = leftCollapsed ? 0 : `${leftPercent}%`
+  const canDrag = !leftCollapsed && !rightCollapsed
+
+  // Each panel's right/left edge sits exactly at the split point, so panel
+  // backgrounds fill their respective halves of the transparent 12px divider.
+  const dividerStyle: React.CSSProperties = leftCollapsed
+    ? { position: 'absolute', top: 0, bottom: 0, left: 0, width: 12, zIndex: 10 }
+    : rightCollapsed
+    ? { position: 'absolute', top: 0, bottom: 0, right: 0, width: 12, zIndex: 10 }
+    : { position: 'absolute', top: 0, bottom: 0, left: `calc(${leftPercent}% - 6px)`, width: 12, zIndex: 10 }
 
   return (
     <div
       ref={containerRef}
-      className={`flex flex-row h-full overflow-hidden${isDragging ? ' select-none cursor-col-resize' : ''}`}
+      className={`relative h-full overflow-hidden${isDragging ? ' select-none cursor-col-resize' : ''}`}
     >
-      {/* Left panel */}
-      <div
-        style={{
-          width: rightCollapsed ? undefined : leftWidth,
-          flexGrow: rightCollapsed ? 1 : 0,
-          flexShrink: rightCollapsed ? 1 : 0,
-          flexBasis: rightCollapsed ? '0%' : undefined,
-          overflow: leftCollapsed ? 'hidden' : undefined,
-        }}
-        className="h-full overflow-y-auto"
-      >
-        {leftPanel}
-      </div>
+      {/* Left panel — right edge at split point, covering the left half of the divider */}
+      {!leftCollapsed && (
+        <div
+          className="absolute inset-y-0 overflow-y-auto"
+          style={{
+            left: 0,
+            right: rightCollapsed ? 0 : `calc(100% - ${leftPercent}%)`,
+          }}
+        >
+          {leftPanel}
+        </div>
+      )}
 
-      {/* Divider */}
+      {/* Divider — transparent except for the 1px center line; sits above both panels via z-index */}
       <div
-        className="relative h-full flex-shrink-0 cursor-col-resize"
-        style={{ width: 12 }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+        style={dividerStyle}
+        className={canDrag ? 'cursor-col-resize' : undefined}
+        onPointerDown={canDrag ? handlePointerDown : undefined}
+        onPointerMove={canDrag ? handlePointerMove : undefined}
+        onPointerUp={canDrag ? handlePointerUp : undefined}
       >
         <div className="w-px h-full bg-border mx-auto" />
 
@@ -109,7 +116,7 @@ export default function ResizablePanelLayout({
               else setLeftCollapsed(true)
             }}
             onPointerDown={e => e.stopPropagation()}
-            className="absolute top-8 left-0 -translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+            className="absolute top-0 left-1.5 -translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
             aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse left panel'}
           >
             <ChevronLeft />
@@ -128,22 +135,26 @@ export default function ResizablePanelLayout({
               else setRightCollapsed(true)
             }}
             onPointerDown={e => e.stopPropagation()}
-            className="absolute top-8 right-0 translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+            className="absolute top-0 right-1.5 translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
             aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse right panel'}
           >
             <ChevronRight />
           </button>
         )}
-
       </div>
 
-      {/* Right panel */}
-      <div
-        style={{ display: rightCollapsed ? 'none' : undefined }}
-        className="flex-1 min-w-0 h-full overflow-y-auto"
-      >
-        {rightPanel}
-      </div>
+      {/* Right panel — left edge at split point, covering the right half of the divider */}
+      {!rightCollapsed && (
+        <div
+          className="absolute inset-y-0 overflow-y-auto"
+          style={{
+            left: leftCollapsed ? 0 : `${leftPercent}%`,
+            right: 0,
+          }}
+        >
+          {rightPanel}
+        </div>
+      )}
     </div>
   )
 }
