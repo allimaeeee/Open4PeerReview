@@ -680,6 +680,7 @@ export function ReviewerConsole({
             {document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas
                 snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+                additionalPages={document.pages ?? undefined}
                 rubricItems={activeViewerCriteria}
                 activeItemId={activeItemId}
                 pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}
@@ -697,6 +698,7 @@ export function ReviewerConsole({
                 pulseAnnotationId={pulseAnnotationId}
                 onPulseComplete={() => setPulseAnnotationId(null)}
                 onAnnotationViewFull={handleViewFullComment}
+                focusAnnotationId={focusAnnotationId}
               />
             ) : document.file_url ? (
               <PDFViewer

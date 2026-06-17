@@ -153,6 +153,7 @@ export async function submitOpenStaxLink(
     submissionScope: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    additionalPages?: Array<{ url: string; fingerprint: string; storagePath: string }>
   }
 ) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -176,6 +177,7 @@ export async function submitOpenStaxLink(
       submission_scope: opts.submissionScope,
       is_draft: opts.isDraft ?? false,
       coordinator_upload: opts.coordinatorUpload ?? false,
+      pages: opts.additionalPages?.length ? (opts.additionalPages as import('@/types/database.types').Json) : null,
     })
     .select()
     .single()
