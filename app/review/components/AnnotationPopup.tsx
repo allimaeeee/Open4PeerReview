@@ -41,16 +41,49 @@ export function AnnotationPopup({
   useEffect(() => {
     if (!ref.current) return
     const { offsetWidth: w, offsetHeight: h } = ref.current
+    const parent = ref.current.offsetParent as HTMLElement | null
+    const pW = parent?.clientWidth ?? window.innerWidth
+    const pH = parent?.clientHeight ?? window.innerHeight
     const MARGIN = 8
     let x = position.x
     let y = position.selectionTop - h - MARGIN
     if (y < MARGIN) y = position.selectionBottom + MARGIN
-    if (x + w > window.innerWidth  - MARGIN) x = window.innerWidth  - w - MARGIN
+    if (x + w > pW - MARGIN) x = pW - w - MARGIN
     if (x < MARGIN) x = MARGIN
-    if (y + h > window.innerHeight - MARGIN) y = window.innerHeight - h - MARGIN
+    if (y + h > pH - MARGIN) y = pH - h - MARGIN
     if (y < MARGIN) y = MARGIN
     setAdjustedPos({ x, y })
   }, [position.x, position.selectionTop, position.selectionBottom])
+
+  function handleHeaderPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const startMouseX = e.clientX
+    const startMouseY = e.clientY
+    const startX = adjustedPos.x
+    const startY = adjustedPos.y
+
+    function onMove(ev: PointerEvent) {
+      const popup = ref.current
+      if (!popup) return
+      const parent = popup.offsetParent as HTMLElement | null
+      const pW = parent?.clientWidth ?? window.innerWidth
+      const pH = parent?.clientHeight ?? window.innerHeight
+      const scrollTop = parent?.scrollTop ?? 0
+      setAdjustedPos({
+        x: Math.max(0, Math.min(startX + ev.clientX - startMouseX, pW - popup.offsetWidth)),
+        y: Math.max(scrollTop, Math.min(startY + ev.clientY - startMouseY, scrollTop + pH - popup.offsetHeight)),
+      })
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }
 
   function handleSave() {
     if (!body.trim()) return
@@ -64,9 +97,12 @@ export function AnnotationPopup({
       style={{ left: adjustedPos.x, top: adjustedPos.y }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between bg-surface px-4 py-3 border-b border-border/40">
+      <div
+        className="flex items-center justify-between bg-surface px-4 py-3 border-b border-border/40 cursor-grab active:cursor-grabbing select-none"
+        onPointerDown={handleHeaderPointerDown}
+      >
         <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-          ADD HIGHLIGHT
+          ADD ANNOTATION
         </span>
         <button
           type="button"
@@ -115,7 +151,7 @@ export function AnnotationPopup({
           onChange={e => setRubricItemId(e.target.value || null)}
           className="w-full border border-border bg-surface-card px-2 py-1.5 text-body-sm text-text-primary focus:border-primary focus:outline-none transition-colors"
         >
-          <option value="">(save to unlinked highlights)</option>
+          <option value="">(save to unlinked annotations)</option>
           {criteria.map(c => (
             <option key={c.id} value={c.id}>{c.label}</option>
           ))}

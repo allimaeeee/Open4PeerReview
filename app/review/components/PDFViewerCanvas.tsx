@@ -7,12 +7,12 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { HighlightTag } from '@/types'
-import { Select } from '@/components/ui/Select'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
 import type { Json } from '@/types/database.types'
 import { scaleRect, type PdfRect, ZOOM_LEVELS, DEFAULT_ZOOM } from '@/lib/pdf-coords'
 import { AnnotationPopup } from './AnnotationPopup'
 import { AnnotationHoverCard } from './AnnotationHoverCard'
+import { ViewerPanelHeader } from './ViewerPanelHeader'
 
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
@@ -62,6 +62,7 @@ interface PDFViewerCanvasProps {
   onGoToAnnotation?: (annotationId: string) => void
   onAnnotationViewFull?: (annotationId: string) => void
   scrollToAnnotationId?: string | null
+  onBack: () => void
 }
 
 export default function PDFViewerCanvas({
@@ -81,6 +82,7 @@ export default function PDFViewerCanvas({
   onGoToAnnotation,
   onAnnotationViewFull,
   scrollToAnnotationId,
+  onBack,
 }: PDFViewerCanvasProps) {
   const [numPages, setNumPages] = useState<number>(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -230,94 +232,66 @@ export default function PDFViewerCanvas({
     })
   }, [disabled, currentPage, onTextSelected, renderPageWidth, containerWidth])
 
-  const activeItemLabel = rubricItems.find((r) => r.id === activeItemId)?.label ?? null
-
   return (
     <div className="h-full flex flex-col bg-slate-100">
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage <= 1}
-            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Previous page"
-          >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd"
-                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                clipRule="evenodd" />
-            </svg>
-          </button>
-          <span className="text-xs text-slate-600 tabular-nums">
-            {currentPage} / {numPages || '—'}
-          </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-            disabled={currentPage >= numPages}
-            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Next page"
-          >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd"
-                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                clipRule="evenodd" />
-            </svg>
-          </button>
-
-          <span className="w-px h-4 bg-slate-200 mx-1" />
-
-          {/* Zoom controls */}
-          <button
-            onClick={() => setZoom((z) => {
-              const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
-              return idx > 0 ? ZOOM_LEVELS[idx - 1] : z
-            })}
-            disabled={zoom <= ZOOM_LEVELS[0]}
-            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Zoom out"
-          >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-              <path d="M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
-            </svg>
-          </button>
-          <span className="text-xs text-slate-500 tabular-nums w-8 text-center">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            onClick={() => setZoom((z) => {
-              const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
-              return idx < ZOOM_LEVELS.length - 1 ? ZOOM_LEVELS[idx + 1] : z
-            })}
-            disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-            className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label="Zoom in"
-          >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-              <path d="M8 5v6M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        {activeItemLabel && !disabled && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-[#1e3a5f] animate-pulse" />
-            Active: <span className="font-medium text-slate-700">{activeItemLabel}</span>
+      <ViewerPanelHeader
+        onBack={onBack}
+        centerSlot={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Previous page"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <span className="text-xs text-slate-600 tabular-nums">{currentPage} / {numPages || '—'}</span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+              disabled={currentPage >= numPages}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Next page"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <span className="w-px h-4 bg-slate-200 mx-1" />
+            <button
+              onClick={() => setZoom((z) => {
+                const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
+                return idx > 0 ? ZOOM_LEVELS[idx - 1] : z
+              })}
+              disabled={zoom <= ZOOM_LEVELS[0]}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Zoom out"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                <path d="M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
+              </svg>
+            </button>
+            <span className="text-xs text-slate-500 tabular-nums w-8 text-center">{Math.round(zoom * 100)}%</span>
+            <button
+              onClick={() => setZoom((z) => {
+                const idx = ZOOM_LEVELS.indexOf(z as typeof ZOOM_LEVELS[number])
+                return idx < ZOOM_LEVELS.length - 1 ? ZOOM_LEVELS[idx + 1] : z
+              })}
+              disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+              className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Zoom in"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                <path d="M8 5v6M5 8h6" strokeWidth={2} stroke="currentColor" fill="none" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
-        )}
-
-        {disabled && (
-          <span className="text-xs text-slate-400 flex items-center gap-1">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd"
-                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                clipRule="evenodd" />
-            </svg>
-            Review submitted
-          </span>
-        )}
-      </div>
+        }
+      />
 
       <div
         ref={containerRef}

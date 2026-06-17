@@ -8,6 +8,30 @@ import Link from 'next/link'
 import { NavRoleSwitcher } from '@/components/patterns/NavRoleSwitcher'
 import { NotificationBell } from '@/components/patterns/NotificationBell'
 import { UserMenu } from '@/components/patterns/UserMenu'
+import { useReviewSaveStatus } from '@/lib/review-save-context'
+
+function formatLastSaved(lastSavedAt: Date | null): string {
+  if (!lastSavedAt) return 'Not yet saved'
+  const diffSec = Math.floor((Date.now() - lastSavedAt.getTime()) / 1000)
+  const time = lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (diffSec < 10) return `Last saved ${time} (just now)`
+  if (diffSec < 60) return `Last saved ${time} (${diffSec}s ago)`
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `Last saved ${time} (${diffMin} min ago)`
+  const diffHrs = Math.floor(diffMin / 60)
+  const remMin  = diffMin % 60
+  if (diffHrs < 24) {
+    const parts = [`${diffHrs} ${diffHrs === 1 ? 'hr' : 'hrs'}`]
+    if (remMin > 0) parts.push(`${remMin} min`)
+    return `Last saved ${time} (${parts.join(', ')} ago)`
+  }
+  const diffDays = Math.floor(diffHrs / 24)
+  const remHrs   = diffHrs % 24
+  const parts = [`${diffDays} ${diffDays === 1 ? 'day' : 'days'}`]
+  if (remHrs > 0) parts.push(`${remHrs} ${remHrs === 1 ? 'hr' : 'hrs'}`)
+  if (remMin > 0) parts.push(`${remMin} min`)
+  return `Last saved ${time} (${parts.join(', ')} ago)`
+}
 
 type Profile = {
   display_name: string | null
@@ -45,6 +69,15 @@ export default function Navbar() {
   const { user, loading } = useUser()
   const [profile, setProfile] = useState<Profile | null>(null)
   const pathname = usePathname()
+  const { saveStatus, lastSavedAt } = useReviewSaveStatus()
+  const [, setTick] = useState(0)
+  const inReviewConsole = pathname.startsWith('/review')
+
+  useEffect(() => {
+    if (!inReviewConsole) return
+    const id = setInterval(() => setTick(t => t + 1), 15000)
+    return () => clearInterval(id)
+  }, [inReviewConsole])
 
   useEffect(() => {
     if (!user) {
@@ -101,6 +134,25 @@ export default function Navbar() {
         </Link>
         {showRightSide && (
           <div className="flex items-center gap-4">
+            {inReviewConsole && (
+              <div className="flex items-center gap-1.5">
+                {saveStatus === 'saving' && (
+                  <svg className="w-3.5 h-3.5 animate-spin text-text-muted" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+                    <path d="M8 2A6 6 0 0114 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                )}
+                {saveStatus === 'saved' && (
+                  <svg className="w-3.5 h-3.5 text-success" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6" />
+                    <path d="M5 8.5L7 10.5L11 6" />
+                  </svg>
+                )}
+                <span className="text-body-sm text-text-muted">
+                  {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : formatLastSaved(lastSavedAt)}
+                </span>
+              </div>
+            )}
             <NavRoleSwitcher currentView={currentView} availableViews={availableViews} />
             <NotificationBell />
             <UserMenu

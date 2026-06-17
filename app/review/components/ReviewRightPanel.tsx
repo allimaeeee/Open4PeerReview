@@ -4,12 +4,12 @@ import { useMemo } from 'react'
 import { TabBar } from '@/components/ui/TabBar'
 import { CriterionCard } from './CriterionCard'
 import { FreeNotesSection } from './FreeNotesSection'
-import { UnlinkedHighlightsSection } from './UnlinkedHighlightsSection'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
 import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
 import type { HighlightTag } from '@/types'
 import type { FreeNote, CriterionOption } from './FreeNotesSection'
+import { SubmitReviewButton } from './SubmitReviewButton'
 
 interface ReviewRightPanelProps {
   rubricItems: RubricItem[]
@@ -18,6 +18,9 @@ interface ReviewRightPanelProps {
   activeRubricId: string | null
   onActiveRubricChange: (id: string) => void
   isSubmitted: boolean
+  scoredCount: number
+  totalCount: number
+  onSubmit: () => Promise<void>
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
   onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
@@ -38,6 +41,9 @@ export function ReviewRightPanel({
   activeRubricId,
   onActiveRubricChange,
   isSubmitted,
+  scoredCount,
+  totalCount,
+  onSubmit,
   onScoreToggle,
   onAddComment,
   onEditComment,
@@ -122,6 +128,15 @@ export function ReviewRightPanel({
           }))}
           activeId={activeRubricId ?? ''}
           onChange={onActiveRubricChange}
+          tabClassName="py-[16px]"
+          rightSlot={
+            <SubmitReviewButton
+              scoredCount={scoredCount}
+              totalCount={totalCount}
+              isSubmitted={isSubmitted}
+              onSubmit={onSubmit}
+            />
+          }
         />
       </div>
 
@@ -130,19 +145,15 @@ export function ReviewRightPanel({
         <FreeNotesSection
           notes={freeNotes}
           criteria={criteriaOptions}
+          annotations={unlinkedHighlights}
           onAddNote={onAddNote}
           onEditNote={handleEditNote}
           onMoveNote={handleMoveNote}
           onDeleteNote={onDeleteNote}
-        />
-
-        <UnlinkedHighlightsSection
-          annotations={unlinkedHighlights}
-          criteria={criteriaOptions}
-          onGoTo={onGoToAnnotation}
-          onEdit={onEditAnnotation}
-          onDelete={onDeleteAnnotation}
-          onLink={handleLinkHighlight}
+          onGoToAnnotation={onGoToAnnotation}
+          onEditAnnotation={onEditAnnotation}
+          onDeleteAnnotation={onDeleteAnnotation}
+          onLinkAnnotation={handleLinkHighlight}
         />
 
         <div className="flex flex-col gap-2 p-4">

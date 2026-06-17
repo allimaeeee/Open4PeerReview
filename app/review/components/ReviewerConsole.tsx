@@ -13,8 +13,8 @@ import type { HighlightTag } from '@/types'
 import type { Json } from '@/types/database.types'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
-import { ReviewConsoleHeader } from './ReviewConsoleHeader'
 import ReviewRightPanel from './ReviewRightPanel'
+import { useReviewSaveStatus } from '@/lib/review-save-context'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
 
@@ -146,6 +146,12 @@ export function ReviewerConsole({
     saveStatus, onScoreChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
+
+  // ── Broadcast save status to Navbar via context ────────────────────────────
+  const { setSaveStatus: setNavSaveStatus, setLastSavedAt: setNavLastSavedAt } = useReviewSaveStatus()
+  useEffect(() => { setNavSaveStatus(saveStatus) }, [saveStatus, setNavSaveStatus])
+  useEffect(() => { setNavLastSavedAt(lastSavedAt ? new Date(lastSavedAt) : null) }, [lastSavedAt, setNavLastSavedAt])
+  useEffect(() => () => { setNavSaveStatus('idle'); setNavLastSavedAt(null) }, [])
 
   // Stable ref so annotation callbacks can look up rubric_item_id without stale closures
   const scoresRef = useRef(scores)
@@ -598,6 +604,7 @@ export function ReviewerConsole({
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [pulseAnnotationId, setPulseAnnotationId] = useState<string | null>(null)
   const [panelScrollAnnotationId, setPanelScrollAnnotationId] = useState<string | null>(null)
+  const [focusAnnotationId, setFocusAnnotationId] = useState<string | null>(null)
 
   useEffect(() => {
     if (firstRubricId && activeRubricId === null) {
@@ -660,19 +667,6 @@ export function ReviewerConsole({
 
   return (
     <div className="h-screen flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
-      <ReviewConsoleHeader
-        scoredCount={scoredCount}
-        totalCount={totalCount}
-        lastSavedAt={lastSavedAt ? new Date(lastSavedAt) : null}
-        saveStatus={saveStatus}
-        onBack={() => { saveDraft().then(() => router.push('/reviewer')) }}
-        onSubmit={async () => {
-          const err = await handleSubmit('')
-          if (!err) router.push('/reviewer?tab=completed&submitted=true')
-        }}
-        isSubmitted={isSubmitted}
-      />
-
       <ResizablePanelLayout
         defaultLeftPercent={50}
         leftPanel={
@@ -681,6 +675,7 @@ export function ReviewerConsole({
               <HtmlViewerCanvas
                 snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
                 additionalPages={document.pages ?? undefined}
+                onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
                 rubricItems={activeViewerCriteria}
                 activeItemId={activeItemId}
                 pendingSelection={pendingSelection && 'type' in pendingSelection ? pendingSelection as HtmlTextSelection : null}
@@ -703,6 +698,7 @@ export function ReviewerConsole({
             ) : document.file_url ? (
               <PDFViewer
                 fileUrl={document.file_url}
+                onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
                 rubricItems={activeViewerCriteria}
                 activeItemId={activeItemId}
                 pendingSelection={pendingSelection && 'page' in pendingSelection ? pendingSelection : null}
@@ -731,6 +727,12 @@ export function ReviewerConsole({
               activeRubricId={activeRubricId}
               onActiveRubricChange={setActiveRubricId}
               isSubmitted={isSubmitted}
+              scoredCount={scoredCount}
+              totalCount={totalCount}
+              onSubmit={async () => {
+                const err = await handleSubmit('')
+                if (!err) router.push('/reviewer?tab=completed&submitted=true')
+              }}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}
               onEditComment={handleEditScoreComment}
@@ -738,7 +740,7 @@ export function ReviewerConsole({
               onAddNote={handleAddGeneralNote}
               onEditFreeNote={handleEditFreeNote}
               onDeleteNote={handleDeleteGeneralAnnotation}
-              onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id) }}
+              onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id); setFocusAnnotationId(id) }}
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { FreeNoteCard } from './FreeNoteCard'
 import { TagSelector } from './TagChip'
+import { AnnotationListCard } from './AnnotationListCard'
 
 export interface FreeNote {
   id: string
@@ -19,24 +20,56 @@ export interface CriterionOption {
   label: string
 }
 
+interface AnnotationSummary {
+  id: string
+  anchor: Record<string, unknown>
+  body: string
+  tag: string | null
+}
+
 interface FreeNotesSectionProps {
   notes: FreeNote[]
   criteria: CriterionOption[]
+  annotations: AnnotationSummary[]
   onAddNote: (body: string, tag: HighlightTag | null, rubricItemId: string | null) => Promise<string | null>
   onEditNote: (noteId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onMoveNote: (noteId: string, rubricItemId: string) => void
   onDeleteNote: (noteId: string) => void
+  onGoToAnnotation: (annotationId: string) => void
+  onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
+  onDeleteAnnotation: (annotationId: string) => void
+  onLinkAnnotation: (annotationId: string, criterionId: string) => void
+}
+
+function Chevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={`w-3.5 h-3.5 text-text-muted flex-shrink-0 transition-transform duration-[var(--transition-duration-base)]${expanded ? ' rotate-180' : ''}`}
+    >
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 export function FreeNotesSection({
   notes,
   criteria,
+  annotations,
   onAddNote,
   onEditNote,
   onMoveNote,
   onDeleteNote,
+  onGoToAnnotation,
+  onEditAnnotation,
+  onDeleteAnnotation,
+  onLinkAnnotation,
 }: FreeNotesSectionProps) {
   const [expanded, setExpanded] = useState(true)
+  const [notesExpanded, setNotesExpanded] = useState(true)
+  const [annotationsExpanded, setAnnotationsExpanded] = useState(true)
   const [noteText, setNoteText] = useState('')
   const [selectedTag, setSelectedTag] = useState<HighlightTag | null>(null)
   const [linkedCriterion, setLinkedCriterion] = useState('')
@@ -66,9 +99,13 @@ export function FreeNotesSection({
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex-1 flex items-baseline gap-2">
-          <span className="text-body-md font-heading font-semibold text-text-primary">Free notes</span>
+          <span className="text-body-md font-heading font-semibold text-text-primary">Free Notes</span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container/60 text-secondary text-label-sm font-label font-semibold">
             {notes.length}
+          </span>
+          <span className="text-body-md font-heading font-semibold text-text-primary">&amp; Unlinked Annotations</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container/60 text-secondary text-label-sm font-label font-semibold">
+            {annotations.length}
           </span>
         </div>
         <svg
@@ -89,7 +126,7 @@ export function FreeNotesSection({
 
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-3">
-          {/* New Free Note card — always visible */}
+          {/* New Free Note input */}
           <div className="rounded-none border border-dashed border-border bg-surface p-4 flex flex-col gap-3">
             <Textarea
               placeholder="Write a note..."
@@ -154,23 +191,63 @@ export function FreeNotesSection({
             )}
           </div>
 
+          {/* Free Notes subsection */}
           {notes.length > 0 && (
-            <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
-              Free Note Bank ({notes.length})
-            </span>
+            <>
+              <button
+                type="button"
+                className="flex items-center justify-between gap-2 w-full text-left cursor-pointer"
+                onClick={() => setNotesExpanded(v => !v)}
+              >
+                <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+                  Unlinked Free Notes ({notes.length})
+                </span>
+                <Chevron expanded={notesExpanded} />
+              </button>
+
+              {notesExpanded && notes.map(note => (
+                <div key={note.id} id={`annotation-card-${note.id}`}>
+                  <FreeNoteCard
+                    note={note}
+                    criteria={criteria}
+                    onEdit={onEditNote}
+                    onMove={onMoveNote}
+                    onDelete={onDeleteNote}
+                  />
+                </div>
+              ))}
+            </>
           )}
 
-          {notes.map(note => (
-            <div key={note.id} id={`annotation-card-${note.id}`}>
-              <FreeNoteCard
-                note={note}
-                criteria={criteria}
-                onEdit={onEditNote}
-                onMove={onMoveNote}
-                onDelete={onDeleteNote}
-              />
-            </div>
-          ))}
+          {/* Unlinked Annotations subsection */}
+          {annotations.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="flex items-center justify-between gap-2 w-full text-left cursor-pointer"
+                onClick={() => setAnnotationsExpanded(v => !v)}
+              >
+                <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+                  Unlinked Annotations ({annotations.length})
+                </span>
+                <Chevron expanded={annotationsExpanded} />
+              </button>
+
+              {annotationsExpanded && annotations.map(ann => (
+                <div key={ann.id} id={`annotation-card-${ann.id}`}>
+                  <AnnotationListCard
+                    annotation={ann}
+                    onGoTo={onGoToAnnotation}
+                    onEdit={onEditAnnotation}
+                    onDelete={onDeleteAnnotation}
+                    showCriterionLink
+                    criteria={criteria}
+                    onLink={onLinkAnnotation}
+                  />
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

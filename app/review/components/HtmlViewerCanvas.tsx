@@ -7,6 +7,7 @@ import type { Json } from '@/types/database.types'
 import { selectionToAnchor, applyHighlights } from '@/lib/anchoring/html'
 import { AnnotationPopup } from './AnnotationPopup'
 import { AnnotationHoverCard } from './AnnotationHoverCard'
+import { ViewerPanelHeader } from './ViewerPanelHeader'
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ interface HtmlViewerCanvasProps {
   scrollToAnnotationId?: string | null
   pulseAnnotationId?: string | null
   onPulseComplete?: () => void
+  onBack: () => void
 }
 
 export default function HtmlViewerCanvas({
@@ -83,6 +85,7 @@ export default function HtmlViewerCanvas({
   scrollToAnnotationId,
   pulseAnnotationId,
   onPulseComplete,
+  onBack,
 }: HtmlViewerCanvasProps) {
 
   // Include all pages that have either a URL or fingerprint
@@ -124,7 +127,6 @@ export default function HtmlViewerCanvas({
   useEffect(() => {
     setIframeReady(false)
     setTooltipPos(null)
-    setEditingAnnotation(null)
     originalHtmlRef.current = null
     onPendingSelectionClear()
   // onPendingSelectionClear is intentionally excluded — stable enough and would loop
@@ -414,75 +416,42 @@ export default function HtmlViewerCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulseAnnotationId])
 
-  const activeItemLabel = rubricItems.find(r => r.id === activeItemId)?.label ?? null
   const containerWidth  = containerRef.current?.clientWidth ?? 600
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-slate-100">
 
-      {/* ── Header bar ───────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200">
-        {disabled ? (
-          <span className="text-xs text-slate-400 flex items-center gap-1">
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-            </svg>
-            Review submitted
-          </span>
-        ) : activeItemLabel ? (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-[#1e3a5f] animate-pulse" />
-            Active: <span className="font-medium text-slate-700">{activeItemLabel}</span>
+      <ViewerPanelHeader
+        onBack={onBack}
+        centerSlot={totalPages > 1 ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentPageIndex(i => Math.max(0, i - 1))}
+              disabled={currentPageIndex <= 0}
+              className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Previous page"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <span className="text-xs text-slate-600 tabular-nums">Page {currentPageIndex + 1} / {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => setCurrentPageIndex(i => Math.min(totalPages - 1, i + 1))}
+              disabled={currentPageIndex >= totalPages - 1}
+              className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label="Next page"
+            >
+              <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
-        ) : (
-          <p className="text-xs text-slate-400">Select text to annotate</p>
-        )}
-      </div>
-
-      {/* ── Page tabs (only shown for multi-page documents) ───────────────────── */}
-      {totalPages > 1 && (
-        <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white border-b border-slate-200 overflow-x-auto">
-          {Array.from({ length: totalPages }, (_, i) => {
-            const isActive = i === currentPageIndex
-            const annotationCount = savedAnnotations.filter(a => {
-              const anchor = a.anchor as any
-              if (anchor?.type !== 'html-char-offset') return false
-              return (anchor?.pageIndex ?? 0) === i
-            }).length
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setCurrentPageIndex(i)}
-                className={[
-                  'flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                  isActive
-                    ? 'bg-[#1e3a5f] text-white'
-                    : snapshotErrors[i] ? 'text-red-400 hover:bg-red-50'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100',
-                ].join(' ')}
-              >
-                Page {i + 1}
-                {snapshotting.has(i) && (
-                  <svg className="animate-spin h-3 w-3 opacity-60" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                )}
-                {annotationCount > 0 && !snapshotting.has(i) && (
-                  <span className={[
-                    'inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold',
-                    isActive ? 'bg-white/20 text-white' : 'bg-[#1e3a5f]/10 text-[#1e3a5f]',
-                  ].join(' ')}>
-                    {annotationCount}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
+        ) : undefined}
+      />
 
       {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">

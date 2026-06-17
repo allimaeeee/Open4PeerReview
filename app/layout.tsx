@@ -3,6 +3,7 @@ import { Lato, Newsreader } from 'next/font/google'
 import type { Metadata } from 'next'
 import './globals.css'
 import Navbar from '@/components/layout/Navbar'
+import { ReviewSaveStatusProvider } from '@/lib/review-save-context'
 
 const lato = Lato({
   subsets: ['latin'],
@@ -26,8 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${lato.variable} ${newsreader.variable}`}>
       <body className="bg-surface" suppressHydrationWarning>
-        <Navbar />
-        {children}
+        <ReviewSaveStatusProvider>
+          <Navbar />
+          {children}
+        </ReviewSaveStatusProvider>
       </body>
     </html>
   )
