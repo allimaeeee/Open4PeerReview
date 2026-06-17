@@ -9,6 +9,12 @@ import { ReviewerConsole } from './ReviewerConsole'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface OERPage {
+  url: string
+  fingerprint: string | null  // null = saved before snapshotting; lazy-snapshotted on first view
+  storagePath?: string
+}
+
 export interface OERDocument {
   id: string
   title: string
@@ -17,6 +23,7 @@ export interface OERDocument {
   file_type: string | null
   source_url: string | null
   content_fingerprint: string | null
+  pages: OERPage[] | null
 }
 
 export interface Rubric {

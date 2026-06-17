@@ -196,6 +196,7 @@ export type Database = {
           file_url: string | null
           id: string
           is_draft: boolean
+          pages: Json | null
           platform: string | null
           source_url: string | null
           storage_path: string | null
@@ -216,6 +217,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           is_draft?: boolean
+          pages?: Json | null
           platform?: string | null
           source_url?: string | null
           storage_path?: string | null
@@ -236,6 +238,7 @@ export type Database = {
           file_url?: string | null
           id?: string
           is_draft?: boolean
+          pages?: Json | null
           platform?: string | null
           source_url?: string | null
           storage_path?: string | null

@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getSignedUrl } from '@/lib/supabase/queries'
-import { ReviewerApp, type Review } from './components/ReviewerApp'
+import { ReviewerApp, type Review, type OERPage } from './components/ReviewerApp'
 
 export default async function ReviewerPage({
   searchParams,
@@ -19,7 +19,7 @@ export default async function ReviewerPage({
   // Load the requested document, or fall back to the first one
   const docQuery = supabase
     .from('documents')
-    .select('id, title, file_url, storage_path, file_type, source_url, content_fingerprint')
+    .select('id, title, file_url, storage_path, file_type, source_url, content_fingerprint, pages')
 
   const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()
@@ -34,6 +34,13 @@ export default async function ReviewerPage({
           : docRow.storage_path
             ? await getSignedUrl(supabase, docRow.storage_path)
             : null,
+        pages: Array.isArray(docRow.pages)
+          ? (docRow.pages as unknown[]).flatMap((p): OERPage[] => {
+              if (typeof p === 'string') return [{ url: p, fingerprint: null }]
+              if (p && typeof (p as Record<string, unknown>).url === 'string') return [p as OERPage]
+              return []
+            })
+          : null,
       }
     : null
 

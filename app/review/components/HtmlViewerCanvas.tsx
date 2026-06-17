@@ -15,6 +15,7 @@ export interface HtmlTextSelection {
   text: string
   start: number
   end: number
+  pageIndex: number
 }
 
 export interface AnnotationConfirmPayload {
@@ -33,12 +34,19 @@ export interface SavedAnnotation {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+interface OERPage {
+  fingerprint: string | null
+  url?: string
+}
+
 interface HtmlViewerCanvasProps {
   snapshotSrc: string
+  additionalPages?: OERPage[]
   rubricItems: { id: string; label: string }[]
   activeItemId: string | null
   pendingSelection: HtmlTextSelection | null
   savedAnnotations: SavedAnnotation[]
+  focusAnnotationId?: string | null
   onTextSelected: (sel: HtmlTextSelection) => void
   onAnnotationConfirm: (payload: AnnotationConfirmPayload) => Promise<string | null | undefined>
   onPendingSelectionClear: () => void
@@ -56,10 +64,12 @@ interface HtmlViewerCanvasProps {
 
 export default function HtmlViewerCanvas({
   snapshotSrc,
+  additionalPages = [],
   rubricItems,
   activeItemId,
   pendingSelection,
   savedAnnotations,
+  focusAnnotationId,
   onTextSelected,
   onAnnotationConfirm,
   onPendingSelectionClear,
@@ -75,6 +85,26 @@ export default function HtmlViewerCanvas({
   onPulseComplete,
 }: HtmlViewerCanvasProps) {
 
+  // Include all pages that have either a URL or fingerprint
+  const validAdditionalPages = additionalPages.filter(p => p.url || p.fingerprint)
+  const totalPages = 1 + validAdditionalPages.length
+  const [currentPageIndex, setCurrentPageIndex] = useState(0)
+
+  // Fingerprints resolved lazily for pages that were stored without one
+  const [resolvedFingerprints, setResolvedFingerprints] = useState<Record<number, string>>({})
+  const [snapshotting, setSnapshotting] = useState<Set<number>>(new Set())
+  const [snapshotErrors, setSnapshotErrors] = useState<Record<number, string>>({})
+
+  const getFingerprint = (idx: number): string | null => {
+    if (idx === 0) return null  // primary page uses snapshotSrc directly
+    const page = validAdditionalPages[idx - 1]
+    return page?.fingerprint || resolvedFingerprints[idx] || null
+  }
+
+  // The snapshot URL for the currently active page
+  const fp = getFingerprint(currentPageIndex)
+  const activeSnapshotSrc = currentPageIndex === 0 ? snapshotSrc : fp ? `/api/snapshot/${fp}` : null
+
   // ── New-annotation tooltip state ───────────────────────────────────────────
   const [tooltipPos, setTooltipPos] = useState<{ x: number; selectionTop: number; selectionBottom: number } | null>(null)
 
@@ -89,6 +119,44 @@ export default function HtmlViewerCanvas({
   const [iframeReady, setIframeReady] = useState(false)
   // Shown briefly when the user manages to trigger a navigation despite CSS
   const [navBannerVisible, setNavBannerVisible] = useState(false)
+
+  // Reset iframe state when page changes
+  useEffect(() => {
+    setIframeReady(false)
+    setTooltipPos(null)
+    setEditingAnnotation(null)
+    originalHtmlRef.current = null
+    onPendingSelectionClear()
+  // onPendingSelectionClear is intentionally excluded — stable enough and would loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageIndex])
+
+  // Lazy-snapshot pages that were saved without a fingerprint
+  useEffect(() => {
+    if (currentPageIndex === 0) return
+    const page = validAdditionalPages[currentPageIndex - 1]
+    if (!page?.url || page.fingerprint || resolvedFingerprints[currentPageIndex] || snapshotting.has(currentPageIndex)) return
+
+    setSnapshotting(prev => new Set(prev).add(currentPageIndex))
+    setSnapshotErrors(prev => { const n = { ...prev }; delete n[currentPageIndex]; return n })
+
+    fetch('/api/snapshot/page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: page.url }),
+    })
+      .then(res => res.ok ? res.json() : res.json().then(b => Promise.reject(b.error ?? 'Snapshot failed')))
+      .then(({ fingerprint }: { fingerprint: string }) => {
+        setResolvedFingerprints(prev => ({ ...prev, [currentPageIndex]: fingerprint }))
+      })
+      .catch((err: string) => {
+        setSnapshotErrors(prev => ({ ...prev, [currentPageIndex]: err }))
+      })
+      .finally(() => {
+        setSnapshotting(prev => { const n = new Set(prev); n.delete(currentPageIndex); return n })
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageIndex])
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const containerRef    = useRef<HTMLDivElement>(null)
@@ -162,7 +230,13 @@ export default function HtmlViewerCanvas({
     doc.body.innerHTML = originalHtmlRef.current
 
     const htmlAnns = savedAnnotations
-      .filter(a => (a.anchor as any)?.type === 'html-char-offset')
+      .filter(a => {
+        const anchor = a.anchor as any
+        if (anchor?.type !== 'html-char-offset') return false
+        // Only show highlights for annotations on the current page
+        const annPage = anchor?.pageIndex ?? 0
+        return annPage === currentPageIndex
+      })
       .map(a => ({
         id:    a.id,
         start: (a.anchor as any).start as number,
@@ -181,26 +255,60 @@ export default function HtmlViewerCanvas({
     }
 
     doc.defaultView?.scrollTo(scrollX, scrollY)
-  }, [savedAnnotations, iframeReady])
+  }, [savedAnnotations, iframeReady, currentPageIndex])
+
+  // ── Navigate to focused annotation: switch page if needed ────────────────
+  useEffect(() => {
+    if (!focusAnnotationId) return
+    const ann = savedAnnotations.find(a => a.id === focusAnnotationId)
+    if (!ann) return
+    const targetPage = (ann.anchor as any)?.pageIndex ?? 0
+    if (targetPage !== currentPageIndex) setCurrentPageIndex(targetPage)
+  // Only re-run when the focused annotation changes, not on every page change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusAnnotationId])
+
+  // ── Scroll to and pulse the mark once the right page is loaded ───────────
+  useEffect(() => {
+    if (!focusAnnotationId || !iframeReady) return
+    const ann = savedAnnotations.find(a => a.id === focusAnnotationId)
+    if (!ann) return
+    const targetPage = (ann.anchor as any)?.pageIndex ?? 0
+    if (targetPage !== currentPageIndex) return  // still waiting for page switch
+
+    // Marks are injected synchronously in the effect above; query after a tick
+    const t = setTimeout(() => {
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const mark = doc.querySelector(`[data-annotation-id="${focusAnnotationId}"]`) as HTMLElement | null
+      if (!mark) return
+      mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      mark.style.outline = '3px solid rgba(234,179,8,0.7)'
+      mark.style.outlineOffset = '2px'
+      mark.style.borderRadius = '2px'
+      setTimeout(() => { mark.style.outline = ''; mark.style.outlineOffset = '' }, 1500)
+    }, 0)
+    return () => clearTimeout(t)
+  }, [focusAnnotationId, iframeReady, currentPageIndex, savedAnnotations])
 
   // ── Wire up iframe after load ──────────────────────────────────────────────
   const handleIframeLoad = useCallback(() => {
     const iframe = iframeRef.current
-    if (!iframe) return
+    if (!iframe || !activeSnapshotSrc) return
 
     try {
       const href = iframe.contentWindow?.location.href ?? ''
       const escaped = href !== '' && href !== 'about:blank' && !href.startsWith(window.location.origin)
       if (escaped) {
         setIframeReady(false)
-        iframe.src = snapshotSrc
+        iframe.src = activeSnapshotSrc
         setNavBannerVisible(true)
         setTimeout(() => setNavBannerVisible(false), 4000)
         return
       }
     } catch {
       setIframeReady(false)
-      iframe.src = snapshotSrc
+      iframe.src = activeSnapshotSrc
       setNavBannerVisible(true)
       setTimeout(() => setNavBannerVisible(false), 4000)
       return
@@ -251,7 +359,7 @@ export default function HtmlViewerCanvas({
         })
       }
 
-      onTextSelected({ type: 'html', text: anchor.text, start: anchor.start, end: anchor.end })
+      onTextSelected({ type: 'html', text: anchor.text, start: anchor.start, end: anchor.end, pageIndex: currentPageIndex })
       onTrackEvent('html_text_select', {
         text_length:  anchor.text.length,
         text_preview: anchor.text.slice(0, 80),
@@ -260,7 +368,7 @@ export default function HtmlViewerCanvas({
 
     doc.addEventListener('mouseup', handleMouseUp)
     return () => doc.removeEventListener('mouseup', handleMouseUp)
-  }, [snapshotSrc, disabled, iframeToContainer, onTextSelected, onTrackEvent])
+  }, [activeSnapshotSrc, currentPageIndex, disabled, iframeToContainer, onTextSelected, onTrackEvent])
 
   // ── handleGoToAnnotation ──────────────────────────────────────────────────
   function handleGoToAnnotation(annotationId: string) {
@@ -332,6 +440,50 @@ export default function HtmlViewerCanvas({
         )}
       </div>
 
+      {/* ── Page tabs (only shown for multi-page documents) ───────────────────── */}
+      {totalPages > 1 && (
+        <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white border-b border-slate-200 overflow-x-auto">
+          {Array.from({ length: totalPages }, (_, i) => {
+            const isActive = i === currentPageIndex
+            const annotationCount = savedAnnotations.filter(a => {
+              const anchor = a.anchor as any
+              if (anchor?.type !== 'html-char-offset') return false
+              return (anchor?.pageIndex ?? 0) === i
+            }).length
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setCurrentPageIndex(i)}
+                className={[
+                  'flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                  isActive
+                    ? 'bg-[#1e3a5f] text-white'
+                    : snapshotErrors[i] ? 'text-red-400 hover:bg-red-50'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100',
+                ].join(' ')}
+              >
+                Page {i + 1}
+                {snapshotting.has(i) && (
+                  <svg className="animate-spin h-3 w-3 opacity-60" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                {annotationCount > 0 && !snapshotting.has(i) && (
+                  <span className={[
+                    'inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold',
+                    isActive ? 'bg-white/20 text-white' : 'bg-[#1e3a5f]/10 text-[#1e3a5f]',
+                  ].join(' ')}>
+                    {annotationCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
 
@@ -345,14 +497,34 @@ export default function HtmlViewerCanvas({
           </div>
         )}
 
-        <iframe
-          ref={iframeRef}
-          src={snapshotSrc}
-          className="w-full h-full border-0"
-          title="OpenStax content"
-          sandbox="allow-same-origin allow-popups"
-          onLoad={handleIframeLoad}
-        />
+        {snapshotErrors[currentPageIndex] ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+            <div className="text-center space-y-2 px-6">
+              <p className="text-sm font-medium text-slate-700">Could not load page snapshot</p>
+              <p className="text-xs text-slate-400">{snapshotErrors[currentPageIndex]}</p>
+            </div>
+          </div>
+        ) : !activeSnapshotSrc ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+            <div className="flex flex-col items-center gap-3">
+              <svg className="animate-spin h-6 w-6 text-[#1e3a5f]/40" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <p className="text-xs text-slate-400">Creating snapshot…</p>
+            </div>
+          </div>
+        ) : (
+          <iframe
+            key={currentPageIndex}
+            ref={iframeRef}
+            src={activeSnapshotSrc}
+            className="w-full h-full border-0"
+            title="OpenStax content"
+            sandbox="allow-same-origin allow-popups"
+            onLoad={handleIframeLoad}
+          />
+        )}
 
         {/* Hover card — appears when hovering or clicking a highlight mark */}
         {hoverAnnotation && hoverPos && !disabled && (() => {
