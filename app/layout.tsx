@@ -2,6 +2,7 @@
 import { Lato, Newsreader } from 'next/font/google'
 import type { Metadata } from 'next'
 import './globals.css'
+import { Suspense } from 'react'
 import Navbar from '@/components/layout/Navbar'
 import { ReviewSaveStatusProvider } from '@/lib/review-save-context'
 
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${lato.variable} ${newsreader.variable}`}>
       <body className="bg-surface" suppressHydrationWarning>
         <ReviewSaveStatusProvider>
-          <Navbar />
+          <Suspense fallback={null}>
+            <Navbar />
+          </Suspense>
           {children}
         </ReviewSaveStatusProvider>
       </body>
