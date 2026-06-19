@@ -127,7 +127,7 @@ export default function Navbar() {
     !pathname.startsWith('/onboard')
 
   return (
-    <nav className="border-b border-border bg-surface-card px-6 py-3">
+    <nav className="flex-shrink-0 border-b border-border bg-surface-card px-6 py-3">
       <div className="flex items-center justify-between">
         <Link
           href={user ? '/author' : '/login'}

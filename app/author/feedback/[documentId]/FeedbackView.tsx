@@ -98,6 +98,7 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
 
   const searchParams = useSearchParams()
   const from = searchParams.get('from')
+  const requestedRubricId = searchParams.get('rubric')
   const backHref = from === 'reviewer'
     ? '/reviewer?tab=completed'
     : from === 'coordinator'
@@ -114,9 +115,18 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
       .map(r => r.id)
   )
 
-  const [selectedRubricId, setSelectedRubricId] = useState<string | null>(
-    () => allRubrics.find(r => reviews.some(rv => rv.rubric?.id === r.id))?.id ?? null
-  )
+  const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
+    if (requestedRubricId) {
+      const isValid = allRubrics.some(
+        r => r.id === requestedRubricId &&
+             reviews.some(rv => rv.rubric?.id === requestedRubricId)
+      )
+      if (isValid) return requestedRubricId
+    }
+    return allRubrics.find(
+      r => reviews.some(rv => rv.rubric?.id === r.id)
+    )?.id ?? null
+  })
 
   // Prefer the review linked to the selected rubric; fall back to the first submitted review
   const review = reviews.find(r => r.rubric?.id === selectedRubricId) ?? reviews[0] ?? null
@@ -136,7 +146,7 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
   const submittedDate = formatDate(review?.submitted_at ?? null)
 
   return (
-    <>
+    <div className="flex-1 min-h-0 overflow-y-auto">
       <style>{`
         @media print {
           nav,
@@ -312,6 +322,6 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
         )}
 
       </div>
-    </>
+    </div>
   )
 }

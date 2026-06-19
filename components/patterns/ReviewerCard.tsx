@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { RubricTagList } from '@/components/ui/RubricTagList'
+import { Button } from '@/components/ui/Button'
 
 export interface RubricProgress {
   rubricId: string
@@ -24,6 +25,7 @@ export interface ReviewerCardProps {
 }
 
 export function ReviewerCard({
+  id,
   title,
   platform,
   authorName,
@@ -105,30 +107,58 @@ export function ReviewerCard({
 
       {/* Section 1 — Rubric progress rows */}
       <div className="-mb-3">
-        {rubrics.map(rubric => (
-          <div
-            key={rubric.rubricId}
-            className="flex items-center justify-between gap-4 py-3 border-t border-[var(--color-border)]"
-          >
-            <span className="text-body-md text-text-primary font-medium">
-              {rubric.rubricTitle}
-            </span>
-            <span className={[
-              'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
-              pct(rubric) === 100
-                ? 'bg-success-container text-success border border-success'
-                : pct(rubric) === 0
-                  ? 'bg-gray-100 text-gray-500 border border-gray-400'
-                  : 'bg-amber-100 text-amber-800 border border-amber-800',
-            ].join(' ')}>
-              {rubric.ratedCount}/{rubric.totalCount} criteria rated
-            </span>
-          </div>
-        ))}
+        {rubrics.map(rubric => {
+          // TODO: replace with real per-rubric submitted state
+          // once Alli's review_rubric_submissions backend is ready
+          const isSubmitted = rubric.ratedCount === rubric.totalCount && rubric.totalCount > 0
+
+          return (
+            <div
+              key={rubric.rubricId}
+              className="flex items-center justify-between gap-4 py-3 border-t border-border"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-body-md text-text-primary font-medium shrink-0">
+                  {rubric.rubricTitle}
+                </span>
+                {isSubmitted && (
+                  <Button variant="secondary" size="sm" shape="square" asChild>
+                    <Link
+                      href={`/author/feedback/${id}?from=reviewer&rubric=${rubric.rubricId}`}
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    >
+                      View Review Report
+                    </Link>
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {isSubmitted && (
+                  <span className="inline-flex items-center gap-1 text-label-sm font-label font-semibold uppercase tracking-wide text-success">
+                    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M2 6l3 3 5-5" />
+                    </svg>
+                    Submitted
+                  </span>
+                )}
+                <span className={[
+                  'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
+                  pct(rubric) === 100
+                    ? 'bg-success-container text-success border border-success'
+                    : pct(rubric) === 0
+                      ? 'bg-gray-100 text-gray-500 border border-gray-400'
+                      : 'bg-amber-100 text-amber-800 border border-amber-800',
+                ].join(' ')}>
+                  {rubric.ratedCount}/{rubric.totalCount} criteria rated
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Section 2 — Metadata + description */}
-      <div className="border-t border-[var(--color-border)] mt-3 pt-3">
+      <div className="border-t border-border mt-3 pt-3">
 
         <div className="flex items-center gap-4 flex-wrap text-body-sm text-text-secondary">
           <span className="flex items-center gap-1">

@@ -20,6 +20,7 @@ interface RatingBoxProps {
   style?: CSSProperties
   onTextareaFocus?: () => void
   onTextareaBlur?: () => void
+  isReadOnly?: boolean
 }
 
 const LABELS: Record<string, string> = {
@@ -58,6 +59,7 @@ export function RatingBox({
   style,
   onTextareaFocus,
   onTextareaBlur,
+  isReadOnly = false,
 }: RatingBoxProps) {
   const [localText, setLocalText] = useState(comments?.[0]?.body ?? '')
   const [showModal, setShowModal] = useState(false)
@@ -128,11 +130,12 @@ export function RatingBox({
           className={[
             containerBase,
             borderClass,
-            'cursor-pointer text-left w-full transition-colors',
-            !isActive ? 'hover:border-primary hover:bg-surface-container' : '',
+            !isReadOnly ? 'cursor-pointer' : '',
+            'text-left w-full transition-colors',
+            !isActive && !isReadOnly ? 'hover:border-primary hover:bg-surface-container' : '',
           ].join(' ')}
           style={style}
-          onClick={onToggle}
+          onClick={isReadOnly ? undefined : onToggle}
         >
           <div className="flex items-center gap-1">
             <span className={labelClass}>{LABELS.exemplifies}</span>
@@ -219,6 +222,7 @@ export function RatingBox({
         onChange={e => setLocalText(e.target.value)}
         rows={4}
         resize="none"
+        disabled={isReadOnly}
         onFocus={onTextareaFocus}
         onBlur={onTextareaBlur}
         className="flex-1 bg-transparent [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-secondary/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-secondary/60"

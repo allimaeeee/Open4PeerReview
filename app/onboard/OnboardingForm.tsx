@@ -702,7 +702,7 @@ export function OnboardingForm({
 
   // â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
-    <div className="min-h-screen bg-surface py-12 px-4">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-surface py-12 px-4">
       <div className="max-w-[600px] mx-auto">
         <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-secondary">
           Getting started

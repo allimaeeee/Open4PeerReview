@@ -72,11 +72,19 @@ export function ReviewerConsole({
   const [generalAnnotations, setGeneralAnnotations] = useState<
     { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
   >(
-    (review.annotations ?? []).filter((a) => a.rubric_item_id === null)
+    (review.annotations ?? []).filter((a) => a.rubric_item_id === null).reverse()
   )
 
   const isSubmitted = review.status === 'submitted'
   const router = useRouter()
+
+  const [submittedRubricIds, setSubmittedRubricIds] = useState<Set<string>>(new Set())
+
+  // TODO: replace with Supabase per-rubric submission call
+  // once Alli's backend is ready (review_rubric_submissions table)
+  const handleSubmitRubric = useCallback((rubricId: string) => {
+    setSubmittedRubricIds(prev => new Set([...prev, rubricId]))
+  }, [])
 
   // ── Load rubric items ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -132,7 +140,7 @@ export function ReviewerConsole({
             proficientSelected,
             niComments,
             exceedsComments,
-            annotations: existingAnnotations,
+            annotations: [...existingAnnotations].reverse(),
           }
         })
         setScores(initialScores)
@@ -244,7 +252,7 @@ export function ReviewerConsole({
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         track('annotation_create', { annotation_id: newId, rubric_item_id: null, tag, char_count: body.length })
-        setGeneralAnnotations((prev) => [...prev, { id: newId, anchor, body, tag }])
+        setGeneralAnnotations((prev) => [{ id: newId, anchor, body, tag }, ...prev])
         setPendingSelection(null)
         return null
       }
@@ -256,7 +264,7 @@ export function ReviewerConsole({
         ...prev,
         [validItemId]: {
           ...prev[validItemId],
-          annotations: [...prev[validItemId].annotations, { id: newId, anchor, body, tag }],
+          annotations: [{ id: newId, anchor, body, tag }, ...prev[validItemId].annotations],
         },
       }))
       setPendingSelection(null)
@@ -276,13 +284,13 @@ export function ReviewerConsole({
           [rubricItemId]: {
             ...prev[rubricItemId],
             annotations: [
-              ...prev[rubricItemId].annotations,
               { id: newId, anchor: {}, body, tag },
+              ...prev[rubricItemId].annotations,
             ],
           },
         }))
       } else {
-        setGeneralAnnotations(prev => [...prev, { id: newId, anchor: {}, body, tag }])
+        setGeneralAnnotations(prev => [{ id: newId, anchor: {}, body, tag }, ...prev])
       }
       return null
     },
@@ -417,8 +425,8 @@ export function ReviewerConsole({
           next[rubricItemId] = {
             ...next[rubricItemId],
             annotations: [
-              ...next[rubricItemId].annotations,
               { id: newId, anchor: target.anchor, body: updates.body, tag: updates.tag },
+              ...next[rubricItemId].annotations,
             ],
           }
         })
@@ -434,13 +442,13 @@ export function ReviewerConsole({
         .filter(({ rubricItemId, newId }) => !rubricItemId && newId)
       if (newGeneralEntries.length > 0) {
         setGeneralAnnotations(prev => [
-          ...prev,
           ...newGeneralEntries.map(({ newId }) => ({
             id: newId!,
             anchor: target.anchor,
             body: updates.body,
             tag: updates.tag,
           })),
+          ...prev,
         ])
       }
     },
@@ -460,20 +468,58 @@ export function ReviewerConsole({
         ...(changes.tag !== undefined && { tag: changes.tag }),
       })
       if (changes.rubricItemId && scores[changes.rubricItemId]) {
-        // Move from free notes into a criterion
-        const note = generalAnnotations.find((a) => a.id === annotationId)
-        if (note) {
+        const fromGeneral = generalAnnotations.find((a) => a.id === annotationId)
+        if (fromGeneral) {
+          // Move from generalAnnotations into a criterion
           setGeneralAnnotations((prev) => prev.filter((a) => a.id !== annotationId))
           setScores((prev) => ({
             ...prev,
             [changes.rubricItemId!]: {
               ...prev[changes.rubricItemId!],
               annotations: [
+                {
+                  id: annotationId,
+                  anchor: fromGeneral.anchor,
+                  body: changes.body,
+                  tag: changes.tag !== undefined ? changes.tag : fromGeneral.tag,
+                },
                 ...prev[changes.rubricItemId!].annotations,
-                { id: annotationId, anchor: note.anchor, body: changes.body, tag: note.tag },
               ],
             },
           }))
+        } else {
+          // Move from one criterion to another
+          setScores((prev) => {
+            const next = { ...prev }
+            let movedAnn: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null } | null = null
+            for (const criterionId of Object.keys(next)) {
+              if (criterionId === changes.rubricItemId) continue
+              const idx = next[criterionId].annotations.findIndex((a) => a.id === annotationId)
+              if (idx !== -1) {
+                movedAnn = next[criterionId].annotations[idx]
+                next[criterionId] = {
+                  ...next[criterionId],
+                  annotations: next[criterionId].annotations.filter((a) => a.id !== annotationId),
+                }
+                break
+              }
+            }
+            if (movedAnn) {
+              next[changes.rubricItemId!] = {
+                ...next[changes.rubricItemId!],
+                annotations: [
+                  {
+                    id: annotationId,
+                    anchor: movedAnn.anchor,
+                    body: changes.body,
+                    tag: changes.tag !== undefined ? changes.tag : movedAnn.tag,
+                  },
+                  ...next[changes.rubricItemId!].annotations,
+                ],
+              }
+            }
+            return next
+          })
         }
       } else {
         setGeneralAnnotations((prev) =>
@@ -485,7 +531,7 @@ export function ReviewerConsole({
         )
       }
     },
-    [updateAnnotation, scores, generalAnnotations]
+    [updateAnnotation, scores, generalAnnotations, track]
   )
 
   // ── Criterion comment blur ────────────────────────────────────────────────
@@ -672,7 +718,7 @@ export function ReviewerConsole({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
+    <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
       <ResizablePanelLayout
         defaultLeftPercent={50}
         leftPanel={
@@ -732,14 +778,11 @@ export function ReviewerConsole({
               generalAnnotations={generalAnnotations}
               activeRubricId={activeRubricId}
               onActiveRubricChange={setActiveRubricId}
-              isSubmitted={isSubmitted}
-              scoredCount={scoredCount}
-              totalCount={totalCount}
-              onSubmit={async () => {
-                const err = await handleSubmit('')
-                if (err) throw new Error(err)
-                router.refresh()
-                router.push('/reviewer?tab=completed&submitted=true')
+              isReadOnly={isSubmitted}
+              submittedRubricIds={submittedRubricIds}
+              onSubmit={async (rubricId: string) => {
+                // TODO: call Supabase per-rubric submit here when backend ready
+                handleSubmitRubric(rubricId)
               }}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}

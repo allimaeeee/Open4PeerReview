@@ -13,18 +13,20 @@ interface DashboardShellProps {
 
 export function DashboardShell({ sidebar, children, rightPanel, className }: DashboardShellProps) {
   return (
-    <div className={cx('flex min-h-screen w-full', className)}>
+    <div className={cx('flex flex-1 min-h-0 w-full', className)}>
       <aside className="w-60 shrink-0 bg-[var(--color-surface-card)] border-r border-[var(--color-border)]">
         {sidebar}
       </aside>
-      <main className="flex-1 min-w-0">
-        {children}
-      </main>
-      {rightPanel && (
-        <aside className="w-70 shrink-0">
-          {rightPanel}
-        </aside>
-      )}
+      <div className="flex flex-1 min-w-0 overflow-y-auto">
+        <main className="flex-1 min-w-0">
+          {children}
+        </main>
+        {rightPanel && (
+          <aside className="w-70 shrink-0">
+            {rightPanel}
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
