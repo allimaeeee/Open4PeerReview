@@ -24,8 +24,11 @@ interface AnnotationListCardProps {
   onEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDelete: (annotationId: string) => void
   showCriterionLink?: boolean
+  showMoveInEdit?: boolean
+  currentCriterionId?: string
   criteria?: CriterionOption[]
-  onLink?: (annotationId: string, criterionId: string) => void
+  onLink?: (annotationId: string, criterionId: string, body?: string, tag?: HighlightTag | null) => void
+  isReadOnly?: boolean
 }
 
 function ArrowUpRightIcon() {
@@ -43,18 +46,23 @@ export function AnnotationListCard({
   onEdit,
   onDelete,
   showCriterionLink,
+  showMoveInEdit,
+  currentCriterionId,
   criteria,
   onLink,
+  isReadOnly = false,
 }: AnnotationListCardProps) {
   const anchorText = (annotation.anchor as any).text as string | undefined ?? null
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [editBody, setEditBody] = useState(annotation.body)
   const [editTag, setEditTag] = useState<HighlightTag | null>((annotation.tag as HighlightTag) ?? null)
-  const [selectedCriterionId, setSelectedCriterionId] = useState('')
+  const [selectedCriterionId, setSelectedCriterionId] = useState(currentCriterionId ?? '')
 
   function enterEdit() {
+    if (isReadOnly) return
     setEditBody(annotation.body)
     setEditTag((annotation.tag as HighlightTag) ?? null)
+    setSelectedCriterionId(currentCriterionId ?? '')
     setMode('edit')
   }
 
@@ -66,7 +74,12 @@ export function AnnotationListCard({
 
   function handleSave() {
     if (!editBody.trim()) return
-    onEdit(annotation.id, { body: editBody.trim(), tag: editTag })
+    if (showMoveInEdit && selectedCriterionId && selectedCriterionId !== currentCriterionId) {
+      // Combined edit + move — single DB call via onLink to avoid race condition
+      onLink?.(annotation.id, selectedCriterionId, editBody.trim(), editTag)
+    } else {
+      onEdit(annotation.id, { body: editBody.trim(), tag: editTag })
+    }
     setMode('view')
   }
 
@@ -101,29 +114,31 @@ export function AnnotationListCard({
             <p className="text-body-sm text-text-muted italic">No annotated text</p>
           )}
         </div>
-        <div className="flex-shrink-0 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={enterEdit}
-            className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
-            aria-label="Edit annotation"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(annotation.id)}
-            className="opacity-70 hover:opacity-100 transition-opacity text-error"
-            aria-label="Delete annotation"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-            </svg>
-          </button>
-        </div>
+        {!isReadOnly && (
+          <div className="flex-shrink-0 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={enterEdit}
+              className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
+              aria-label="Edit annotation"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(annotation.id)}
+              className="opacity-70 hover:opacity-100 transition-opacity text-error"
+              aria-label="Delete annotation"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Comment section */}
@@ -158,6 +173,29 @@ export function AnnotationListCard({
         </div>
       )}
 
+      {/* Move-to-criterion dropdown — edit mode only, when inside a criterion card */}
+      {showMoveInEdit && mode === 'edit' && criteria && criteria.length > 0 && (
+        <div>
+          <div className="relative">
+            <select
+              value={selectedCriterionId}
+              onChange={e => setSelectedCriterionId(e.target.value)}
+              className="w-full border-0 border-b-2 border-border bg-transparent pb-2 pr-6 text-body-sm text-text-primary focus:border-primary focus:outline-none appearance-none cursor-pointer"
+            >
+              <option value="">Move to criterion...</option>
+              {criteria.map(c => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-0 top-0 bottom-2 flex items-center text-text-muted">
+              <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Edit mode action buttons */}
       {mode === 'edit' && (
         <div className="flex justify-end gap-2">
@@ -176,8 +214,8 @@ export function AnnotationListCard({
         </div>
       )}
 
-      {/* Criterion link section — only shown in view mode when showCriterionLink is true */}
-      {showCriterionLink && mode === 'view' && (
+      {/* Criterion link section — only shown in view mode when showCriterionLink is true and not read-only */}
+      {showCriterionLink && mode === 'view' && !isReadOnly && (
         <div>
           <div className="relative">
             <select

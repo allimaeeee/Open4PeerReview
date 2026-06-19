@@ -7,7 +7,7 @@ import type { RubricItem } from './ReviewerApp'
 import { RatingBox } from './RatingBox'
 import { AnnotationListCard } from './AnnotationListCard'
 import { FreeNoteCard } from './FreeNoteCard'
-import type { FreeNote } from './FreeNotesSection'
+import type { FreeNote, CriterionOption } from './FreeNotesSection'
 
 interface AnnotationSummary {
   id: string
@@ -27,7 +27,10 @@ interface CriterionCardProps {
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
+  onMoveAnnotation?: (annotationId: string, targetRubricItemId: string, body?: string, tag?: HighlightTag | null) => void
+  allCriteria?: CriterionOption[]
   expandToAnnotationId?: string | null
+  isReadOnly?: boolean
 }
 
 function TrendingUpIcon({ size }: { size: number }) {
@@ -96,7 +99,10 @@ export function CriterionCard({
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
+  onMoveAnnotation,
+  allCriteria,
   expandToAnnotationId,
+  isReadOnly = false,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [focusedBox, setFocusedBox] = useState<'exceeds' | 'does_not_meet' | null>(null)
@@ -222,6 +228,7 @@ export function CriterionCard({
               onDeactivate={() => { if (score.scores.includes('exceeds')) onScoreToggle(rubricItem.id, 'exceeds') }}
               onTextareaFocus={() => setFocusedBox('exceeds')}
               onTextareaBlur={() => setFocusedBox(null)}
+              isReadOnly={isReadOnly}
             />
             <RatingBox
               variant="exemplifies"
@@ -230,6 +237,7 @@ export function CriterionCard({
               standardText={rubricItem.description ?? undefined}
               criterionLabel={`C${criterionIndex} · ${rubricItem.label.replace(/^C\d+\s+/, '')}`}
               onToggle={() => onScoreToggle(rubricItem.id, 'exemplifies')}
+              isReadOnly={isReadOnly}
             />
             <RatingBox
               variant="does_not_meet"
@@ -243,6 +251,7 @@ export function CriterionCard({
               onDeactivate={() => { if (score.scores.includes('does_not_meet')) onScoreToggle(rubricItem.id, 'does_not_meet') }}
               onTextareaFocus={() => setFocusedBox('does_not_meet')}
               onTextareaBlur={() => setFocusedBox(null)}
+              isReadOnly={isReadOnly}
             />
           </div>
 
@@ -263,6 +272,7 @@ export function CriterionCard({
                         onMove={() => {}}
                         onDelete={onDeleteAnnotation}
                         showMoveDropdown={false}
+                        isReadOnly={isReadOnly}
                       />
                     ) : (
                       <AnnotationListCard
@@ -270,6 +280,11 @@ export function CriterionCard({
                         onGoTo={onGoToAnnotation}
                         onEdit={onEditAnnotation}
                         onDelete={onDeleteAnnotation}
+                        showMoveInEdit={!!allCriteria && allCriteria.length > 0}
+                        currentCriterionId={rubricItem.id}
+                        criteria={allCriteria}
+                        onLink={onMoveAnnotation}
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </div>

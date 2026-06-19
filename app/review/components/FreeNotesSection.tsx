@@ -39,6 +39,7 @@ interface FreeNotesSectionProps {
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
   onLinkAnnotation: (annotationId: string, criterionId: string) => void
+  isReadOnly?: boolean
 }
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -66,6 +67,7 @@ export function FreeNotesSection({
   onEditAnnotation,
   onDeleteAnnotation,
   onLinkAnnotation,
+  isReadOnly = false,
 }: FreeNotesSectionProps) {
   const [expanded, setExpanded] = useState(true)
   const [notesExpanded, setNotesExpanded] = useState(true)
@@ -127,7 +129,7 @@ export function FreeNotesSection({
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-3">
           {/* New Free Note input */}
-          <div className="rounded-none border border-dashed border-border bg-surface p-4 flex flex-col gap-3">
+          {!isReadOnly && <div className="rounded-none border border-dashed border-border bg-surface p-4 flex flex-col gap-3">
             <Textarea
               placeholder="Write a note..."
               rows={3}
@@ -189,7 +191,7 @@ export function FreeNotesSection({
                 </div>
               </>
             )}
-          </div>
+          </div>}
 
           {/* Free Notes subsection */}
           {notes.length > 0 && (
@@ -213,6 +215,7 @@ export function FreeNotesSection({
                     onEdit={onEditNote}
                     onMove={onMoveNote}
                     onDelete={onDeleteNote}
+                    isReadOnly={isReadOnly}
                   />
                 </div>
               ))}
@@ -243,6 +246,7 @@ export function FreeNotesSection({
                     showCriterionLink
                     criteria={criteria}
                     onLink={onLinkAnnotation}
+                    isReadOnly={isReadOnly}
                   />
                 </div>
               ))}

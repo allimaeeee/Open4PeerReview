@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${lato.variable} ${newsreader.variable}`}>
-      <body className="bg-surface" suppressHydrationWarning>
+      <body className="bg-surface h-screen overflow-hidden flex flex-col" suppressHydrationWarning>
         <ReviewSaveStatusProvider>
           <Suspense fallback={null}>
             <Navbar />

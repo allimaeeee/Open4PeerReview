@@ -5,23 +5,25 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
 interface SubmitReviewButtonProps {
-  scoredCount: number
-  totalCount: number
-  isSubmitted: boolean
+  activeRubricRated: number
+  activeRubricTotal: number
+  rubricName: string
+  isReadOnly: boolean
   onSubmit: () => Promise<void>
 }
 
 export function SubmitReviewButton({
-  scoredCount,
-  totalCount,
-  isSubmitted,
+  activeRubricRated,
+  activeRubricTotal,
+  rubricName,
+  isReadOnly,
   onSubmit,
 }: SubmitReviewButtonProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const submitDisabled = scoredCount < totalCount || isSubmitted
+  const submitDisabled = activeRubricRated < activeRubricTotal || isReadOnly
 
   return (
     <>
@@ -29,32 +31,26 @@ export function SubmitReviewButton({
         variant="primary"
         disabled={submitDisabled}
         title={
-          !isSubmitted && scoredCount < totalCount
-            ? `Rate all ${totalCount} criteria before submitting`
+          !isReadOnly && activeRubricRated < activeRubricTotal
+            ? `Rate all ${activeRubricTotal} criteria before submitting`
             : undefined
         }
         onClick={() => setConfirmOpen(true)}
       >
-        {isSubmitted ? (
-          'Submitted'
-        ) : (
-          <>
-            Submit Review
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M22 2L11 13" />
-              <path d="M22 2L15 22 11 13 2 9l20-7z" />
-            </svg>
-          </>
-        )}
+        Submit {rubricName} Review
+        <svg
+          className="w-3.5 h-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M22 2L11 13" />
+          <path d="M22 2L15 22 11 13 2 9l20-7z" />
+        </svg>
       </Button>
 
       <Modal open={confirmOpen} onClose={() => { if (!submitting) { setConfirmOpen(false); setSubmitError(null) } }}>
@@ -63,9 +59,9 @@ export function SubmitReviewButton({
           className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-surface-card rounded-lg shadow-4 p-6 flex flex-col gap-4"
         >
           <div className="flex flex-col gap-2">
-            <h2 className="text-title-md font-semibold text-text-primary">Submit review?</h2>
+            <h2 className="text-title-md font-semibold text-text-primary">Submit {rubricName} review?</h2>
             <p className="text-body-sm text-text-secondary">
-              This will share your review with the author. You won't be able to make further edits after submitting.
+              This will submit your {rubricName} ratings and share them with the author. You can continue reviewing other sections, but you won't be able to edit this section after submitting.
             </p>
           </div>
           {submitError && (

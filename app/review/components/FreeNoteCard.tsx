@@ -14,9 +14,10 @@ interface FreeNoteCardProps {
   onMove: (noteId: string, rubricItemId: string) => void
   onDelete: (noteId: string) => void
   showMoveDropdown?: boolean
+  isReadOnly?: boolean
 }
 
-export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMoveDropdown = true }: FreeNoteCardProps) {
+export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMoveDropdown = true, isReadOnly = false }: FreeNoteCardProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [body, setBody] = useState(note.body)
   const [tag, setTag] = useState<HighlightTag | null>((note.tag as HighlightTag) ?? null)
@@ -70,29 +71,31 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
           </span>
           <p className="text-body-sm text-text-primary">{note.body}</p>
         </div>
-        <div className="flex-shrink-0 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setMode('edit')}
-            className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
-            aria-label="Edit note"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(note.id)}
-            className="opacity-70 hover:opacity-100 transition-opacity text-error"
-            aria-label="Delete note"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-            </svg>
-          </button>
-        </div>
+        {!isReadOnly && (
+          <div className="flex-shrink-0 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMode('edit')}
+              className="opacity-70 hover:opacity-100 transition-opacity text-text-muted"
+              aria-label="Edit note"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(note.id)}
+              className="opacity-70 hover:opacity-100 transition-opacity text-error"
+              aria-label="Delete note"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tags row — only when a tag exists */}
@@ -108,8 +111,8 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
       )}
 
 
-      {/* Move-to criterion — hidden when rendered inside a criterion card */}
-      {showMoveDropdown && (
+      {/* Move-to criterion — hidden when rendered inside a criterion card or in read-only mode */}
+      {showMoveDropdown && !isReadOnly && (
         <>
           <div className="relative">
             <select
