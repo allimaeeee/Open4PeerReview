@@ -65,7 +65,12 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
   const [sourceTab, setSourceTab] = useState<SourceTab>('pdf')
   const [file, setFile] = useState<File | null>(null)
   const [oerUrl, setOerUrl] = useState('')
+  const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+
+  function addPageUrl() { setAdditionalPageUrls(prev => [...prev, '']) }
+  function removePageUrl(index: number) { setAdditionalPageUrls(prev => prev.filter((_, i) => i !== index)) }
+  function updatePageUrl(index: number, value: string) { setAdditionalPageUrls(prev => prev.map((u, i) => i === index ? value : u)) }
 
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -131,7 +136,11 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: oerUrl.trim(), documentId }),
+        body: JSON.stringify({
+          url: oerUrl.trim(),
+          documentId,
+          additionalPageUrls: additionalPageUrls.filter(u => u.trim()).map(u => u.trim()),
+        }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -169,6 +178,15 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
     if (showContentReplace && sourceTab === 'url' && oerUrl.trim() && !isKnownOerUrl(oerUrl.trim())) {
       setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
       return
+    }
+    if (showContentReplace && sourceTab === 'url') {
+      for (const pageUrl of additionalPageUrls) {
+        if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
+        if (!isKnownOerUrl(pageUrl.trim())) {
+          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
+          return
+        }
+      }
     }
 
     startTransition(async () => {
@@ -358,18 +376,66 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
                 />
               </div>
             ) : (
-              <div>
-                <input
-                  type="url"
-                  placeholder="https://openstax.org/books/… or other OER platform URL"
-                  value={oerUrl}
-                  onChange={e => setOerUrl(e.target.value)}
-                  disabled={isPending}
-                  className={inputBase}
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Supported: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
-                </p>
+              <div className="space-y-3">
+                <div>
+                  <input
+                    type="url"
+                    placeholder="https://openstax.org/books/… or other OER platform URL"
+                    value={oerUrl}
+                    onChange={e => setOerUrl(e.target.value)}
+                    disabled={isPending}
+                    className={inputBase}
+                  />
+                  <p className="mt-1 text-xs text-slate-400">
+                    Supported: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-600 mb-1.5">Additional pages</p>
+                  {additionalPageUrls.length > 0 && (
+                    <div className="space-y-2 mb-2">
+                      {additionalPageUrls.map((pageUrl, index) => (
+                        <div key={index} className="flex gap-2 items-center">
+                          <input
+                            type="url"
+                            placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
+                            value={pageUrl}
+                            onChange={e => updatePageUrl(index, e.target.value)}
+                            disabled={isPending}
+                            className={`${inputBase} flex-1`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePageUrl(index)}
+                            disabled={isPending}
+                            className="shrink-0 p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                            aria-label="Remove page"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={addPageUrl}
+                    disabled={isPending}
+                    className="flex items-center gap-1.5 text-xs font-medium text-[#1e3a5f] hover:text-[#162d4a] disabled:opacity-50 transition-colors"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add page URL
+                  </button>
+                  {additionalPageUrls.length > 0 && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Reviewers will see all {additionalPageUrls.length + 1} pages linked to this submission.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </>

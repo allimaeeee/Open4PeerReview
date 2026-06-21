@@ -309,6 +309,10 @@ export async function acceptDocument(documentId: string) {
   // Ignore unique violations — reviewer already has a review (e.g., opened the console first)
   if (error && error.code !== '23505') throw error
 
+  await supabase
+    .from('document_acceptances')
+    .upsert({ document_id: documentId, reviewer_id: user.id }, { onConflict: 'document_id,reviewer_id' })
+
   revalidatePath('/reviewer')
 }
 

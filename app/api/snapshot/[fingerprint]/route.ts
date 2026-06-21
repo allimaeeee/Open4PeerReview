@@ -56,15 +56,30 @@ export async function GET(
     return new NextResponse('Invalid fingerprint', { status: 400 })
   }
 
-  const { data, error } = await supabase.storage
+  // supabase.storage.download() uses getSession() internally, which reads the local cookie.
+  // If the access token in the cookie is stale (expired between the getUser() refresh and this call),
+  // Supabase storage returns 400. Using createSignedUrl (a POST) is immune to this because the
+  // token is embedded in the URL, bypassing the Authorization-header path entirely.
+  const { data: signedData, error: signError } = await supabase.storage
     .from('openstax-snapshots')
-    .download(`${fingerprint}.html`)
+    .createSignedUrl(`${fingerprint}.html`, 60)
 
-  if (error || !data) {
-    return new NextResponse('Snapshot not found', { status: 404 })
+  if (signError || !signedData?.signedUrl) {
+    return new NextResponse(
+      `<!doctype html><html><head><title>Snapshot not found</title></head><body data-snapshot-error="not-found"></body></html>`,
+      { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    )
   }
 
-  const html = await data.text()
+  const fileRes = await fetch(signedData.signedUrl)
+  if (!fileRes.ok) {
+    return new NextResponse(
+      `<!doctype html><html><head><title>Snapshot not found</title></head><body data-snapshot-error="not-found"></body></html>`,
+      { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    )
+  }
+
+  const html = await fileRes.text()
   const rewritten = rewriteHtml(html)
 
   return new NextResponse(rewritten, {

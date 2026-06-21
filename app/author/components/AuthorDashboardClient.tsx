@@ -71,7 +71,7 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
   }
 }
 
-export function AuthorDashboardClient({ displayName, documents, rubrics, customSubjectMatters }: Props) {
+export function AuthorDashboardClient({ displayName, documents, rubrics, customSubjectMatters, authorInstitution }: Props) {
   const [activeTab, setActiveTab] = useState('active')
   const [activeFilter, setActiveFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
@@ -210,6 +210,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
         rubrics={rubrics}
         customSubjectMatters={customSubjectMatters}
         displayName={displayName}
+        authorInstitution={authorInstitution}
       />
 
       <ConfirmationDialog
