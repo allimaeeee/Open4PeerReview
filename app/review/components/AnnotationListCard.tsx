@@ -46,7 +46,8 @@ export function AnnotationListCard({
   criteria,
   onLink,
 }: AnnotationListCardProps) {
-  const anchorText = (annotation.anchor as any).text as string | undefined ?? null
+  const _a = annotation.anchor as any
+  const anchorText: string | null = _a.text ?? _a.selector?.find((s: any) => s.type === 'TextQuoteSelector')?.exact ?? null
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [editBody, setEditBody] = useState(annotation.body)
   const [editTag, setEditTag] = useState<HighlightTag | null>((annotation.tag as HighlightTag) ?? null)

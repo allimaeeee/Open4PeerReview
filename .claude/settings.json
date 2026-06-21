@@ -10,7 +10,9 @@
       "Bash(xargs ls -t)",
       "mcp__claude_ai_Supabase__generate_typescript_types",
       "Bash(grep -r \"\\\\.role\\\\|\\\\.roles\\\\|user_role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" -n)",
-      "Bash(grep -r \"roles\\\\|role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" ! -path \"*/.git/*\")"
+      "Bash(grep -r \"roles\\\\|role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" ! -path \"*/.git/*\")",
+      "mcp__claude_ai_Supabase__get_logs",
+      "mcp__claude_ai_Supabase__get_publishable_keys"
     ]
   }
 }

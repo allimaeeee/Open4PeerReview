@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { SelectionCard } from '@/components/ui/SelectionCard'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { isKnownOerUrl } from '@/lib/oer-platform'
 
 type SourceTab = 'pdf' | 'openstax'
 
@@ -36,6 +37,7 @@ interface Props {
   rubrics: RubricOption[]
   customSubjectMatters: string[]
   displayName: string
+  authorInstitution: string | null
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -48,6 +50,7 @@ export function SubmissionModal({
   rubrics,
   customSubjectMatters,
   displayName,
+  authorInstitution,
 }: Props) {
   // Navigation state
   const [step, setStep] = useState(1)
@@ -64,6 +67,10 @@ export function SubmissionModal({
   const [thirdPartyDisclosure, setThirdPartyDisclosure] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [openstaxUrl, setOpenstaxUrl] = useState('')
+  const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
+  const [submissionScope, setSubmissionScope] = useState<Set<'organization' | 'public'>>(
+    () => new Set(authorInstitution ? ['organization'] : ['public'])
+  )
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [rubricError, setRubricError] = useState<string | null>(null)
@@ -80,6 +87,18 @@ export function SubmissionModal({
     if (!touched) setTouched(true)
   }
 
+  function addPageUrl() { setAdditionalPageUrls(prev => [...prev, '']) }
+  function removePageUrl(index: number) { setAdditionalPageUrls(prev => prev.filter((_, i) => i !== index)) }
+  function updatePageUrl(index: number, value: string) { setAdditionalPageUrls(prev => prev.map((u, i) => i === index ? value : u)) }
+  function toggleScope(scope: 'organization' | 'public') {
+    setSubmissionScope(prev => {
+      const next = new Set(prev)
+      if (next.has(scope)) next.delete(scope)
+      else next.add(scope)
+      return next
+    })
+  }
+
   function resetAll() {
     setStep(1)
     setTouched(false)
@@ -92,6 +111,8 @@ export function SubmissionModal({
     setThirdPartyDisclosure('')
     setFile(null)
     setOpenstaxUrl('')
+    setAdditionalPageUrls([])
+    setSubmissionScope(new Set(authorInstitution ? ['organization'] : ['public']))
     setSelectedRubrics(new Set())
     setError(null)
     setRubricError(null)
@@ -136,18 +157,25 @@ export function SubmissionModal({
     if (!subjectMatter)                   { setError('Subject area is required.'); return }
     if (isOther && !customSubject.trim()) { setError('Please enter a subject area.'); return }
     if (sourceTab === 'pdf') {
-      if (!file)                                           { setError('Please select a PDF file.'); return }
-      if (!file.name.toLowerCase().endsWith('.pdf'))       { setError('Only PDF files are supported.'); return }
+      if (!file)                                     { setError('Please select a PDF file.'); return }
+      if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
     } else {
-      if (!openstaxUrl.trim())                             { setError('Please enter an OpenStax URL.'); return }
-      try {
-        const parsed = new URL(openstaxUrl.trim())
-        if (parsed.hostname !== 'openstax.org' && !parsed.hostname.endsWith('.openstax.org')) {
-          setError('URL must be on openstax.org.'); return
-        }
-      } catch {
-        setError('Please enter a valid URL.'); return
+      if (!openstaxUrl.trim()) { setError('Please enter an OER URL.'); return }
+      if (!isKnownOerUrl(openstaxUrl.trim())) {
+        setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+        return
       }
+      for (const pageUrl of additionalPageUrls) {
+        if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
+        if (!isKnownOerUrl(pageUrl.trim())) {
+          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
+          return
+        }
+      }
+    }
+    if (authorInstitution && submissionScope.size === 0) {
+      setError('Please select at least one submission destination.')
+      return
     }
     setError(null)
     setStep(2)
@@ -200,6 +228,8 @@ export function SubmissionModal({
             ccLicense,
             thirdPartyDisclosure: thirdPartyDisclosure.trim() || undefined,
             rubricIds: Array.from(selectedRubrics),
+            submissionScope: Array.from(submissionScope),
+            additionalPageUrls: additionalPageUrls.filter(u => u.trim()).map(u => u.trim()),
           }),
         })
         if (!res.ok) {
@@ -312,13 +342,70 @@ export function SubmissionModal({
 
       {/* Conditional source input */}
       {sourceTab === 'openstax' ? (
-        <Input
-          label="Resource URL"
-          placeholder="https://openstax.org/your-resource"
-          value={openstaxUrl}
-          onChange={e => { setOpenstaxUrl(e.target.value); touch() }}
-          disabled={loading}
-        />
+        <div className="space-y-3">
+          <Input
+            label="Resource URL"
+            placeholder="https://openstax.org/your-resource"
+            value={openstaxUrl}
+            onChange={e => { setOpenstaxUrl(e.target.value); touch() }}
+            disabled={loading}
+          />
+
+          {/* Additional pages */}
+          <div>
+            <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
+              Additional pages
+            </p>
+            {additionalPageUrls.length > 0 && (
+              <div className="space-y-2 mb-2">
+                {additionalPageUrls.map((pageUrl, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <input
+                      type="url"
+                      placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
+                      value={pageUrl}
+                      onChange={e => { updatePageUrl(index, e.target.value); touch() }}
+                      disabled={loading}
+                      className={cx(
+                        'flex-1 rounded-lg border border-[var(--color-border)] px-3.5 py-2.5 text-sm text-text-primary',
+                        'placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-interactive-focus)]',
+                        'focus:border-[var(--color-interactive)] transition-colors bg-[var(--color-surface-card)]',
+                        'disabled:bg-[var(--color-surface-container)]',
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePageUrl(index)}
+                      disabled={loading}
+                      className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors disabled:opacity-50"
+                      aria-label="Remove page"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => { addPageUrl(); touch() }}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-interactive)] hover:text-[var(--color-interactive-hover)] disabled:opacity-50 transition-colors"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add page URL
+            </button>
+            {additionalPageUrls.length > 0 && (
+              <p className="mt-1 text-xs text-text-muted">
+                Reviewers will see all {additionalPageUrls.length + 1} pages linked to this submission.
+              </p>
+            )}
+          </div>
+        </div>
       ) : (
         <div>
           <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-4">
@@ -361,6 +448,43 @@ export function SubmissionModal({
         rows={3}
         resize="none"
       />
+
+      {/* Submission destination — only shown for org members */}
+      {authorInstitution && (
+        <div>
+          <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-1">
+            Submit for review to <span className="text-[var(--color-error)]">*</span>
+          </p>
+          <p className="text-body-sm text-text-muted mb-3">Choose where reviewers can see this document. You may select both.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { value: 'organization' as const, label: 'My organization', description: `Held for coordinator approval at ${authorInstitution}` },
+              { value: 'public' as const, label: 'Public pool', description: 'Visible to all eligible reviewers' },
+            ]).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { toggleScope(opt.value); touch() }}
+                disabled={loading}
+                className={cx(
+                  'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
+                  submissionScope.has(opt.value)
+                    ? 'border-[var(--color-interactive)] bg-[var(--color-interactive-subtle)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface-card)] hover:border-[var(--color-border-strong)]',
+                )}
+              >
+                <span className={cx(
+                  'text-sm font-semibold',
+                  submissionScope.has(opt.value) ? 'text-[var(--color-interactive)]' : 'text-text-primary',
+                )}>
+                  {opt.label}
+                </span>
+                <span className="mt-0.5 text-xs text-text-muted">{opt.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="text-body-sm text-[var(--color-error)] bg-[var(--color-error-container)] rounded-lg px-3.5 py-2.5">

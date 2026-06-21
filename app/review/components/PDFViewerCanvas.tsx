@@ -10,6 +10,7 @@ import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
 import type { Json } from '@/types/database.types'
 import { scaleRect, type PdfRect, ZOOM_LEVELS, DEFAULT_ZOOM } from '@/lib/pdf-coords'
+import { getCharOffset } from '@/lib/anchoring/html'
 import { AnnotationPopup } from './AnnotationPopup'
 import { AnnotationHoverCard } from './AnnotationHoverCard'
 import { ViewerPanelHeader } from './ViewerPanelHeader'
@@ -22,6 +23,8 @@ export interface TextSelection {
   rects: { x1: number; y1: number; x2: number; y2: number }[]
   pageWidth: number
   containerWidth: number
+  prefix: string
+  suffix: string
 }
 
 export interface AnnotationConfirmPayload {
@@ -223,12 +226,33 @@ export default function PDFViewerCanvas({
       selectionBottom: last.bottom - containerRect.top,
     })
 
+    // Capture surrounding text context from the PDF text layer for TextQuoteSelector
+    const CONTEXT = 32
+    let prefix = ''
+    let suffix = ''
+    let textLayerEl: Element | null =
+      range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.startContainer as Element)
+        : (range.startContainer as Node).parentElement
+    while (textLayerEl && !textLayerEl.classList.contains('react-pdf__Page__textContent')) {
+      textLayerEl = textLayerEl.parentElement
+    }
+    if (textLayerEl) {
+      const fullText = textLayerEl.textContent ?? ''
+      const startOff = getCharOffset(textLayerEl, range.startContainer, range.startOffset)
+      const endOff   = getCharOffset(textLayerEl, range.endContainer,   range.endOffset)
+      prefix = fullText.slice(Math.max(0, startOff - CONTEXT), startOff)
+      suffix = fullText.slice(endOff, endOff + CONTEXT)
+    }
+
     onTextSelected({
       text,
       page: currentPage,
       rects,
       pageWidth: renderPageWidth,
       containerWidth,
+      prefix,
+      suffix,
     })
   }, [disabled, currentPage, onTextSelected, renderPageWidth, containerWidth])
 
