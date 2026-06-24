@@ -4,9 +4,10 @@ import { useMemo } from 'react'
 import { TabBar } from '@/components/ui/TabBar'
 import { CriterionCard } from './CriterionCard'
 import { FreeNotesSection } from './FreeNotesSection'
+import { UnlinkedAnnotationsCard } from '@/components/patterns/UnlinkedAnnotationsCard'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
-import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
+import type { CriterionScore, SaveStatus } from '../../../hooks/useReviewAutoSave'
 import type { HighlightTag } from '@/types'
 import type { FreeNote, CriterionOption } from './FreeNotesSection'
 import { SubmitReviewButton } from './SubmitReviewButton'
@@ -24,13 +25,14 @@ interface ReviewRightPanelProps {
   onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onDeleteComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet') => void
-  onAddNote: (body: string, tag: HighlightTag | null, rubricItemId: string | null) => Promise<string | null>
   onEditFreeNote: (noteId: string, changes: { body: string; rubricItemId: string | null; tag?: HighlightTag | null }) => void
-  onDeleteNote: (noteId: string) => void
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
   expandToAnnotationId?: string | null
+  initialNotes: string | null
+  onNotesChange: (val: string) => void
+  saveStatus: SaveStatus
 }
 
 export function ReviewRightPanel({
@@ -46,13 +48,14 @@ export function ReviewRightPanel({
   onAddComment,
   onEditComment,
   onDeleteComment,
-  onAddNote,
   onEditFreeNote,
-  onDeleteNote,
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
   expandToAnnotationId,
+  initialNotes,
+  onNotesChange,
+  saveStatus,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
@@ -86,26 +89,12 @@ export function ReviewRightPanel({
     [activeRubricItems]
   )
 
-  // Split generalAnnotations: actual highlights have a non-empty anchor object;
-  // plain free notes are saved with anchor={} (empty).
-  const freeNotes = useMemo(
-    () => generalAnnotations.filter(a => Object.keys(a.anchor).length === 0),
-    [generalAnnotations]
-  )
+  // Unlinked highlights: annotations with a non-empty anchor that haven't been linked to a criterion.
+  // Free notes (anchor={}) are now stored in reviews.notes, not rendered here.
   const unlinkedHighlights = useMemo(
     () => generalAnnotations.filter(a => Object.keys(a.anchor).length > 0),
     [generalAnnotations]
   )
-
-  function handleEditNote(noteId: string, changes: { body: string; tag: HighlightTag | null }) {
-    onEditFreeNote(noteId, { body: changes.body, tag: changes.tag, rubricItemId: null })
-  }
-
-  function handleMoveNote(noteId: string, rubricItemId: string) {
-    const note = generalAnnotations.find(n => n.id === noteId)
-    if (!note) return
-    onEditFreeNote(noteId, { body: note.body, tag: note.tag as HighlightTag | null, rubricItemId })
-  }
 
   function handleLinkHighlight(annotationId: string, criterionId: string) {
     const ann = generalAnnotations.find(a => a.id === annotationId)
@@ -161,17 +150,19 @@ export function ReviewRightPanel({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <FreeNotesSection
-          notes={freeNotes}
-          criteria={criteriaOptions}
+          initialNotes={initialNotes}
+          onNotesChange={onNotesChange}
+          saveStatus={saveStatus}
+          isReadOnly={activeRubricIsReadOnly}
+        />
+
+        <UnlinkedAnnotationsCard
           annotations={unlinkedHighlights}
-          onAddNote={onAddNote}
-          onEditNote={handleEditNote}
-          onMoveNote={handleMoveNote}
-          onDeleteNote={onDeleteNote}
+          criterionOptions={criteriaOptions}
+          onLink={handleLinkHighlight}
           onGoToAnnotation={onGoToAnnotation}
-          onEditAnnotation={onEditAnnotation}
-          onDeleteAnnotation={onDeleteAnnotation}
-          onLinkAnnotation={handleLinkHighlight}
+          onEdit={onEditAnnotation}
+          onDelete={onDeleteAnnotation}
           isReadOnly={activeRubricIsReadOnly}
         />
 
