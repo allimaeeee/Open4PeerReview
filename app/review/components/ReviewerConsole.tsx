@@ -151,7 +151,7 @@ export function ReviewerConsole({
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
-    saveStatus, onScoreChange, saveAnnotation, updateAnnotation, deleteAnnotation,
+    saveStatus, onScoreChange, onNotesChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
 
@@ -669,7 +669,7 @@ export function ReviewerConsole({
     if (!panelScrollAnnotationId) return
     const timer = setTimeout(() => {
       const el = window.document.getElementById(`annotation-card-${panelScrollAnnotationId}`)
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       setPanelScrollAnnotationId(null)
     }, 150)
     return () => clearTimeout(timer)
@@ -788,13 +788,14 @@ export function ReviewerConsole({
               onAddComment={handleAddScoreComment}
               onEditComment={handleEditScoreComment}
               onDeleteComment={handleDeleteScoreComment}
-              onAddNote={handleAddGeneralNote}
               onEditFreeNote={handleEditFreeNote}
-              onDeleteNote={handleDeleteGeneralAnnotation}
               onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id); setFocusAnnotationId(id) }}
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
+              initialNotes={review.notes}
+              onNotesChange={onNotesChange}
+              saveStatus={saveStatus}
             />
           </div>
         }

@@ -95,12 +95,12 @@ export function EvidenceCard({ annotation, className }: EvidenceCardProps) {
           <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-1">
             Comment
           </span>
-          <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
+          <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed break-words hyphens-auto">
             {annotation.body}
           </p>
         </div>
       ) : (
-        <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
+        <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed break-words hyphens-auto">
           {annotation.body}
         </p>
       )}

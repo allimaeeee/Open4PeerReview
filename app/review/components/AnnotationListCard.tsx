@@ -155,7 +155,7 @@ export function AnnotationListCard({
             autoFocus
           />
         ) : (
-          <p className="text-body-sm text-text-secondary">{annotation.body}</p>
+          <p className="text-body-sm text-text-secondary break-words hyphens-auto">{annotation.body}</p>
         )}
       </div>
 

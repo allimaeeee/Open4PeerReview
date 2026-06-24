@@ -103,7 +103,7 @@ function ScoreCommentBlock({
         {comments.map(comment => (
           <blockquote
             key={comment.id}
-            className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed"
+            className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed break-words hyphens-auto"
             style={{ borderLeft: `2px solid ${cfg.border}` }}
           >
             {comment.body}

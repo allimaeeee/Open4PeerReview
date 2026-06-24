@@ -69,7 +69,7 @@ export function FreeNoteCard({ note, criteria, onEdit, onMove, onDelete, showMov
           <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mb-1">
             Free Note
           </span>
-          <p className="text-body-sm text-text-primary">{note.body}</p>
+          <p className="text-body-sm text-text-primary break-words hyphens-auto">{note.body}</p>
         </div>
         {!isReadOnly && (
           <div className="flex-shrink-0 flex items-center gap-1">
