@@ -341,7 +341,6 @@ export function SubmissionModal({
             onChange={e => { setOpenstaxUrl(e.target.value); touch() }}
             disabled={loading}
           />
-<<<<<<< HEAD
           {additionalPageUrls.map((pageUrl, i) => (
             <div key={i} className="flex items-end gap-2">
               <Input
@@ -373,63 +372,6 @@ export function SubmissionModal({
               Reviewers will see all {additionalPageUrls.length + 1} page{additionalPageUrls.length + 1 !== 1 ? 's' : ''} linked to this submission.
             </p>
           )}
-=======
-
-          {/* Additional pages */}
-          <div>
-            <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
-              Additional pages
-            </p>
-            {additionalPageUrls.length > 0 && (
-              <div className="space-y-2 mb-2">
-                {additionalPageUrls.map((pageUrl, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <input
-                      type="url"
-                      placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
-                      value={pageUrl}
-                      onChange={e => { updatePageUrl(index, e.target.value); touch() }}
-                      disabled={loading}
-                      className={cx(
-                        'flex-1 rounded-lg border border-[var(--color-border)] px-3.5 py-2.5 text-sm text-text-primary',
-                        'placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-interactive-focus)]',
-                        'focus:border-[var(--color-interactive)] transition-colors bg-[var(--color-surface-card)]',
-                        'disabled:bg-[var(--color-surface-container)]',
-                      )}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePageUrl(index)}
-                      disabled={loading}
-                      className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors disabled:opacity-50"
-                      aria-label="Remove page"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => { addPageUrl(); touch() }}
-              disabled={loading}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-interactive)] hover:text-[var(--color-interactive-hover)] disabled:opacity-50 transition-colors"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add page URL
-            </button>
-            {additionalPageUrls.length > 0 && (
-              <p className="mt-1 text-xs text-text-muted">
-                Reviewers will see all {additionalPageUrls.length + 1} pages linked to this submission.
-              </p>
-            )}
-          </div>
->>>>>>> 09cc8b62ef9d8e43558686fb84d1c48da78b349a
         </div>
       ) : (
         <div>
