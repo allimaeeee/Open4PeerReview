@@ -7,6 +7,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
   helperText?: string
   optional?: boolean
+  containerClassName?: string
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -19,6 +20,7 @@ export function Input({
   helperText,
   optional,
   className,
+  containerClassName,
   id: idProp,
   ...props
 }: InputProps) {
@@ -26,7 +28,7 @@ export function Input({
   const id = idProp ?? autoId
 
   return (
-    <div className="flex flex-col">
+    <div className={cx('flex flex-col', containerClassName)}>
       {label && (
         <label
           htmlFor={id}

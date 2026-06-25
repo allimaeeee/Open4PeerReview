@@ -406,7 +406,7 @@ export type Database = {
           document_id: string
           id: string
           last_saved_at: string | null
-          notes: string | null
+          general_comment: string | null
           overall_comment: string | null
           reviewer_id: string
           rubric_id: string
@@ -419,7 +419,7 @@ export type Database = {
           document_id: string
           id?: string
           last_saved_at?: string | null
-          notes?: string | null
+          general_comment?: string | null
           overall_comment?: string | null
           reviewer_id: string
           rubric_id: string
@@ -432,7 +432,7 @@ export type Database = {
           document_id?: string
           id?: string
           last_saved_at?: string | null
-          notes?: string | null
+          general_comment?: string | null
           overall_comment?: string | null
           reviewer_id?: string
           rubric_id?: string

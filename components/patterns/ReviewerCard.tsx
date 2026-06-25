@@ -22,7 +22,7 @@ export interface ReviewerCardProps {
   claimedAt: string
   rubrics: RubricProgress[]
   reviewUrl: string
-  hasNotes: boolean
+  hasGeneralComment: boolean
 }
 
 export function ReviewerCard({
@@ -36,13 +36,13 @@ export function ReviewerCard({
   claimedAt,
   rubrics,
   reviewUrl,
-  hasNotes,
+  hasGeneralComment,
 }: ReviewerCardProps) {
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
   const anyStarted = rubrics.some(r => pct(r) > 0)
 
   const cardStatus: 'not-started' | 'in-progress' =
-    (anyStarted || hasNotes) ? 'in-progress' : 'not-started'
+    (anyStarted || hasGeneralComment) ? 'in-progress' : 'not-started'
 
   const ctaLabel = anyStarted ? 'Continue review' : 'Start review'
 
