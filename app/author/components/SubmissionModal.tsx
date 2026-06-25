@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { SelectionCard } from '@/components/ui/SelectionCard'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { isKnownOerUrl } from '@/lib/oer-platform'
 
 type SourceTab = 'pdf' | 'openstax'
 
@@ -84,6 +85,10 @@ export function SubmissionModal({
     if (!touched) setTouched(true)
   }
 
+  function addPageUrl() { setAdditionalPageUrls(prev => [...prev, '']) }
+  function removePageUrl(index: number) { setAdditionalPageUrls(prev => prev.filter((_, i) => i !== index)) }
+  function updatePageUrl(index: number, value: string) { setAdditionalPageUrls(prev => prev.map((u, i) => i === index ? value : u)) }
+
   function resetAll() {
     setStep(1)
     setTouched(false)
@@ -134,10 +139,6 @@ export function SubmissionModal({
     })
   }
 
-  function addPageUrl() { setAdditionalPageUrls(prev => [...prev, '']) }
-  function removePageUrl(i: number) { setAdditionalPageUrls(prev => prev.filter((_, idx) => idx !== i)) }
-  function updatePageUrl(i: number, value: string) { setAdditionalPageUrls(prev => prev.map((u, idx) => idx === i ? value : u)) }
-
   // ── Step validation ───────────────────────────────────────────────────────
 
   function handleContinueStep1() {
@@ -146,17 +147,13 @@ export function SubmissionModal({
     if (!subjectMatter)                   { setError('Subject area is required.'); return }
     if (isOther && !customSubject.trim()) { setError('Please enter a subject area.'); return }
     if (sourceTab === 'pdf') {
-      if (!file)                                           { setError('Please select a PDF file.'); return }
-      if (!file.name.toLowerCase().endsWith('.pdf'))       { setError('Only PDF files are supported.'); return }
+      if (!file)                                     { setError('Please select a PDF file.'); return }
+      if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
     } else {
-      if (!openstaxUrl.trim())                             { setError('Please enter an OpenStax URL.'); return }
-      try {
-        const parsed = new URL(openstaxUrl.trim())
-        if (parsed.hostname !== 'openstax.org' && !parsed.hostname.endsWith('.openstax.org')) {
-          setError('URL must be on openstax.org.'); return
-        }
-      } catch {
-        setError('Please enter a valid URL.'); return
+      if (!openstaxUrl.trim()) { setError('Please enter an OER URL.'); return }
+      if (!isKnownOerUrl(openstaxUrl.trim())) {
+        setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+        return
       }
       for (const pageUrl of additionalPageUrls) {
         if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
@@ -344,6 +341,7 @@ export function SubmissionModal({
             onChange={e => { setOpenstaxUrl(e.target.value); touch() }}
             disabled={loading}
           />
+<<<<<<< HEAD
           {additionalPageUrls.map((pageUrl, i) => (
             <div key={i} className="flex items-end gap-2">
               <Input
@@ -375,6 +373,63 @@ export function SubmissionModal({
               Reviewers will see all {additionalPageUrls.length + 1} page{additionalPageUrls.length + 1 !== 1 ? 's' : ''} linked to this submission.
             </p>
           )}
+=======
+
+          {/* Additional pages */}
+          <div>
+            <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
+              Additional pages
+            </p>
+            {additionalPageUrls.length > 0 && (
+              <div className="space-y-2 mb-2">
+                {additionalPageUrls.map((pageUrl, index) => (
+                  <div key={index} className="flex gap-2 items-center">
+                    <input
+                      type="url"
+                      placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
+                      value={pageUrl}
+                      onChange={e => { updatePageUrl(index, e.target.value); touch() }}
+                      disabled={loading}
+                      className={cx(
+                        'flex-1 rounded-lg border border-[var(--color-border)] px-3.5 py-2.5 text-sm text-text-primary',
+                        'placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-interactive-focus)]',
+                        'focus:border-[var(--color-interactive)] transition-colors bg-[var(--color-surface-card)]',
+                        'disabled:bg-[var(--color-surface-container)]',
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePageUrl(index)}
+                      disabled={loading}
+                      className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors disabled:opacity-50"
+                      aria-label="Remove page"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => { addPageUrl(); touch() }}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-interactive)] hover:text-[var(--color-interactive-hover)] disabled:opacity-50 transition-colors"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add page URL
+            </button>
+            {additionalPageUrls.length > 0 && (
+              <p className="mt-1 text-xs text-text-muted">
+                Reviewers will see all {additionalPageUrls.length + 1} pages linked to this submission.
+              </p>
+            )}
+          </div>
+>>>>>>> 09cc8b62ef9d8e43558686fb84d1c48da78b349a
         </div>
       ) : (
         <div>

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
 import type { Json } from '@/types/database.types'
-import { selectionToAnchor, applyHighlights } from '@/lib/anchoring/html'
+import { selectionToAnchor, applyHighlights, type TextPositionSelector, type TextQuoteSelector } from '@/lib/anchoring/html'
 import { AnnotationPopup } from './AnnotationPopup'
 import { AnnotationHoverCard } from './AnnotationHoverCard'
 import { ViewerPanelHeader } from './ViewerPanelHeader'
@@ -16,6 +16,8 @@ export interface HtmlTextSelection {
   text: string
   start: number
   end: number
+  prefix: string
+  suffix: string
   pageIndex: number
 }
 
@@ -263,8 +265,11 @@ export default function HtmlViewerCanvas({
   const originalHtmlRef = useRef<string | null>(null)
 
   // Stable callback refs — updated every render so mark handlers never go stale
-  const onMarkClickRef = useRef<(id: string, x: number, y: number) => void>(() => {})
-  const onMarkHoverRef = useRef<(id: string | null, x: number, y: number) => void>(() => {})
+  const onMarkClickRef   = useRef<(id: string, x: number, y: number) => void>(() => {})
+  const onMarkHoverRef   = useRef<(id: string | null, x: number, y: number) => void>(() => {})
+  const handleMouseUpRef = useRef<() => void>(() => {})
+  // Plain value ref — lets handleIframeLoad read the current page index without being in its dep array
+  const currentPageIndexRef = useRef(currentPageIndex)
 
   // ── Hide timer cleanup ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -317,6 +322,51 @@ export default function HtmlViewerCanvas({
     }
   }
 
+  currentPageIndexRef.current = currentPageIndex
+
+  // Always uses the latest props — avoids stale closure over onTextSelected / disabled / currentPageIndex
+  handleMouseUpRef.current = () => {
+    if (disabled) return
+    const win = iframeRef.current?.contentWindow
+    if (!win) return
+
+    const anchor = selectionToAnchor(win)
+    if (!anchor) return
+
+    const posSelector  = anchor.selector.find((s): s is TextPositionSelector => s.type === 'TextPositionSelector')
+    const quoteSelector = anchor.selector.find((s): s is TextQuoteSelector    => s.type === 'TextQuoteSelector')
+    if (!posSelector || !quoteSelector) return
+
+    const sel = win.getSelection()
+    if (!sel || sel.isCollapsed) return
+    const range = sel.getRangeAt(0)
+    const rects = Array.from(range.getClientRects())
+    const first = rects[0]
+    const last  = rects[rects.length - 1]
+    if (first && last) {
+      const pos = iframeToContainer(last.left + (last.right - last.left) / 2, last.top)
+      setTooltipPos({
+        x:               pos.x,
+        selectionTop:    iframeToContainer(0, first.top).y,
+        selectionBottom: iframeToContainer(0, last.bottom).y,
+      })
+    }
+
+    onTextSelected({
+      type:      'html',
+      text:      quoteSelector.exact,
+      start:     posSelector.start,
+      end:       posSelector.end,
+      prefix:    quoteSelector.prefix,
+      suffix:    quoteSelector.suffix,
+      pageIndex: currentPageIndex,
+    })
+    onTrackEvent('html_text_select', {
+      text_length:  quoteSelector.exact.length,
+      text_preview: quoteSelector.exact.slice(0, 80),
+    })
+  }
+
   // ── Re-inject highlights when annotations change or iframe first loads ───────
   useEffect(() => {
     if (!iframeReady) return
@@ -336,13 +386,7 @@ export default function HtmlViewerCanvas({
         const annPage = anchor?.pageIndex ?? 0
         return annPage === currentPageIndex
       })
-      .map(a => ({
-        id:    a.id,
-        start: (a.anchor as any).start as number,
-        end:   (a.anchor as any).end   as number,
-        tag:   a.tag,
-        body:  a.body,
-      }))
+      .map(a => ({ id: a.id, anchor: a.anchor, tag: a.tag, body: a.body }))
 
     if (htmlAnns.length > 0) {
       applyHighlights(
@@ -416,6 +460,13 @@ export default function HtmlViewerCanvas({
     const doc = iframe.contentDocument
     if (!doc) return
 
+    // Detect the structured error page returned by /api/snapshot/[fingerprint]
+    if (doc.body?.dataset?.snapshotError === 'not-found') {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      setSnapshotErrors(prev => ({ ...prev, [currentPageIndexRef.current]: 'Snapshot not found — the content could not be loaded.' }))
+      return
+    }
+
     originalHtmlRef.current = doc.body.innerHTML
     setIframeReady(true)
 
@@ -435,39 +486,10 @@ export default function HtmlViewerCanvas({
     ].join('\n')
     doc.head.appendChild(style)
 
-    const handleMouseUp = () => {
-      if (disabled) return
-      const win = iframe.contentWindow
-      if (!win) return
-
-      const anchor = selectionToAnchor(win)
-      if (!anchor) return
-
-      const sel = win.getSelection()
-      if (!sel || sel.isCollapsed) return
-      const range = sel.getRangeAt(0)
-      const rects = Array.from(range.getClientRects())
-      const first = rects[0]
-      const last  = rects[rects.length - 1]
-      if (first && last) {
-        const pos = iframeToContainer(last.left + (last.right - last.left) / 2, last.top)
-        setTooltipPos({
-          x:               pos.x,
-          selectionTop:    iframeToContainer(0, first.top).y,
-          selectionBottom: iframeToContainer(0, last.bottom).y,
-        })
-      }
-
-      onTextSelected({ type: 'html', text: anchor.text, start: anchor.start, end: anchor.end, pageIndex: currentPageIndex })
-      onTrackEvent('html_text_select', {
-        text_length:  anchor.text.length,
-        text_preview: anchor.text.slice(0, 80),
-      })
-    }
-
+    const handleMouseUp = () => handleMouseUpRef.current()
     doc.addEventListener('mouseup', handleMouseUp)
     return () => doc.removeEventListener('mouseup', handleMouseUp)
-  }, [activeSnapshotSrc, currentPageIndex, disabled, iframeToContainer, onTextSelected, onTrackEvent])
+  }, [activeSnapshotSrc])
 
   // ── handleGoToAnnotation ──────────────────────────────────────────────────
   function handleGoToAnnotation(annotationId: string) {

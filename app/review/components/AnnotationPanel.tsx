@@ -10,6 +10,11 @@ import type { HighlightTag } from '@/types'
 import type { ReviewEventType } from '@/hooks/useReviewTracking'
 import type { Json } from '@/types/database.types'
 
+function getAnchorText(anchor: unknown): string | null {
+  const a = anchor as any
+  return a?.text ?? a?.selector?.find((s: any) => s.type === 'TextQuoteSelector')?.exact ?? null
+}
+
 // ─── Sub-criteria parser ──────────────────────────────────────────────────────
 // Descriptions are stored as "1. Point one\n2. Point two\n..." in the DB.
 function parseSubCriteria(description: string | null): string[] {
@@ -591,9 +596,9 @@ function CriterionCard({
                             )}
                           </div>
                           <p className="text-[11px] text-amber-800 leading-snug">{ann.body}</p>
-                          {(ann.anchor as any)?.text && (
+                          {getAnchorText(ann.anchor) && (
                             <p className="mt-0.5 text-[10px] text-amber-600 italic truncate">
-                              &ldquo;{(ann.anchor as any).text.slice(0, 60)}&hellip;&rdquo;
+                              &ldquo;{getAnchorText(ann.anchor)!.slice(0, 60)}&hellip;&rdquo;
                             </p>
                           )}
                           {onAnnotationFocus && (ann.anchor as any)?.type === 'html-char-offset' && (
@@ -862,7 +867,7 @@ export function AnnotationPanel({
                       <div className="px-3 py-2 space-y-2">
                         {hasAnchor && (
                           <p className="text-[10px] text-slate-400 italic truncate">
-                            &ldquo;{(ann.anchor as any).text?.slice(0, 60)}&hellip;&rdquo;
+                            &ldquo;{getAnchorText(ann.anchor)?.slice(0, 60)}&hellip;&rdquo;
                           </p>
                         )}
                         <div>
@@ -915,7 +920,7 @@ export function AnnotationPanel({
                         <div className="flex-1 min-w-0">
                           {hasAnchor && (
                             <p className="text-[10px] text-slate-400 italic truncate mb-0.5">
-                              &ldquo;{(ann.anchor as any).text?.slice(0, 60)}&hellip;&rdquo;
+                              &ldquo;{getAnchorText(ann.anchor)?.slice(0, 60)}&hellip;&rdquo;
                             </p>
                           )}
                           <p className="text-[11px] text-slate-700 leading-snug">{ann.body}</p>
