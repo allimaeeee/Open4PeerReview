@@ -2,13 +2,49 @@
 // Pure utilities for char-offset anchoring in static HTML snapshots.
 // No React — safe to import from both client and server.
 
-export interface HtmlCharOffsetAnchor {
+// ── W3C selector types ────────────────────────────────────────────────────────
+
+export interface TextPositionSelector {
+  type: 'TextPositionSelector'
+  start: number
+  end: number
+}
+
+export interface TextQuoteSelector {
+  type: 'TextQuoteSelector'
+  /** The verbatim selected text. */
+  exact: string
+  /** Up to CONTEXT chars immediately before the selection. */
+  prefix: string
+  /** Up to CONTEXT chars immediately after the selection. */
+  suffix: string
+}
+
+export type AnchorSelector = TextPositionSelector | TextQuoteSelector
+
+// ── Anchor formats ────────────────────────────────────────────────────────────
+
+/** Current format — written for all new annotations. */
+export interface HtmlAnchor {
+  type: 'html-char-offset'
+  pageIndex: number
+  selector: AnchorSelector[]
+}
+
+/** Legacy format — stored before the selector array was introduced. Read-only. */
+export interface LegacyHtmlAnchor {
   type: 'html-char-offset'
   start: number
   end: number
   text: string
-  pageIndex?: number  // 0 = primary page; undefined treated as 0 for backward compat
+  pageIndex?: number
 }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const CONTEXT = 32
+
+// ── Low-level DOM utilities ───────────────────────────────────────────────────
 
 /**
  * Count characters from `root` up to `targetNode:targetOffset` by walking
@@ -26,7 +62,6 @@ export function getCharOffset(root: Node, targetNode: Node, targetOffset: number
     if (node === targetNode) return count + targetOffset
     count += node.length
   }
-  // targetNode not found — return best-effort position
   return count + targetOffset
 }
 
@@ -61,23 +96,105 @@ export function resolveCharOffset(root: Node, start: number, end: number): Range
   return startSet ? range : null
 }
 
+// ── Anchor creation ───────────────────────────────────────────────────────────
+
 /**
- * Convert the current selection inside an iframe window to an anchor.
+ * Convert the current selection inside an iframe window to an HtmlAnchor.
  * Returns null if nothing is selected or the selection is whitespace only.
  */
-export function selectionToAnchor(win: Window): HtmlCharOffsetAnchor | null {
+export function selectionToAnchor(win: Window): Omit<HtmlAnchor, 'pageIndex'> | null {
   const sel = win.getSelection()
   if (!sel || sel.isCollapsed || !sel.toString().trim()) return null
 
   const range = sel.getRangeAt(0)
   const body = win.document.body
+  const fullText = body.textContent ?? ''
 
   const start = getCharOffset(body, range.startContainer, range.startOffset)
   const end   = getCharOffset(body, range.endContainer,   range.endOffset)
-
   if (start >= end) return null
 
-  return { type: 'html-char-offset', start, end, text: sel.toString().trim() }
+  const exact  = fullText.slice(start, end)
+  const prefix = fullText.slice(Math.max(0, start - CONTEXT), start)
+  const suffix = fullText.slice(end, end + CONTEXT)
+
+  return {
+    type: 'html-char-offset',
+    selector: [
+      { type: 'TextPositionSelector', start, end },
+      { type: 'TextQuoteSelector', exact, prefix, suffix },
+    ],
+  }
+}
+
+// ── Anchor resolution ─────────────────────────────────────────────────────────
+
+/**
+ * Resolve an anchor (new or legacy format) to a DOM Range within `body`.
+ *
+ * Phase 1 — position + quote verify: use stored char offsets; confirm the text
+ *            at those offsets equals the stored exact string.
+ * Phase 2 — quote search: search the full body text for the exact string.
+ * Phase 3 — fuzzy near expected position (nearest occurrence to stored start).
+ *
+ * Returns null only when none of the phases can locate the text.
+ */
+export function resolveAnchor(body: Element, anchor: Record<string, unknown>): Range | null {
+  const fullText = body.textContent ?? ''
+
+  // ── Normalise selectors from both formats ───────────────────────────────────
+  let position: TextPositionSelector | undefined
+  let quote: TextQuoteSelector | undefined
+
+  if (Array.isArray(anchor.selector)) {
+    const selectors = anchor.selector as AnchorSelector[]
+    position = selectors.find((s): s is TextPositionSelector => s.type === 'TextPositionSelector')
+    quote    = selectors.find((s): s is TextQuoteSelector    => s.type === 'TextQuoteSelector')
+  } else if (typeof anchor.start === 'number' && typeof anchor.end === 'number') {
+    // Legacy format — no quote available, resolve by position only
+    position = { type: 'TextPositionSelector', start: anchor.start as number, end: anchor.end as number }
+  }
+
+  if (!position && !quote) return null
+
+  // ── Phase 1: position, verified by quote ────────────────────────────────────
+  if (position && quote) {
+    const candidate = fullText.slice(position.start, position.end)
+    if (candidate === quote.exact) {
+      return resolveCharOffset(body, position.start, position.end)
+    }
+  } else if (position && !quote) {
+    // Legacy anchor — no quote to verify; trust the offsets directly
+    return resolveCharOffset(body, position.start, position.end)
+  }
+
+  if (!quote) return null
+
+  // ── Phase 2: exact text search ──────────────────────────────────────────────
+  const idx = fullText.indexOf(quote.exact)
+  if (idx !== -1) {
+    return resolveCharOffset(body, idx, idx + quote.exact.length)
+  }
+
+  // ── Phase 3: nearest occurrence fuzzy search ────────────────────────────────
+  // Find all occurrences and return the one closest to the stored position.
+  if (quote.exact.length === 0) return null
+  const expectedStart = position?.start ?? 0
+  let bestIdx = -1
+  let bestDist = Infinity
+  let searchFrom = 0
+  while (true) {
+    const found = fullText.indexOf(quote.exact, searchFrom)
+    if (found === -1) break
+    const dist = Math.abs(found - expectedStart)
+    if (dist < bestDist) { bestDist = dist; bestIdx = found }
+    searchFrom = found + 1
+  }
+  if (bestIdx !== -1) {
+    return resolveCharOffset(body, bestIdx, bestIdx + quote.exact.length)
+  }
+
+  return null
 }
 
 // ── Highlight injection ───────────────────────────────────────────────────────
@@ -97,9 +214,7 @@ function markRange(
   onEnter:  (x: number, y: number) => void,
   onLeave:  () => void,
 ): void {
-  // Collect (textNode, sliceStart, sliceEnd) for every text node in the range
   const segments: [Text, number, number][] = []
-
   const ancestor = range.commonAncestorContainer
 
   if (ancestor.nodeType === Node.TEXT_NODE) {
@@ -149,27 +264,44 @@ function markRange(
 
 /**
  * Inject highlights for every annotation into the iframe document.
- * Apply right-to-left so earlier char offsets are not shifted by DOM mutations.
+ * Accepts the full anchor object so `resolveAnchor` can use the
+ * TextQuoteSelector as a fallback when char offsets have drifted.
+ * Applied right-to-left so earlier offsets are not shifted by DOM mutations.
  */
 export function applyHighlights(
   doc: Document,
-  annotations: Array<{ id: string; start: number; end: number; tag: string | null; body: string }>,
+  annotations: Array<{
+    id:     string
+    anchor: Record<string, unknown>
+    tag:    string | null
+    body:   string
+  }>,
   onMarkClick: (id: string, x: number, y: number) => void,
   onMarkHover: (id: string | null, x: number, y: number) => void,
 ): void {
-  const sorted = [...annotations].sort((a, b) => b.start - a.start)
+  // Sort descending by stored start offset so right-to-left application
+  // keeps earlier ranges valid as the DOM is mutated.
+  const getStart = (anchor: Record<string, unknown>): number => {
+    if (Array.isArray(anchor.selector)) {
+      const pos = (anchor.selector as AnchorSelector[]).find(
+        (s): s is TextPositionSelector => s.type === 'TextPositionSelector'
+      )
+      if (pos) return pos.start
+    }
+    return typeof anchor.start === 'number' ? anchor.start : 0
+  }
+
+  const sorted = [...annotations].sort((a, b) => getStart(b.anchor) - getStart(a.anchor))
 
   for (const ann of sorted) {
-    const range = resolveCharOffset(doc.body, ann.start, ann.end)
+    const range = resolveAnchor(doc.body, ann.anchor)
     if (!range) continue
-
-    const color = HIGHLIGHT_COLOR
 
     markRange(
       doc,
       range,
       ann.id,
-      color,
+      HIGHLIGHT_COLOR,
       (x, y) => onMarkClick(ann.id, x, y),
       (x, y) => onMarkHover(ann.id, x, y),
       ()     => onMarkHover(null, 0, 0),

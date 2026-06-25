@@ -243,8 +243,24 @@ export function ReviewerConsole({
 
       const pdfSel = pendingSelection as TextSelection
       const anchor = 'type' in pendingSelection && pendingSelection.type === 'html'
-        ? { type: 'html-char-offset' as const, start: pendingSelection.start, end: pendingSelection.end, text: pendingSelection.text }
-        : { page: pdfSel.page, text: pdfSel.text, rects: pdfSel.rects, pageWidth: pdfSel.pageWidth, containerWidth: pdfSel.containerWidth }
+        ? {
+            type: 'html-char-offset' as const,
+            pageIndex: pendingSelection.pageIndex,
+            selector: [
+              { type: 'TextPositionSelector' as const, start: pendingSelection.start, end: pendingSelection.end },
+              { type: 'TextQuoteSelector' as const, exact: pendingSelection.text, prefix: pendingSelection.prefix, suffix: pendingSelection.suffix },
+            ],
+          }
+        : {
+            page: pdfSel.page,
+            text: pdfSel.text,
+            rects: pdfSel.rects,
+            pageWidth: pdfSel.pageWidth,
+            containerWidth: pdfSel.containerWidth,
+            selector: [
+              { type: 'TextQuoteSelector' as const, exact: pdfSel.text, prefix: pdfSel.prefix, suffix: pdfSel.suffix },
+            ],
+          }
 
       const validItemId = rubricItemId && scores[rubricItemId] ? rubricItemId : null
 

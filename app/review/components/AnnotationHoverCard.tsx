@@ -160,7 +160,8 @@ export function AnnotationHoverCard({
     setMode('view')
   }
 
-  const highlightedText = (annotation.anchor as Record<string, unknown>).text as string | undefined
+  const _anc = annotation.anchor as any
+  const highlightedText: string | undefined = _anc.text ?? _anc.selector?.find((s: any) => s.type === 'TextQuoteSelector')?.exact
 
   const extraCount = (linkedCriteriaIds?.length ?? 0) - 1
   const criterionDisplay = criterionLabel === null
