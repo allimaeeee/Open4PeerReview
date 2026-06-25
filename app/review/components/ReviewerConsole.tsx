@@ -810,7 +810,7 @@ export function ReviewerConsole({
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
               initialNotes={review.general_comment}
-              onNotesChange={onGeneralCommentChange}
+              onGeneralCommentChange={onGeneralCommentChange}
               saveStatus={saveStatus}
             />
           </div>
