@@ -31,7 +31,7 @@ interface ReviewRightPanelProps {
   onDeleteAnnotation: (annotationId: string) => void
   expandToAnnotationId?: string | null
   initialNotes: string | null
-  onNotesChange: (val: string) => void
+  onGeneralCommentChange: (val: string) => void
   saveStatus: SaveStatus
 }
 
@@ -54,7 +54,7 @@ export function ReviewRightPanel({
   onDeleteAnnotation,
   expandToAnnotationId,
   initialNotes,
-  onNotesChange,
+  onGeneralCommentChange,
   saveStatus,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
@@ -90,7 +90,7 @@ export function ReviewRightPanel({
   )
 
   // Unlinked highlights: annotations with a non-empty anchor that haven't been linked to a criterion.
-  // Free notes (anchor={}) are now stored in reviews.notes, not rendered here.
+  // Free notes (anchor={}) are now stored in reviews.general_comment, not rendered here.
   const unlinkedHighlights = useMemo(
     () => generalAnnotations.filter(a => Object.keys(a.anchor).length > 0),
     [generalAnnotations]
@@ -151,7 +151,7 @@ export function ReviewRightPanel({
       <div className="flex-1 overflow-y-auto">
         <FreeNotesSection
           initialNotes={initialNotes}
-          onNotesChange={onNotesChange}
+          onNotesChange={onGeneralCommentChange}
           saveStatus={saveStatus}
           isReadOnly={activeRubricIsReadOnly}
         />

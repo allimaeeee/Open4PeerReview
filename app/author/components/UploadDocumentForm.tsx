@@ -50,9 +50,9 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
   const [oerUrl, setOerUrl] = useState('')
   const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
-  // Scope: authors with an org default to org-only; no-org authors only get public
-  const [submissionScope, setSubmissionScope] = useState<Set<'organization' | 'public'>>(
-    () => new Set(authorInstitution ? ['organization'] : ['public'])
+  // Scope: single-select; org members default to org, no-org authors default to public
+  const [submissionScope, setSubmissionScope] = useState<'organization' | 'public'>(
+    authorInstitution ? 'organization' : 'public'
   )
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -84,15 +84,6 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
     setAdditionalPageUrls(prev => prev.map((u, i) => i === index ? value : u))
   }
 
-  function toggleScope(scope: 'organization' | 'public') {
-    setSubmissionScope(prev => {
-      const next = new Set(prev)
-      if (next.has(scope)) next.delete(scope)
-      else next.add(scope)
-      return next
-    })
-  }
-
   async function handleUpload(isDraft: boolean) {
     setError(null)
 
@@ -102,7 +93,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
       if (!subjectMatter) { setError('Subject matter is required.'); return }
       if (isOther && !customSubject.trim()) { setError('Please enter a subject area.'); return }
       if (!ccLicense) { setError('Creative Commons license is required.'); return }
-      if (authorInstitution && submissionScope.size === 0) { setError('Please select at least one submission destination.'); return }
+      if (authorInstitution && !submissionScope) { setError('Please select a submission destination.'); return }
       if (sourceTab === 'pdf') {
         if (!file) { setError('Please select a PDF file.'); return }
         if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
@@ -126,7 +117,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
     const effectiveAuthors = authors.trim() || ''
     const effectiveSubjectMatter = finalSubjectMatter || 'other'
     const effectiveLicense = (ccLicense || 'cc_by') as import('@/types').CreativeCommonsLicense
-    const scopeArray = Array.from(submissionScope)
+    const scopeArray = [submissionScope]
     setLoading(true)
     try {
       let docId: string
@@ -198,10 +189,6 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
     e.preventDefault()
     handleUpload(false)
   }
-
-  const tabBase = 'flex-1 py-2 text-sm font-medium rounded-md transition-colors'
-  const tabActive = 'bg-white text-[#1e3a5f] shadow-sm'
-  const tabInactive = 'text-slate-500 hover:text-slate-700'
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -318,22 +305,54 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Content Source <span className="text-red-500">*</span>
         </label>
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 mb-3">
-          <button
-            type="button"
-            onClick={() => setSourceTab('pdf')}
-            disabled={loading}
-            className={`${tabBase} ${sourceTab === 'pdf' ? tabActive : tabInactive}`}
-          >
-            Upload PDF
-          </button>
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <button
             type="button"
             onClick={() => setSourceTab('url')}
             disabled={loading}
-            className={`${tabBase} ${sourceTab === 'url' ? tabActive : tabInactive}`}
+            className={[
+              'flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
+              sourceTab === 'url'
+                ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
+                : 'border-slate-200 bg-white hover:border-slate-300',
+            ].join(' ')}
           >
-            Link OER URL
+            <svg
+              className={['h-5 w-5 shrink-0', sourceTab === 'url' ? 'text-[#1e3a5f]' : 'text-slate-400'].join(' ')}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span className={['flex-1 text-sm font-semibold', sourceTab === 'url' ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
+              OpenStax URL
+            </span>
+            <div className={['h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0', sourceTab === 'url' ? 'border-[#1e3a5f]' : 'border-slate-300'].join(' ')}>
+              {sourceTab === 'url' && <div className="h-2 w-2 rounded-full bg-[#1e3a5f]" />}
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceTab('pdf')}
+            disabled={loading}
+            className={[
+              'flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
+              sourceTab === 'pdf'
+                ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
+                : 'border-slate-200 bg-white hover:border-slate-300',
+            ].join(' ')}
+          >
+            <svg
+              className={['h-5 w-5 shrink-0', sourceTab === 'pdf' ? 'text-[#1e3a5f]' : 'text-slate-400'].join(' ')}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <span className={['flex-1 text-sm font-semibold', sourceTab === 'pdf' ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
+              PDF Upload
+            </span>
+            <div className={['h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0', sourceTab === 'pdf' ? 'border-[#1e3a5f]' : 'border-slate-300'].join(' ')}>
+              {sourceTab === 'pdf' && <div className="h-2 w-2 rounded-full bg-[#1e3a5f]" />}
+            </div>
           </button>
         </div>
 
@@ -365,14 +384,14 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
             <div>
               <input
                 type="url"
-                placeholder="https://openstax.org/books/… or other OER platform URL"
+                placeholder="https://openstax.org/books/..."
                 value={oerUrl}
                 onChange={e => setOerUrl(e.target.value)}
                 disabled={loading}
                 className={inputBase}
               />
               <p className="mt-1 text-xs text-slate-400">
-                Supported platforms: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
+                Only OpenStax URLs are currently supported.
               </p>
             </div>
 
@@ -385,7 +404,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
                     <div key={index} className="flex gap-2 items-center">
                       <input
                         type="url"
-                        placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
+                        placeholder="https://openstax.org/books/.../pages/..."
                         value={pageUrl}
                         onChange={e => updatePageUrl(index, e.target.value)}
                         disabled={loading}
@@ -433,7 +452,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
           <p className="block text-sm font-medium text-slate-700 mb-1">
             Submit for review to <span className="text-red-500">*</span>
           </p>
-          <p className="text-xs text-slate-500 mb-3">Choose where reviewers can see this document. You may select both.</p>
+          <p className="text-xs text-slate-500 mb-3">Choose where your submission will be sent.</p>
           <div className="grid grid-cols-2 gap-3">
             {([
               { value: 'organization' as const, label: 'My organization', description: `Held for coordinator approval at ${authorInstitution}` },
@@ -442,18 +461,18 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => toggleScope(opt.value)}
+                onClick={() => setSubmissionScope(opt.value)}
                 disabled={loading}
                 className={[
                   'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                  submissionScope.has(opt.value)
+                  submissionScope === opt.value
                     ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
                     : 'border-slate-200 bg-white hover:border-slate-300',
                 ].join(' ')}
               >
                 <span className={[
                   'text-sm font-semibold',
-                  submissionScope.has(opt.value) ? 'text-[#1e3a5f]' : 'text-slate-700',
+                  submissionScope === opt.value ? 'text-[#1e3a5f]' : 'text-slate-700',
                 ].join(' ')}>
                   {opt.label}
                 </span>

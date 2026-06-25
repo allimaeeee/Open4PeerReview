@@ -40,7 +40,7 @@ export function FreeNotesSection({
         className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none"
         onClick={() => setExpanded(v => !v)}
       >
-        <span className="flex-1 text-body-md font-heading font-semibold text-text-primary">Free Notes</span>
+        <span className="flex-1 text-body-md font-heading font-semibold text-text-primary">General Comments</span>
         <svg
           viewBox="0 0 16 16"
           fill="none"
@@ -54,7 +54,7 @@ export function FreeNotesSection({
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-2">
           <Textarea
-            placeholder="Your personal scratch pad — not included in your submission…"
+            placeholder="Overall impressions and feedback that doesn't fit a specific criterion…"
             rows={5}
             variant="default"
             value={localNotes}

@@ -151,7 +151,7 @@ export function ReviewerConsole({
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
-    saveStatus, onScoreChange, onNotesChange, saveAnnotation, updateAnnotation, deleteAnnotation,
+    saveStatus, onScoreChange, onGeneralCommentChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
 
@@ -793,8 +793,8 @@ export function ReviewerConsole({
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
-              initialNotes={review.notes}
-              onNotesChange={onNotesChange}
+              initialNotes={review.general_comment}
+              onNotesChange={onGeneralCommentChange}
               saveStatus={saveStatus}
             />
           </div>
