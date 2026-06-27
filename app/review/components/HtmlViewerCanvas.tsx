@@ -296,7 +296,6 @@ export default function HtmlViewerCanvas({
 
   // ── Update stable refs every render ───────────────────────────────────────
   onMarkClickRef.current = (annId, clientX, clientY) => {
-    if (disabled) return
     const ann = savedAnnotations.find(a => a.id === annId)
     if (!ann) return
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
