@@ -160,7 +160,7 @@ interface HtmlViewerCanvasProps {
   scrollToAnnotationId?: string | null
   pulseAnnotationId?: string | null
   onPulseComplete?: () => void
-  onBack: () => void
+  onBack?: () => void
 }
 
 export default function HtmlViewerCanvas({
@@ -541,7 +541,7 @@ export default function HtmlViewerCanvas({
   return (
     <div className="h-full flex flex-col bg-slate-100">
 
-      <ViewerPanelHeader
+      {onBack && <ViewerPanelHeader
         onBack={onBack}
         centerSlot={totalPages > 1 ? (
           <div className="flex items-center gap-1">
@@ -578,7 +578,7 @@ export default function HtmlViewerCanvas({
             </button>
           </div>
         ) : undefined}
-      />
+      />}
 
       {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
@@ -623,7 +623,7 @@ export default function HtmlViewerCanvas({
         )}
 
         {/* Hover card — appears when hovering or clicking a highlight mark */}
-        {hoverAnnotation && hoverPos && !disabled && (() => {
+        {hoverAnnotation && hoverPos && (() => {
           const anchorKey = JSON.stringify(hoverAnnotation.anchor)
           const linkedCriteriaIds = savedAnnotations
             .filter(a => JSON.stringify(a.anchor) === anchorKey && a.rubricItemId !== null)
@@ -639,6 +639,7 @@ export default function HtmlViewerCanvas({
               criteria={rubricItems}
               linkedCriteriaIds={linkedCriteriaIds}
               position={hoverPos}
+              readOnly={disabled}
               onSave={(updates) => onAnnotationEdit(hoverAnnotation.id, updates)}
               onRelink={onAnnotationRelink
                 ? (newIds, updates) => onAnnotationRelink(hoverAnnotation.id, newIds, updates)
