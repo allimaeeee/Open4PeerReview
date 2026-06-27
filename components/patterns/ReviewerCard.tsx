@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { RubricTagList } from '@/components/ui/RubricTagList'
-import { Button } from '@/components/ui/Button'
 
 export interface RubricProgress {
   rubricId: string
@@ -107,39 +106,15 @@ export function ReviewerCard({
       {/* Section 1 — Rubric progress rows */}
       <div className="-mb-3">
         {rubrics.map(rubric => {
-          // TODO: replace with real per-rubric submitted state
-          // once Alli's review_rubric_submissions backend is ready
-          const isSubmitted = rubric.ratedCount === rubric.totalCount && rubric.totalCount > 0
-
           return (
             <div
               key={rubric.rubricId}
               className="flex items-center justify-between gap-4 py-3 border-t border-border"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-body-md text-text-primary font-medium shrink-0">
-                  {rubric.rubricTitle}
-                </span>
-                {isSubmitted && (
-                  <Button variant="secondary" size="sm" shape="square" asChild>
-                    <Link
-                      href={`/author/feedback/${id}?from=reviewer&rubric=${rubric.rubricId}`}
-                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                    >
-                      View Review Report
-                    </Link>
-                  </Button>
-                )}
-              </div>
+              <span className="text-body-md text-text-primary font-medium shrink-0">
+                {rubric.rubricTitle}
+              </span>
               <div className="flex items-center gap-2 shrink-0">
-                {isSubmitted && (
-                  <span className="inline-flex items-center gap-1 text-label-sm font-label font-semibold uppercase tracking-wide text-success">
-                    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M2 6l3 3 5-5" />
-                    </svg>
-                    Submitted
-                  </span>
-                )}
                 <span className={[
                   'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
                   pct(rubric) === 100

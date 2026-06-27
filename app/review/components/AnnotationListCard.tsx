@@ -58,6 +58,7 @@ export function AnnotationListCard({
   const [editBody, setEditBody] = useState(annotation.body)
   const [editTag, setEditTag] = useState<HighlightTag | null>((annotation.tag as HighlightTag) ?? null)
   const [selectedCriterionId, setSelectedCriterionId] = useState(currentCriterionId ?? '')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   function enterEdit() {
     if (isReadOnly) return
@@ -85,7 +86,7 @@ export function AnnotationListCard({
   }
 
   return (
-    <div className="rounded-none border border-border bg-surface-container-low p-3 flex flex-col gap-2">
+    <div className="relative rounded-none border border-border bg-surface-container-low p-3 flex flex-col gap-2">
       {/* Top row: annotated text section + edit/delete controls */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col flex-1 min-w-0">
@@ -130,7 +131,7 @@ export function AnnotationListCard({
             </button>
             <button
               type="button"
-              onClick={() => onDelete(annotation.id)}
+              onClick={() => setShowDeleteConfirm(true)}
               className="opacity-70 hover:opacity-100 transition-opacity text-error"
               aria-label="Delete annotation"
             >
@@ -258,6 +259,25 @@ export function AnnotationListCard({
               </Button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Delete confirmation overlay */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 flex items-center justify-center bg-primary/40">
+          <div className="bg-surface-card rounded-lg shadow-4 p-4 flex flex-col items-center gap-3 w-3/5">
+            <p className="text-body-sm font-semibold text-text-primary text-center">
+              Delete this annotation?
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="destructive" size="sm" onClick={() => { onDelete(annotation.id); setShowDeleteConfirm(false) }}>
+                Delete
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowDeleteConfirm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

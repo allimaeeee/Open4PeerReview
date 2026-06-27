@@ -107,25 +107,18 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
 
   const allRubrics: { id: string; title: string; itemIds: string[] }[] = allRubricsFromProps ?? []
 
-  // A rubric pill is enabled only if a submitted review is directly linked to it via rubric_id.
-  // All entries in `reviews` are already filtered to submitted status by the query.
+  // Global submit: one review row covers all rubrics. All pills are accessible whenever
+  // any submitted review exists for this document.
   const submittedRubricIds = new Set(
-    allRubrics
-      .filter(r => reviews.some(rv => rv.rubric?.id === r.id))
-      .map(r => r.id)
+    reviews.length > 0 ? allRubrics.map(r => r.id) : []
   )
 
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
-    if (requestedRubricId) {
-      const isValid = allRubrics.some(
-        r => r.id === requestedRubricId &&
-             reviews.some(rv => rv.rubric?.id === requestedRubricId)
-      )
-      if (isValid) return requestedRubricId
+    if (!reviews.length) return null
+    if (requestedRubricId && allRubrics.some(r => r.id === requestedRubricId)) {
+      return requestedRubricId
     }
-    return allRubrics.find(
-      r => reviews.some(rv => rv.rubric?.id === r.id)
-    )?.id ?? null
+    return allRubrics[0]?.id ?? null
   })
 
   // Prefer the review linked to the selected rubric; fall back to the first submitted review

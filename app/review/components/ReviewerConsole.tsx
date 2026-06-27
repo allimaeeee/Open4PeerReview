@@ -14,6 +14,8 @@ import type { Json } from '@/types/database.types'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
 import ReviewRightPanel from './ReviewRightPanel'
+import { Modal, ModalContent } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useReviewSaveStatus } from '@/lib/review-save-context'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
@@ -69,6 +71,9 @@ export function ReviewerConsole({
   const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [generalAnnotations, setGeneralAnnotations] = useState<
     { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
   >(
@@ -77,14 +82,6 @@ export function ReviewerConsole({
 
   const isSubmitted = review.status === 'submitted'
   const router = useRouter()
-
-  const [submittedRubricIds, setSubmittedRubricIds] = useState<Set<string>>(new Set())
-
-  // TODO: replace with Supabase per-rubric submission call
-  // once Alli's backend is ready (review_rubric_submissions table)
-  const handleSubmitRubric = useCallback((rubricId: string) => {
-    setSubmittedRubricIds(prev => new Set([...prev, rubricId]))
-  }, [])
 
   // ── Load rubric items ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -661,6 +658,19 @@ export function ReviewerConsole({
     [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
   )
 
+  const handleConfirmSubmit = useCallback(async () => {
+    setIsSubmitting(true)
+    setSubmitError(null)
+    const error = await handleSubmit(overallComment)
+    setIsSubmitting(false)
+    if (error) {
+      setSubmitError(error)
+      return
+    }
+    setShowSubmitConfirm(false)
+    router.push('/reviewer?tab=completed')
+  }, [handleSubmit, overallComment, router])
+
   const firstRubricId = useMemo(() => {
     for (const item of rubricItems) {
       return item.rubric_id
@@ -795,11 +805,7 @@ export function ReviewerConsole({
               activeRubricId={activeRubricId}
               onActiveRubricChange={setActiveRubricId}
               isReadOnly={isSubmitted}
-              submittedRubricIds={submittedRubricIds}
-              onSubmit={async (rubricId: string) => {
-                // TODO: call Supabase per-rubric submit here when backend ready
-                handleSubmitRubric(rubricId)
-              }}
+              onSubmit={() => setShowSubmitConfirm(true)}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}
               onEditComment={handleEditScoreComment}
@@ -816,6 +822,52 @@ export function ReviewerConsole({
           </div>
         }
       />
+
+      <Modal open={showSubmitConfirm} onClose={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}>
+        <ModalContent className="max-w-sm h-auto">
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <h2 className="font-heading text-title-lg text-text-primary leading-snug">
+                Submit Review
+              </h2>
+              <button
+                type="button"
+                onClick={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}
+                className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors duration-150"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3l10 10M13 3L3 13" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-body-md text-text-secondary">
+              Are you sure you want to submit? Once submitted, you will not be able to edit or add to this review.
+            </p>
+            {submitError && (
+              <p className="text-body-sm text-error mt-3">{submitError}</p>
+            )}
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <Button
+                variant="secondary"
+                size="md"
+                disabled={isSubmitting}
+                onClick={() => setShowSubmitConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                disabled={isSubmitting}
+                onClick={handleConfirmSubmit}
+              >
+                {isSubmitting ? 'Submitting…' : 'Submit Review'}
+              </Button>
+            </div>
+          </div>
+        </ModalContent>
+      </Modal>
     </div>
   )
 }
