@@ -9,6 +9,12 @@ interface ResizablePanelLayoutProps {
   defaultLeftPercent?: number
   minLeftWidth?: number
   minRightWidth?: number
+  defaultLeftCollapsed?: boolean
+  leftPanelLabel?: string
+  rightPanelLabel?: string
+  // Controlled collapse — when provided, parent owns left-panel collapsed state
+  leftPanelCollapsed?: boolean
+  onLeftPanelCollapsedChange?: (v: boolean) => void
 }
 
 function ChevronLeft() {
@@ -33,10 +39,23 @@ export default function ResizablePanelLayout({
   defaultLeftPercent = 50,
   minLeftWidth = 320,
   minRightWidth = 360,
+  defaultLeftCollapsed = false,
+  leftPanelLabel,
+  rightPanelLabel,
+  leftPanelCollapsed,
+  onLeftPanelCollapsedChange,
 }: ResizablePanelLayoutProps) {
   const [leftPercent, setLeftPercent] = useState(defaultLeftPercent)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [internalLeftCollapsed, setInternalLeftCollapsed] = useState(defaultLeftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+
+  // Support both controlled and uncontrolled left-panel collapse
+  const isLeftControlled = leftPanelCollapsed !== undefined
+  const leftCollapsed = isLeftControlled ? leftPanelCollapsed! : internalLeftCollapsed
+  function setLeftCollapsed(v: boolean) {
+    if (isLeftControlled) onLeftPanelCollapsedChange?.(v)
+    else setInternalLeftCollapsed(v)
+  }
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   // Offset between cursor and the split point at the moment drag starts,
@@ -106,40 +125,78 @@ export default function ResizablePanelLayout({
 
         {/* Left-face button — hangs into left panel. Always shows ‹.
             Normal: collapse left. Right-collapsed: expand right (right face is hidden).
-            Guarded: won't collapse left if right is already collapsed. */}
+            Guarded: won't collapse left if right is already collapsed.
+            When right is collapsed with a label, renders as a vertical tab instead. */}
         {!leftCollapsed && (
-          <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation()
-              if (rightCollapsed) setRightCollapsed(false)
-              else setLeftCollapsed(true)
-            }}
-            onPointerDown={e => e.stopPropagation()}
-            className="absolute top-0 left-1.5 -translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
-            aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse left panel'}
-          >
-            <ChevronLeft />
-          </button>
+          rightCollapsed && rightPanelLabel ? (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setRightCollapsed(false) }}
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 left-1.5 -translate-x-full flex flex-col items-center gap-2 px-1.5 py-3 bg-surface-card border border-r-0 border-border rounded-l-md cursor-pointer hover:bg-surface-container-low"
+              aria-label={`Expand: ${rightPanelLabel}`}
+            >
+              <ChevronLeft />
+              <span
+                className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-secondary whitespace-nowrap"
+                style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+              >
+                {rightPanelLabel}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                if (rightCollapsed) setRightCollapsed(false)
+                else setLeftCollapsed(true)
+              }}
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 left-1.5 -translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+              aria-label={rightCollapsed ? 'Expand right panel' : 'Collapse left panel'}
+            >
+              <ChevronLeft />
+            </button>
+          )
         )}
 
         {/* Right-face button — hangs into right panel. Always shows ›.
             Normal: collapse right. Left-collapsed: expand left (left face is hidden).
-            Guarded: won't collapse right if left is already collapsed. */}
+            Guarded: won't collapse right if left is already collapsed.
+            When left is collapsed with a label, renders as a vertical tab instead. */}
         {!rightCollapsed && (
-          <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation()
-              if (leftCollapsed) setLeftCollapsed(false)
-              else setRightCollapsed(true)
-            }}
-            onPointerDown={e => e.stopPropagation()}
-            className="absolute top-0 right-1.5 translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
-            aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse right panel'}
-          >
-            <ChevronRight />
-          </button>
+          leftCollapsed && leftPanelLabel ? (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setLeftCollapsed(false) }}
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 right-1.5 translate-x-full flex flex-col items-center gap-2 px-1.5 py-3 bg-surface-card border border-l-0 border-border rounded-r-md cursor-pointer hover:bg-surface-container-low"
+              aria-label={`Expand: ${leftPanelLabel}`}
+            >
+              <ChevronRight />
+              <span
+                className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-secondary whitespace-nowrap"
+                style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+              >
+                {leftPanelLabel}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                if (leftCollapsed) setLeftCollapsed(false)
+                else setRightCollapsed(true)
+              }}
+              onPointerDown={e => e.stopPropagation()}
+              className="absolute top-0 right-1.5 translate-x-full w-5 h-5 rounded-sm bg-surface-card border border-border flex items-center justify-center cursor-pointer hover:bg-surface-container-low"
+              aria-label={leftCollapsed ? 'Expand left panel' : 'Collapse right panel'}
+            >
+              <ChevronRight />
+            </button>
+          )
         )}
       </div>
 
