@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "OER Review Console",
+  "version": "1.0.0",
+  "description": "Rubric scoring and annotation layer for OLI Torus peer review",
+  "permissions": ["activeTab", "tabs", "storage", "scripting"],
+  "host_permissions": ["https://proton.oli.cmu.edu/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://proton.oli.cmu.edu/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "OER Review Console"
+  }
+}
