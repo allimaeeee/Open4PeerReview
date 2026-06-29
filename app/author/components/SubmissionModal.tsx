@@ -37,7 +37,7 @@ interface Props {
   rubrics: RubricOption[]
   customSubjectMatters: string[]
   displayName: string
-  authorInstitution: string | null
+  authorInstitution?: string | null
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -68,9 +68,7 @@ export function SubmissionModal({
   const [file, setFile] = useState<File | null>(null)
   const [openstaxUrl, setOpenstaxUrl] = useState('')
   const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
-  const [submissionScope, setSubmissionScope] = useState<Set<'organization' | 'public'>>(
-    () => new Set(authorInstitution ? ['organization'] : ['public'])
-  )
+  const [submissionScope, setSubmissionScope] = useState<'organization' | 'public'>('organization')
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [rubricError, setRubricError] = useState<string | null>(null)
@@ -90,14 +88,6 @@ export function SubmissionModal({
   function addPageUrl() { setAdditionalPageUrls(prev => [...prev, '']) }
   function removePageUrl(index: number) { setAdditionalPageUrls(prev => prev.filter((_, i) => i !== index)) }
   function updatePageUrl(index: number, value: string) { setAdditionalPageUrls(prev => prev.map((u, i) => i === index ? value : u)) }
-  function toggleScope(scope: 'organization' | 'public') {
-    setSubmissionScope(prev => {
-      const next = new Set(prev)
-      if (next.has(scope)) next.delete(scope)
-      else next.add(scope)
-      return next
-    })
-  }
 
   function resetAll() {
     setStep(1)
@@ -112,7 +102,7 @@ export function SubmissionModal({
     setFile(null)
     setOpenstaxUrl('')
     setAdditionalPageUrls([])
-    setSubmissionScope(new Set(authorInstitution ? ['organization'] : ['public']))
+    setSubmissionScope('organization')
     setSelectedRubrics(new Set())
     setError(null)
     setRubricError(null)
@@ -167,15 +157,15 @@ export function SubmissionModal({
       }
       for (const pageUrl of additionalPageUrls) {
         if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
-        if (!isKnownOerUrl(pageUrl.trim())) {
-          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
-          return
+        try {
+          const parsed = new URL(pageUrl.trim())
+          if (parsed.hostname !== 'openstax.org' && !parsed.hostname.endsWith('.openstax.org')) {
+            setError('Additional page URLs must be on openstax.org.'); return
+          }
+        } catch {
+          setError('Please enter a valid URL for each additional page.'); return
         }
       }
-    }
-    if (authorInstitution && submissionScope.size === 0) {
-      setError('Please select at least one submission destination.')
-      return
     }
     setError(null)
     setStep(2)
@@ -212,6 +202,7 @@ export function SubmissionModal({
         const doc = await uploadDocument(
           supabase, file!, title.trim(), 'pdf', authors.trim(), finalSubjectMatter,
           ccLicense as CreativeCommonsLicense, thirdPartyDisclosure.trim() || null,
+          [submissionScope],
         )
         if (selectedRubrics.size > 0) {
           await assignRubrics(supabase, doc.id, Array.from(selectedRubrics))
@@ -228,7 +219,7 @@ export function SubmissionModal({
             ccLicense,
             thirdPartyDisclosure: thirdPartyDisclosure.trim() || undefined,
             rubricIds: Array.from(selectedRubrics),
-            submissionScope: Array.from(submissionScope),
+            submissionScope: [submissionScope],
             additionalPageUrls: additionalPageUrls.filter(u => u.trim()).map(u => u.trim()),
           }),
         })
@@ -350,61 +341,37 @@ export function SubmissionModal({
             onChange={e => { setOpenstaxUrl(e.target.value); touch() }}
             disabled={loading}
           />
-
-          {/* Additional pages */}
-          <div>
-            <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-2">
-              Additional pages
+          {additionalPageUrls.map((pageUrl, i) => (
+            <div key={i} className="flex items-end gap-2">
+              <Input
+                containerClassName="flex-1"
+                type="url"
+                placeholder="https://openstax.org/books/.../pages/..."
+                value={pageUrl}
+                onChange={e => { updatePageUrl(i, e.target.value); touch() }}
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => removePageUrl(i)}
+                disabled={loading}
+                className="shrink-0 p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-[var(--color-surface-container)] transition-colors disabled:opacity-50"
+                aria-label="Remove page"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          <Button variant="text" size="sm" onClick={addPageUrl} disabled={loading}>
+            + Add Page URL
+          </Button>
+          {additionalPageUrls.length > 0 && (
+            <p className="text-body-sm text-text-secondary">
+              Reviewers will see all {additionalPageUrls.length + 1} page{additionalPageUrls.length + 1 !== 1 ? 's' : ''} linked to this submission.
             </p>
-            {additionalPageUrls.length > 0 && (
-              <div className="space-y-2 mb-2">
-                {additionalPageUrls.map((pageUrl, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <input
-                      type="url"
-                      placeholder={`https://openstax.org/books/…/pages/3-${index + 2}`}
-                      value={pageUrl}
-                      onChange={e => { updatePageUrl(index, e.target.value); touch() }}
-                      disabled={loading}
-                      className={cx(
-                        'flex-1 rounded-lg border border-[var(--color-border)] px-3.5 py-2.5 text-sm text-text-primary',
-                        'placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-interactive-focus)]',
-                        'focus:border-[var(--color-interactive)] transition-colors bg-[var(--color-surface-card)]',
-                        'disabled:bg-[var(--color-surface-container)]',
-                      )}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePageUrl(index)}
-                      disabled={loading}
-                      className="shrink-0 p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors disabled:opacity-50"
-                      aria-label="Remove page"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => { addPageUrl(); touch() }}
-              disabled={loading}
-              className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-interactive)] hover:text-[var(--color-interactive-hover)] disabled:opacity-50 transition-colors"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add page URL
-            </button>
-            {additionalPageUrls.length > 0 && (
-              <p className="mt-1 text-xs text-text-muted">
-                Reviewers will see all {additionalPageUrls.length + 1} pages linked to this submission.
-              </p>
-            )}
-          </div>
+          )}
         </div>
       ) : (
         <div>
@@ -438,6 +405,31 @@ export function SubmissionModal({
         </div>
       )}
 
+      {/* Submit for Review To */}
+      <div>
+        <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-4">
+          Submit for Review To
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={submissionScope === 'organization'}
+            onChange={() => { setSubmissionScope('organization'); touch() }}
+            disabled={loading}
+            title="My Organization"
+            description={authorInstitution ? `Held for coordinator approval at ${authorInstitution}` : 'Held for coordinator approval'}
+          />
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={submissionScope === 'public'}
+            onChange={() => { setSubmissionScope('public'); touch() }}
+            disabled={loading}
+            title="Public Pool"
+            description="Visible to all eligible reviewers"
+          />
+        </div>
+      </div>
+
       <Textarea
         label="Third-Party Content Disclosure"
         optional
@@ -448,43 +440,6 @@ export function SubmissionModal({
         rows={3}
         resize="none"
       />
-
-      {/* Submission destination — only shown for org members */}
-      {authorInstitution && (
-        <div>
-          <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-1">
-            Submit for review to <span className="text-[var(--color-error)]">*</span>
-          </p>
-          <p className="text-body-sm text-text-muted mb-3">Choose where reviewers can see this document. You may select both.</p>
-          <div className="grid grid-cols-2 gap-3">
-            {([
-              { value: 'organization' as const, label: 'My organization', description: `Held for coordinator approval at ${authorInstitution}` },
-              { value: 'public' as const, label: 'Public pool', description: 'Visible to all eligible reviewers' },
-            ]).map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => { toggleScope(opt.value); touch() }}
-                disabled={loading}
-                className={cx(
-                  'flex flex-col items-start rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
-                  submissionScope.has(opt.value)
-                    ? 'border-[var(--color-interactive)] bg-[var(--color-interactive-subtle)]'
-                    : 'border-[var(--color-border)] bg-[var(--color-surface-card)] hover:border-[var(--color-border-strong)]',
-                )}
-              >
-                <span className={cx(
-                  'text-sm font-semibold',
-                  submissionScope.has(opt.value) ? 'text-[var(--color-interactive)]' : 'text-text-primary',
-                )}>
-                  {opt.label}
-                </span>
-                <span className="mt-0.5 text-xs text-text-muted">{opt.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {error && (
         <p className="text-body-sm text-[var(--color-error)] bg-[var(--color-error-container)] rounded-lg px-3.5 py-2.5">
@@ -556,6 +511,10 @@ export function SubmissionModal({
     { label: 'Author(s)',     value: authors || '—' },
     { label: 'Subject Area',  value: isOther ? (customSubject || '—') : ((EXPERT_DOMAIN_LABELS[subjectMatter as ExpertDomain] ?? subjectMatter) || '—') },
     { label: 'Resource Type', value: sourceTab === 'pdf' ? `PDF — ${file?.name ?? ''}` : `OpenStax URL — ${openstaxUrl}` },
+    ...(sourceTab === 'openstax' && additionalPageUrls.filter(u => u.trim()).length > 0
+      ? [{ label: 'Additional Pages', value: `${additionalPageUrls.filter(u => u.trim()).length} additional page(s)` }]
+      : []),
+    { label: 'Submit to',     value: submissionScope === 'organization' ? 'My Organization' : 'Public Pool' },
     { label: 'Rubrics',       value: selectedRubricNames.join(', ') || '—' },
     { label: 'License',       value: ccLicense ? CC_LICENSE_LABELS[ccLicense as CreativeCommonsLicense] : '—' },
     ...(thirdPartyDisclosure ? [{ label: 'Third-Party Disclosure', value: thirdPartyDisclosure }] : []),

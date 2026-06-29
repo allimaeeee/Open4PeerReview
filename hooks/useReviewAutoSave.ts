@@ -123,18 +123,18 @@ export function useReviewAutoSave({
 
   // ── Auto-save: debounced notes ────────────────────────────────────────────
 
-  const onNotesChange = useCallback(
-    (notes: string) => {
+  const onGeneralCommentChange = useCallback(
+    (general_comment: string) => {
       if (notesTimer.current) clearTimeout(notesTimer.current)
       setSaveStatus('saving')
       notesTimer.current = setTimeout(async () => {
-        if (lastSavedNotes.current === notes) { setSaveStatus('saved'); return }
+        if (lastSavedNotes.current === general_comment) { setSaveStatus('saved'); return }
         const { error } = await supabase
           .from('reviews')
-          .update({ notes })
+          .update({ general_comment })
           .eq('id', reviewId)
         if (error) { setSaveStatus('error'); return }
-        lastSavedNotes.current = notes
+        lastSavedNotes.current = general_comment
         setSaveStatus('saved')
       }, debounceMs)
     },
@@ -340,7 +340,7 @@ export function useReviewAutoSave({
   return {
     saveStatus,
     onScoreChange,
-    onNotesChange,
+    onGeneralCommentChange,
     saveAnnotation,
     updateAnnotation,
     deleteAnnotation,

@@ -14,6 +14,8 @@ import type { Json } from '@/types/database.types'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
 import ReviewRightPanel from './ReviewRightPanel'
+import { Modal, ModalContent } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { useReviewSaveStatus } from '@/lib/review-save-context'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
@@ -69,10 +71,13 @@ export function ReviewerConsole({
   const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [generalAnnotations, setGeneralAnnotations] = useState<
     { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
   >(
-    (review.annotations ?? []).filter((a) => a.rubric_item_id === null)
+    (review.annotations ?? []).filter((a) => a.rubric_item_id === null).reverse()
   )
 
   const isSubmitted = review.status === 'submitted'
@@ -132,7 +137,7 @@ export function ReviewerConsole({
             proficientSelected,
             niComments,
             exceedsComments,
-            annotations: existingAnnotations,
+            annotations: [...existingAnnotations].reverse(),
           }
         })
         setScores(initialScores)
@@ -143,7 +148,7 @@ export function ReviewerConsole({
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
-    saveStatus, onScoreChange, saveAnnotation, updateAnnotation, deleteAnnotation,
+    saveStatus, onScoreChange, onGeneralCommentChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
   } = useReviewAutoSave({ supabase, reviewId: review.id })
 
@@ -260,7 +265,7 @@ export function ReviewerConsole({
         const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         track('annotation_create', { annotation_id: newId, rubric_item_id: null, tag, char_count: body.length })
-        setGeneralAnnotations((prev) => [...prev, { id: newId, anchor, body, tag }])
+        setGeneralAnnotations((prev) => [{ id: newId, anchor, body, tag }, ...prev])
         setPendingSelection(null)
         return null
       }
@@ -272,7 +277,7 @@ export function ReviewerConsole({
         ...prev,
         [validItemId]: {
           ...prev[validItemId],
-          annotations: [...prev[validItemId].annotations, { id: newId, anchor, body, tag }],
+          annotations: [{ id: newId, anchor, body, tag }, ...prev[validItemId].annotations],
         },
       }))
       setPendingSelection(null)
@@ -292,13 +297,13 @@ export function ReviewerConsole({
           [rubricItemId]: {
             ...prev[rubricItemId],
             annotations: [
-              ...prev[rubricItemId].annotations,
               { id: newId, anchor: {}, body, tag },
+              ...prev[rubricItemId].annotations,
             ],
           },
         }))
       } else {
-        setGeneralAnnotations(prev => [...prev, { id: newId, anchor: {}, body, tag }])
+        setGeneralAnnotations(prev => [{ id: newId, anchor: {}, body, tag }, ...prev])
       }
       return null
     },
@@ -433,8 +438,8 @@ export function ReviewerConsole({
           next[rubricItemId] = {
             ...next[rubricItemId],
             annotations: [
-              ...next[rubricItemId].annotations,
               { id: newId, anchor: target.anchor, body: updates.body, tag: updates.tag },
+              ...next[rubricItemId].annotations,
             ],
           }
         })
@@ -450,13 +455,13 @@ export function ReviewerConsole({
         .filter(({ rubricItemId, newId }) => !rubricItemId && newId)
       if (newGeneralEntries.length > 0) {
         setGeneralAnnotations(prev => [
-          ...prev,
           ...newGeneralEntries.map(({ newId }) => ({
             id: newId!,
             anchor: target.anchor,
             body: updates.body,
             tag: updates.tag,
           })),
+          ...prev,
         ])
       }
     },
@@ -476,20 +481,58 @@ export function ReviewerConsole({
         ...(changes.tag !== undefined && { tag: changes.tag }),
       })
       if (changes.rubricItemId && scores[changes.rubricItemId]) {
-        // Move from free notes into a criterion
-        const note = generalAnnotations.find((a) => a.id === annotationId)
-        if (note) {
+        const fromGeneral = generalAnnotations.find((a) => a.id === annotationId)
+        if (fromGeneral) {
+          // Move from generalAnnotations into a criterion
           setGeneralAnnotations((prev) => prev.filter((a) => a.id !== annotationId))
           setScores((prev) => ({
             ...prev,
             [changes.rubricItemId!]: {
               ...prev[changes.rubricItemId!],
               annotations: [
+                {
+                  id: annotationId,
+                  anchor: fromGeneral.anchor,
+                  body: changes.body,
+                  tag: changes.tag !== undefined ? changes.tag : fromGeneral.tag,
+                },
                 ...prev[changes.rubricItemId!].annotations,
-                { id: annotationId, anchor: note.anchor, body: changes.body, tag: note.tag },
               ],
             },
           }))
+        } else {
+          // Move from one criterion to another
+          setScores((prev) => {
+            const next = { ...prev }
+            let movedAnn: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null } | null = null
+            for (const criterionId of Object.keys(next)) {
+              if (criterionId === changes.rubricItemId) continue
+              const idx = next[criterionId].annotations.findIndex((a) => a.id === annotationId)
+              if (idx !== -1) {
+                movedAnn = next[criterionId].annotations[idx]
+                next[criterionId] = {
+                  ...next[criterionId],
+                  annotations: next[criterionId].annotations.filter((a) => a.id !== annotationId),
+                }
+                break
+              }
+            }
+            if (movedAnn) {
+              next[changes.rubricItemId!] = {
+                ...next[changes.rubricItemId!],
+                annotations: [
+                  {
+                    id: annotationId,
+                    anchor: movedAnn.anchor,
+                    body: changes.body,
+                    tag: changes.tag !== undefined ? changes.tag : movedAnn.tag,
+                  },
+                  ...next[changes.rubricItemId!].annotations,
+                ],
+              }
+            }
+            return next
+          })
         }
       } else {
         setGeneralAnnotations((prev) =>
@@ -501,7 +544,7 @@ export function ReviewerConsole({
         )
       }
     },
-    [updateAnnotation, scores, generalAnnotations]
+    [updateAnnotation, scores, generalAnnotations, track]
   )
 
   // ── Criterion comment blur ────────────────────────────────────────────────
@@ -615,6 +658,19 @@ export function ReviewerConsole({
     [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
   )
 
+  const handleConfirmSubmit = useCallback(async () => {
+    setIsSubmitting(true)
+    setSubmitError(null)
+    const error = await handleSubmit(overallComment)
+    setIsSubmitting(false)
+    if (error) {
+      setSubmitError(error)
+      return
+    }
+    setShowSubmitConfirm(false)
+    router.push('/reviewer?tab=completed')
+  }, [handleSubmit, overallComment, router])
+
   const firstRubricId = useMemo(() => {
     for (const item of rubricItems) {
       return item.rubric_id
@@ -639,7 +695,7 @@ export function ReviewerConsole({
     if (!panelScrollAnnotationId) return
     const timer = setTimeout(() => {
       const el = window.document.getElementById(`annotation-card-${panelScrollAnnotationId}`)
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       setPanelScrollAnnotationId(null)
     }, 150)
     return () => clearTimeout(timer)
@@ -688,7 +744,7 @@ export function ReviewerConsole({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
+    <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
       <ResizablePanelLayout
         defaultLeftPercent={50}
         leftPanel={
@@ -748,30 +804,70 @@ export function ReviewerConsole({
               generalAnnotations={generalAnnotations}
               activeRubricId={activeRubricId}
               onActiveRubricChange={setActiveRubricId}
-              isSubmitted={isSubmitted}
-              scoredCount={scoredCount}
-              totalCount={totalCount}
-              onSubmit={async () => {
-                const err = await handleSubmit('')
-                if (err) throw new Error(err)
-                router.refresh()
-                router.push('/reviewer?tab=completed&submitted=true')
-              }}
+              isReadOnly={isSubmitted}
+              onSubmit={() => setShowSubmitConfirm(true)}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}
               onEditComment={handleEditScoreComment}
               onDeleteComment={handleDeleteScoreComment}
-              onAddNote={handleAddGeneralNote}
               onEditFreeNote={handleEditFreeNote}
-              onDeleteNote={handleDeleteGeneralAnnotation}
               onGoToAnnotation={(id) => { setScrollToAnnotationId(id); setPulseAnnotationId(id); setFocusAnnotationId(id) }}
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
+              initialNotes={review.general_comment}
+              onGeneralCommentChange={onGeneralCommentChange}
+              saveStatus={saveStatus}
             />
           </div>
         }
       />
+
+      <Modal open={showSubmitConfirm} onClose={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}>
+        <ModalContent className="max-w-sm h-auto">
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <h2 className="font-heading text-title-lg text-text-primary leading-snug">
+                Submit Review
+              </h2>
+              <button
+                type="button"
+                onClick={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}
+                className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors duration-150"
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3l10 10M13 3L3 13" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-body-md text-text-secondary">
+              Are you sure you want to submit? Once submitted, you will not be able to edit or add to this review.
+            </p>
+            {submitError && (
+              <p className="text-body-sm text-error mt-3">{submitError}</p>
+            )}
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <Button
+                variant="secondary"
+                size="md"
+                disabled={isSubmitting}
+                onClick={() => setShowSubmitConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                disabled={isSubmitting}
+                onClick={handleConfirmSubmit}
+              >
+                {isSubmitting ? 'Submitting…' : 'Submit Review'}
+              </Button>
+            </div>
+          </div>
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

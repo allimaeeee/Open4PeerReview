@@ -170,7 +170,7 @@ export async function CoordinatorDashboard() {
   const reviewsSubmitted = totalReviews.filter(r => r.status === 'submitted').length
 
   return (
-    <div className="space-y-10">
+    <div className="flex-1 min-h-0 overflow-y-auto space-y-10">
 
       {/* Header */}
       <div>

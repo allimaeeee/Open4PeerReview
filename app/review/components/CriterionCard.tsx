@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect, type CSSProperties } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { CriterionScore, HighlightTag } from '@/types'
 import type { LocalScore } from './ReviewerConsole'
 import type { RubricItem } from './ReviewerApp'
 import { RatingBox } from './RatingBox'
 import { AnnotationListCard } from './AnnotationListCard'
 import { FreeNoteCard } from './FreeNoteCard'
-import type { FreeNote } from './FreeNotesSection'
+import type { FreeNote, CriterionOption } from './FreeNotesSection'
 
 interface AnnotationSummary {
   id: string
@@ -27,7 +27,10 @@ interface CriterionCardProps {
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
+  onMoveAnnotation?: (annotationId: string, targetRubricItemId: string, body?: string, tag?: HighlightTag | null) => void
+  allCriteria?: CriterionOption[]
   expandToAnnotationId?: string | null
+  isReadOnly?: boolean
 }
 
 function TrendingUpIcon({ size }: { size: number }) {
@@ -96,10 +99,26 @@ export function CriterionCard({
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
+  onMoveAnnotation,
+  allCriteria,
   expandToAnnotationId,
+  isReadOnly = false,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [focusedBox, setFocusedBox] = useState<'exceeds' | 'does_not_meet' | null>(null)
+  const [isNarrow, setIsNarrow] = useState(false)
+  const ratingRowRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ratingRowRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      // +32px accounts for px-4 padding on each side of the expanded content
+      setIsNarrow(entry.contentRect.width < 492)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!expandToAnnotationId) return
@@ -131,7 +150,7 @@ export function CriterionCard({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface-card transition-colors">
+    <div ref={ratingRowRef} className="rounded-lg border border-border bg-surface-card transition-colors min-w-0">
       {/* Header — always visible */}
       <div
         className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none"
@@ -209,10 +228,10 @@ export function CriterionCard({
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-4">
-          <div className="flex gap-3">
+          <div className={`flex gap-3 min-w-0 ${isNarrow ? 'flex-col' : ''}`}>
             <RatingBox
               variant="exceeds"
-              style={getColumnStyle('exceeds')}
+              style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('exceeds')}
               isActive={score.scores.includes('exceeds')}
               comments={score.exceedsComments}
               onAddComment={(body) => onAddComment(rubricItem.id, 'exceeds', body)}
@@ -220,20 +239,22 @@ export function CriterionCard({
               onDeleteComment={(id) => onDeleteComment(rubricItem.id, id, 'exceeds')}
               onActivate={() => { if (!score.scores.includes('exceeds')) onScoreToggle(rubricItem.id, 'exceeds') }}
               onDeactivate={() => { if (score.scores.includes('exceeds')) onScoreToggle(rubricItem.id, 'exceeds') }}
-              onTextareaFocus={() => setFocusedBox('exceeds')}
-              onTextareaBlur={() => setFocusedBox(null)}
+              onTextareaFocus={isNarrow ? undefined : () => setFocusedBox('exceeds')}
+              onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
+              isReadOnly={isReadOnly}
             />
             <RatingBox
               variant="exemplifies"
-              style={getColumnStyle('exemplifies')}
+              style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('exemplifies')}
               isActive={score.scores.includes('exemplifies')}
               standardText={rubricItem.description ?? undefined}
               criterionLabel={`C${criterionIndex} · ${rubricItem.label.replace(/^C\d+\s+/, '')}`}
               onToggle={() => onScoreToggle(rubricItem.id, 'exemplifies')}
+              isReadOnly={isReadOnly}
             />
             <RatingBox
               variant="does_not_meet"
-              style={getColumnStyle('does_not_meet')}
+              style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('does_not_meet')}
               isActive={score.scores.includes('does_not_meet')}
               comments={score.niComments}
               onAddComment={(body) => onAddComment(rubricItem.id, 'does_not_meet', body)}
@@ -241,8 +262,9 @@ export function CriterionCard({
               onDeleteComment={(id) => onDeleteComment(rubricItem.id, id, 'does_not_meet')}
               onActivate={() => { if (!score.scores.includes('does_not_meet')) onScoreToggle(rubricItem.id, 'does_not_meet') }}
               onDeactivate={() => { if (score.scores.includes('does_not_meet')) onScoreToggle(rubricItem.id, 'does_not_meet') }}
-              onTextareaFocus={() => setFocusedBox('does_not_meet')}
-              onTextareaBlur={() => setFocusedBox(null)}
+              onTextareaFocus={isNarrow ? undefined : () => setFocusedBox('does_not_meet')}
+              onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
+              isReadOnly={isReadOnly}
             />
           </div>
 
@@ -263,6 +285,7 @@ export function CriterionCard({
                         onMove={() => {}}
                         onDelete={onDeleteAnnotation}
                         showMoveDropdown={false}
+                        isReadOnly={isReadOnly}
                       />
                     ) : (
                       <AnnotationListCard
@@ -270,6 +293,11 @@ export function CriterionCard({
                         onGoTo={onGoToAnnotation}
                         onEdit={onEditAnnotation}
                         onDelete={onDeleteAnnotation}
+                        showMoveInEdit={!!allCriteria && allCriteria.length > 0}
+                        currentCriterionId={rubricItem.id}
+                        criteria={allCriteria}
+                        onLink={onMoveAnnotation}
+                        isReadOnly={isReadOnly}
                       />
                     )}
                   </div>

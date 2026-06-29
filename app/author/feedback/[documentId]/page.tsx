@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getDocumentFeedback, getSignedUrl } from '@/lib/supabase/queries'
 import { FeedbackView } from './FeedbackView'
@@ -21,14 +22,16 @@ export default async function FeedbackPage({
       ? null
       : await getSignedUrl(supabase, data.document.storage_path)
     return (
-      <main>
-        <FeedbackView
-          document={data.document}
-          reviews={data.reviews}
-          allRubrics={data.allRubrics}
-          pdfUrl={pdfUrl}
-          includeAuthorNotes={data.isAuthor}
-        />
+      <main className="flex-1 min-h-0 flex flex-col">
+        <Suspense fallback={null}>
+          <FeedbackView
+            document={data.document}
+            reviews={data.reviews}
+            allRubrics={data.allRubrics}
+            pdfUrl={pdfUrl}
+            includeAuthorNotes={data.isAuthor}
+          />
+        </Suspense>
       </main>
     )
   } catch {

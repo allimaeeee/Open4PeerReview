@@ -35,6 +35,103 @@ export interface SavedAnnotation {
   tag: string | null
 }
 
+// ── PageSelector ──────────────────────────────────────────────────────────────
+
+function PageSelector({
+  currentPageIndex,
+  totalPages,
+  onChange,
+}: {
+  currentPageIndex: number
+  totalPages: number
+  onChange: (idx: number) => void
+}) {
+  const [inputValue, setInputValue] = useState(String(currentPageIndex + 1))
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  // Keep input text in sync when arrow buttons navigate
+  useEffect(() => {
+    setInputValue(String(currentPageIndex + 1))
+  }, [currentPageIndex])
+
+  function commit(raw: string) {
+    const n = parseInt(raw, 10)
+    if (!isNaN(n) && n >= 1 && n <= totalPages) {
+      onChange(n - 1)
+      setInputValue(String(n))
+    } else {
+      setInputValue(String(currentPageIndex + 1))
+    }
+    setOpen(false)
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (!wrapperRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+        setInputValue(String(currentPageIndex + 1))
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open, currentPageIndex])
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={inputValue}
+        onClick={() => setOpen(v => !v)}
+        onChange={e => setInputValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            commit(inputValue);
+            (e.target as HTMLInputElement).blur()
+          } else if (e.key === 'Escape') {
+            setInputValue(String(currentPageIndex + 1))
+            setOpen(false);
+            (e.target as HTMLInputElement).blur()
+          }
+        }}
+        onBlur={() => commit(inputValue)}
+        className="w-10 text-center text-xs text-slate-600 tabular-nums bg-white border border-slate-300 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+        aria-label={`Page ${currentPageIndex + 1} of ${totalPages}, click to open page selector`}
+      />
+      {open && (
+        <div
+          className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 min-w-[3.5rem] bg-white border border-slate-200 rounded shadow-lg overflow-y-auto"
+          style={{ maxHeight: '14rem' }}
+        >
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                onChange(i)
+                setInputValue(String(i + 1))
+                setOpen(false)
+              }}
+              className={[
+                'block w-full text-center px-3 py-1.5 text-xs tabular-nums',
+                i === currentPageIndex
+                  ? 'bg-slate-100 font-semibold text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface OERPage {
@@ -63,7 +160,7 @@ interface HtmlViewerCanvasProps {
   scrollToAnnotationId?: string | null
   pulseAnnotationId?: string | null
   onPulseComplete?: () => void
-  onBack: () => void
+  onBack?: () => void
 }
 
 export default function HtmlViewerCanvas({
@@ -199,7 +296,6 @@ export default function HtmlViewerCanvas({
 
   // ── Update stable refs every render ───────────────────────────────────────
   onMarkClickRef.current = (annId, clientX, clientY) => {
-    if (disabled) return
     const ann = savedAnnotations.find(a => a.id === annId)
     if (!ann) return
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
@@ -444,7 +540,7 @@ export default function HtmlViewerCanvas({
   return (
     <div className="h-full flex flex-col bg-slate-100">
 
-      <ViewerPanelHeader
+      {onBack && <ViewerPanelHeader
         onBack={onBack}
         centerSlot={totalPages > 1 ? (
           <div className="flex items-center gap-1">
@@ -459,7 +555,15 @@ export default function HtmlViewerCanvas({
                 <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
             </button>
-            <span className="text-xs text-slate-600 tabular-nums">Page {currentPageIndex + 1} / {totalPages}</span>
+            <div className="flex items-center gap-1 text-xs text-slate-600">
+              <span>Page</span>
+              <PageSelector
+                currentPageIndex={currentPageIndex}
+                totalPages={totalPages}
+                onChange={setCurrentPageIndex}
+              />
+              <span className="tabular-nums">/ {totalPages}</span>
+            </div>
             <button
               type="button"
               onClick={() => setCurrentPageIndex(i => Math.min(totalPages - 1, i + 1))}
@@ -473,7 +577,7 @@ export default function HtmlViewerCanvas({
             </button>
           </div>
         ) : undefined}
-      />
+      />}
 
       {/* ── iframe + overlay layer ────────────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden">
@@ -518,7 +622,7 @@ export default function HtmlViewerCanvas({
         )}
 
         {/* Hover card — appears when hovering or clicking a highlight mark */}
-        {hoverAnnotation && hoverPos && !disabled && (() => {
+        {hoverAnnotation && hoverPos && (() => {
           const anchorKey = JSON.stringify(hoverAnnotation.anchor)
           const linkedCriteriaIds = savedAnnotations
             .filter(a => JSON.stringify(a.anchor) === anchorKey && a.rubricItemId !== null)
@@ -534,6 +638,7 @@ export default function HtmlViewerCanvas({
               criteria={rubricItems}
               linkedCriteriaIds={linkedCriteriaIds}
               position={hoverPos}
+              readOnly={disabled}
               onSave={(updates) => onAnnotationEdit(hoverAnnotation.id, updates)}
               onRelink={onAnnotationRelink
                 ? (newIds, updates) => onAnnotationRelink(hoverAnnotation.id, newIds, updates)

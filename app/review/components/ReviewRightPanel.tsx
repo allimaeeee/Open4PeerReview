@@ -2,14 +2,15 @@
 
 import { useMemo } from 'react'
 import { TabBar } from '@/components/ui/TabBar'
+import { Button } from '@/components/ui/Button'
 import { CriterionCard } from './CriterionCard'
 import { FreeNotesSection } from './FreeNotesSection'
+import { UnlinkedAnnotationsCard } from '@/components/patterns/UnlinkedAnnotationsCard'
 import type { RubricItem } from './ReviewerApp'
 import type { LocalScore, ScoreCommentItem } from './ReviewerConsole'
-import type { CriterionScore } from '../../../hooks/useReviewAutoSave'
+import type { CriterionScore, SaveStatus } from '../../../hooks/useReviewAutoSave'
 import type { HighlightTag } from '@/types'
 import type { FreeNote, CriterionOption } from './FreeNotesSection'
-import { SubmitReviewButton } from './SubmitReviewButton'
 
 interface ReviewRightPanelProps {
   rubricItems: RubricItem[]
@@ -17,21 +18,20 @@ interface ReviewRightPanelProps {
   generalAnnotations: FreeNote[]
   activeRubricId: string | null
   onActiveRubricChange: (id: string) => void
-  isSubmitted: boolean
-  scoredCount: number
-  totalCount: number
-  onSubmit: () => Promise<void>
+  isReadOnly: boolean
+  onSubmit: () => void
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
   onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
   onDeleteComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet') => void
-  onAddNote: (body: string, tag: HighlightTag | null, rubricItemId: string | null) => Promise<string | null>
   onEditFreeNote: (noteId: string, changes: { body: string; rubricItemId: string | null; tag?: HighlightTag | null }) => void
-  onDeleteNote: (noteId: string) => void
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
   expandToAnnotationId?: string | null
+  initialNotes: string | null
+  onGeneralCommentChange: (val: string) => void
+  saveStatus: SaveStatus
 }
 
 export function ReviewRightPanel({
@@ -40,21 +40,20 @@ export function ReviewRightPanel({
   generalAnnotations,
   activeRubricId,
   onActiveRubricChange,
-  isSubmitted,
-  scoredCount,
-  totalCount,
+  isReadOnly,
   onSubmit,
   onScoreToggle,
   onAddComment,
   onEditComment,
   onDeleteComment,
-  onAddNote,
   onEditFreeNote,
-  onDeleteNote,
   onGoToAnnotation,
   onEditAnnotation,
   onDeleteAnnotation,
   expandToAnnotationId,
+  initialNotes,
+  onGeneralCommentChange,
+  saveStatus,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
@@ -70,6 +69,10 @@ export function ReviewRightPanel({
     return result
   }, [rubricItems, scores])
 
+  const activeRubricIsReadOnly = isReadOnly
+
+  const allRubricsFullyRated = rubrics.length > 0 && rubrics.every(r => r.rated === r.total && r.total > 0)
+
   const activeRubricItems = useMemo(
     () => rubricItems.filter(item => item.rubric_id === activeRubricId),
     [rubricItems, activeRubricId]
@@ -80,26 +83,12 @@ export function ReviewRightPanel({
     [activeRubricItems]
   )
 
-  // Split generalAnnotations: actual highlights have a non-empty anchor object;
-  // plain free notes are saved with anchor={} (empty).
-  const freeNotes = useMemo(
-    () => generalAnnotations.filter(a => Object.keys(a.anchor).length === 0),
-    [generalAnnotations]
-  )
+  // Unlinked highlights: annotations with a non-empty anchor that haven't been linked to a criterion.
+  // Free notes (anchor={}) are now stored in reviews.general_comment, not rendered here.
   const unlinkedHighlights = useMemo(
     () => generalAnnotations.filter(a => Object.keys(a.anchor).length > 0),
     [generalAnnotations]
   )
-
-  function handleEditNote(noteId: string, changes: { body: string; tag: HighlightTag | null }) {
-    onEditFreeNote(noteId, { body: changes.body, tag: changes.tag, rubricItemId: null })
-  }
-
-  function handleMoveNote(noteId: string, rubricItemId: string) {
-    const note = generalAnnotations.find(n => n.id === noteId)
-    if (!note) return
-    onEditFreeNote(noteId, { body: note.body, tag: note.tag as HighlightTag | null, rubricItemId })
-  }
 
   function handleLinkHighlight(annotationId: string, criterionId: string) {
     const ann = generalAnnotations.find(a => a.id === annotationId)
@@ -107,53 +96,74 @@ export function ReviewRightPanel({
     onEditFreeNote(annotationId, { body: ann.body, tag: ann.tag as HighlightTag | null, rubricItemId: criterionId })
   }
 
+  function handleMoveAnnotation(annotationId: string, newRubricItemId: string, body?: string, tag?: HighlightTag | null) {
+    for (const score of Object.values(scores)) {
+      const ann = (score.annotations as { id: string; body: string; tag: string | null }[]).find(a => a.id === annotationId)
+      if (ann) {
+        onEditFreeNote(annotationId, {
+          body: body ?? ann.body,
+          tag: tag !== undefined ? tag : ann.tag as HighlightTag | null,
+          rubricItemId: newRubricItemId,
+        })
+        return
+      }
+    }
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-surface">
-      {/* Fixed header: rubric tabs */}
-      <div className="flex-shrink-0">
-        <TabBar
-          tabs={rubrics.map(r => ({
-            id: r.id,
-            label: r.title,
-            badge: (
-              <span className={[
-                'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
-                r.rated === r.total
-                  ? 'bg-success-container text-success border border-success'
-                  : 'bg-amber-100 text-amber-800 border border-amber-800',
-              ].join(' ')}>
-                {r.rated}/{r.total}
-              </span>
-            ),
-          }))}
-          activeId={activeRubricId ?? ''}
-          onChange={onActiveRubricChange}
-          tabClassName="py-[16px]"
-          rightSlot={
-            <SubmitReviewButton
-              scoredCount={scoredCount}
-              totalCount={totalCount}
-              isSubmitted={isSubmitted}
-              onSubmit={onSubmit}
-            />
-          }
-        />
+      {/* Fixed header: rubric tabs + global submit button */}
+      <div className="flex-shrink-0 flex items-stretch">
+        <div className="flex-1 min-w-0">
+          <TabBar
+            tabs={rubrics.map(r => ({
+              id: r.id,
+              label: r.title,
+              badge: (
+                <span className={[
+                  'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
+                  r.rated === r.total && r.total > 0
+                    ? 'bg-success-container text-success border border-success'
+                    : 'bg-amber-100 text-amber-800 border border-amber-800',
+                ].join(' ')}>
+                  {r.rated}/{r.total}
+                </span>
+              ),
+            }))}
+            activeId={activeRubricId ?? ''}
+            onChange={onActiveRubricChange}
+            tabClassName="py-[16px]"
+          />
+        </div>
+        <div className="shrink-0 flex items-center px-3 bg-surface-card border-l border-b border-border">
+          <Button
+            variant="primary"
+            disabled={!allRubricsFullyRated || isReadOnly}
+            title={!allRubricsFullyRated ? 'Rate all criteria to submit.' : undefined}
+            onClick={onSubmit}
+          >
+            Submit Review
+          </Button>
+        </div>
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <FreeNotesSection
-          notes={freeNotes}
-          criteria={criteriaOptions}
+          initialNotes={initialNotes}
+          onNotesChange={onGeneralCommentChange}
+          saveStatus={saveStatus}
+          isReadOnly={activeRubricIsReadOnly}
+        />
+
+        <UnlinkedAnnotationsCard
           annotations={unlinkedHighlights}
-          onAddNote={onAddNote}
-          onEditNote={handleEditNote}
-          onMoveNote={handleMoveNote}
-          onDeleteNote={onDeleteNote}
+          criterionOptions={criteriaOptions}
+          onLink={handleLinkHighlight}
           onGoToAnnotation={onGoToAnnotation}
-          onEditAnnotation={onEditAnnotation}
-          onDeleteAnnotation={onDeleteAnnotation}
-          onLinkAnnotation={handleLinkHighlight}
+          onEdit={onEditAnnotation}
+          onDelete={onDeleteAnnotation}
+          isReadOnly={activeRubricIsReadOnly}
         />
 
         <div className="flex flex-col gap-2 p-4">
@@ -173,11 +183,15 @@ export function ReviewRightPanel({
                 onGoToAnnotation={onGoToAnnotation}
                 onEditAnnotation={onEditAnnotation}
                 onDeleteAnnotation={onDeleteAnnotation}
+                onMoveAnnotation={handleMoveAnnotation}
+                allCriteria={criteriaOptions}
                 expandToAnnotationId={expandToAnnotationId}
+                isReadOnly={activeRubricIsReadOnly}
               />
             )
           })}
         </div>
+
       </div>
     </div>
   )
