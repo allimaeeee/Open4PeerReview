@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import type { CriterionScore } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
+import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
+import { OerReadOnlyViewer } from './OerReadOnlyViewer'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,8 @@ function PrintIcon() {
 export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProps }: Props) {
   const router = useRouter()
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
+  const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(true)
 
   const handleCriterionClick = (rubricItemId: string) => {
     setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
@@ -98,6 +102,7 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
 
   const searchParams = useSearchParams()
   const from = searchParams.get('from')
+  const requestedRubricId = searchParams.get('rubric')
   const backHref = from === 'reviewer'
     ? '/reviewer?tab=completed'
     : from === 'coordinator'
@@ -106,17 +111,19 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
 
   const allRubrics: { id: string; title: string; itemIds: string[] }[] = allRubricsFromProps ?? []
 
-  // A rubric pill is enabled only if a submitted review is directly linked to it via rubric_id.
-  // All entries in `reviews` are already filtered to submitted status by the query.
+  // Global submit: one review row covers all rubrics. All pills are accessible whenever
+  // any submitted review exists for this document.
   const submittedRubricIds = new Set(
-    allRubrics
-      .filter(r => reviews.some(rv => rv.rubric?.id === r.id))
-      .map(r => r.id)
+    reviews.length > 0 ? allRubrics.map(r => r.id) : []
   )
 
-  const [selectedRubricId, setSelectedRubricId] = useState<string | null>(
-    () => allRubrics.find(r => reviews.some(rv => rv.rubric?.id === r.id))?.id ?? null
-  )
+  const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
+    if (!reviews.length) return null
+    if (requestedRubricId && allRubrics.some(r => r.id === requestedRubricId)) {
+      return requestedRubricId
+    }
+    return allRubrics[0]?.id ?? null
+  })
 
   // Prefer the review linked to the selected rubric; fall back to the first submitted review
   const review = reviews.find(r => r.rubric?.id === selectedRubricId) ?? reviews[0] ?? null
@@ -135,8 +142,31 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
   const reviewerName = review?.reviewer?.display_name ?? review?.reviewer?.email ?? 'Anonymous Reviewer'
   const submittedDate = formatDate(review?.submitted_at ?? null)
 
+  const snapshotSrc = document.content_fingerprint
+    ? `/api/snapshot/${document.content_fingerprint}`
+    : null
+
+  const allAnnotations = useMemo(
+    () => reviews.flatMap(rv => rv.annotations),
+    [reviews]
+  )
+
+  const rubricItems = useMemo(() => {
+    const seen = new Set<string>()
+    const result: { id: string; label: string }[] = []
+    for (const rv of reviews) {
+      for (const rs of rv.review_scores) {
+        if (rs.rubric_item && !seen.has(rs.rubric_item.id)) {
+          seen.add(rs.rubric_item.id)
+          result.push({ id: rs.rubric_item.id, label: rs.rubric_item.label })
+        }
+      }
+    }
+    return result
+  }, [reviews])
+
   return (
-    <>
+    <div className="flex-1 min-h-0">
       <style>{`
         @media print {
           nav,
@@ -165,7 +195,35 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
         }
       `}</style>
 
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <ResizablePanelLayout
+        leftPanelCollapsed={leftPanelCollapsed}
+        onLeftPanelCollapsedChange={setLeftPanelCollapsed}
+        leftPanelLabel="View OER"
+        rightPanelLabel="View Report"
+        leftPanel={
+          snapshotSrc ? (
+            <OerReadOnlyViewer
+              snapshotSrc={snapshotSrc}
+              annotations={allAnnotations}
+              scrollToAnnotationId={scrollToAnnotationId}
+              rubricItems={rubricItems}
+              onViewFullComment={(rubricItemId) => {
+                setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
+                setTimeout(() => {
+                  window.document.getElementById(`criterion-${rubricItemId}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 50)
+              }}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-muted)]">
+              OER preview not available for this resource type.
+            </div>
+          )
+        }
+        rightPanel={
+          <div className="h-full overflow-y-auto">
+            <div className="mx-auto max-w-2xl px-6 py-10">
 
         {/* Back link */}
         <Button
@@ -305,13 +363,21 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                     ) as { id: string; rubric_item_id: string | null; anchor: Record<string, unknown>; body: string; tag: string | null }[]
                   }
                   index={i + 1}
+                  onGoToAnnotation={(annotationId) => {
+                    setLeftPanelCollapsed(false)
+                    setScrollToAnnotationId(annotationId)
+                    setTimeout(() => setScrollToAnnotationId(null), 500)
+                  }}
                 />
               ))}
             </div>
           </>
         )}
 
-      </div>
-    </>
+            </div>
+          </div>
+        }
+      />
+    </div>
   )
 }

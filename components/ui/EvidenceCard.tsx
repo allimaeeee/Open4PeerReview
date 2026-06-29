@@ -13,6 +13,7 @@ interface AnnotationRecord {
 interface EvidenceCardProps {
   annotation: AnnotationRecord
   className?: string
+  onGoToAnnotation?: () => void
 }
 
 function getAnchorType(anchor: Record<string, unknown>): 'html' | 'pdf' | 'free-note' {
@@ -37,8 +38,9 @@ const TAG_CONFIG: Record<'action_item' | 'quick_fix', { label: string; bg: strin
   },
 }
 
-export function EvidenceCard({ annotation, className }: EvidenceCardProps) {
+export function EvidenceCard({ annotation, className, onGoToAnnotation }: EvidenceCardProps) {
   const anchorType  = getAnchorType(annotation.anchor)
+  const isLinkedHighlight = anchorType !== 'free-note'
   const quotedText  = anchorType === 'html' ? (annotation.anchor.text as string | undefined) : undefined
   const tag         = (annotation.tag === 'action_item' || annotation.tag === 'quick_fix')
     ? annotation.tag
@@ -89,21 +91,33 @@ export function EvidenceCard({ annotation, className }: EvidenceCardProps) {
         </div>
       )}
 
+      {/* Go to Annotation — linked highlights only */}
+      {isLinkedHighlight && onGoToAnnotation && (
+        <button
+          type="button"
+          onClick={onGoToAnnotation}
+          className="self-start text-body-sm text-[var(--color-primary)] underline-offset-2 hover:underline"
+        >
+          Go to Annotation ↗
+        </button>
+      )}
+
       {/* Body comment */}
       {quotedText ? (
         <div>
           <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-1">
             Comment
           </span>
-          <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
+          <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed break-words hyphens-auto">
             {annotation.body}
           </p>
         </div>
       ) : (
-        <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
+        <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed break-words hyphens-auto">
           {annotation.body}
         </p>
       )}
+
     </div>
   )
 }

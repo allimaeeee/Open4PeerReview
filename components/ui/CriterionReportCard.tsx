@@ -43,6 +43,7 @@ interface CriterionReportCardProps {
   isOpen?: boolean
   onToggle?: () => void
   className?: string
+  onGoToAnnotation?: (annotationId: string) => void
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ function ScoreCommentBlock({
         {comments.map(comment => (
           <blockquote
             key={comment.id}
-            className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed"
+            className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed break-words hyphens-auto"
             style={{ borderLeft: `2px solid ${cfg.border}` }}
           >
             {comment.body}
@@ -127,6 +128,7 @@ export function CriterionReportCard({
   isOpen: isOpenProp,
   onToggle,
   className,
+  onGoToAnnotation,
 }: CriterionReportCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultExpanded)
   const isControlled = isOpenProp !== undefined
@@ -256,7 +258,13 @@ export function CriterionReportCard({
                 </span>
                 <div className="flex flex-col gap-2">
                   {annotations.map(annotation => (
-                    <EvidenceCard key={annotation.id} annotation={annotation} />
+                    <EvidenceCard
+                      key={annotation.id}
+                      annotation={annotation}
+                      onGoToAnnotation={
+                        onGoToAnnotation ? () => onGoToAnnotation(annotation.id) : undefined
+                      }
+                    />
                   ))}
                 </div>
               </div>

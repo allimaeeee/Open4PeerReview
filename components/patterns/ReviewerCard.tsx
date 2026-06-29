@@ -21,9 +21,11 @@ export interface ReviewerCardProps {
   claimedAt: string
   rubrics: RubricProgress[]
   reviewUrl: string
+  hasGeneralComment: boolean
 }
 
 export function ReviewerCard({
+  id,
   title,
   platform,
   authorName,
@@ -33,15 +35,13 @@ export function ReviewerCard({
   claimedAt,
   rubrics,
   reviewUrl,
+  hasGeneralComment,
 }: ReviewerCardProps) {
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
-  const allComplete = rubrics.every(r => pct(r) === 100)
-  const anyStarted  = rubrics.some(r => pct(r) > 0)
+  const anyStarted = rubrics.some(r => pct(r) > 0)
 
-  const cardStatus: 'not-started' | 'in-progress' | 'completed' =
-    allComplete ? 'completed' :
-    anyStarted  ? 'in-progress' :
-    'not-started'
+  const cardStatus: 'not-started' | 'in-progress' =
+    (anyStarted || hasGeneralComment) ? 'in-progress' : 'not-started'
 
   const ctaLabel = anyStarted ? 'Continue review' : 'Start review'
 
@@ -105,30 +105,34 @@ export function ReviewerCard({
 
       {/* Section 1 — Rubric progress rows */}
       <div className="-mb-3">
-        {rubrics.map(rubric => (
-          <div
-            key={rubric.rubricId}
-            className="flex items-center justify-between gap-4 py-3 border-t border-[var(--color-border)]"
-          >
-            <span className="text-body-md text-text-primary font-medium">
-              {rubric.rubricTitle}
-            </span>
-            <span className={[
-              'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
-              pct(rubric) === 100
-                ? 'bg-success-container text-success border border-success'
-                : pct(rubric) === 0
-                  ? 'bg-gray-100 text-gray-500 border border-gray-400'
-                  : 'bg-amber-100 text-amber-800 border border-amber-800',
-            ].join(' ')}>
-              {rubric.ratedCount}/{rubric.totalCount} criteria rated
-            </span>
-          </div>
-        ))}
+        {rubrics.map(rubric => {
+          return (
+            <div
+              key={rubric.rubricId}
+              className="flex items-center justify-between gap-4 py-3 border-t border-border"
+            >
+              <span className="text-body-md text-text-primary font-medium shrink-0">
+                {rubric.rubricTitle}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={[
+                  'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
+                  pct(rubric) === 100
+                    ? 'bg-success-container text-success border border-success'
+                    : pct(rubric) === 0
+                      ? 'bg-gray-100 text-gray-500 border border-gray-400'
+                      : 'bg-amber-100 text-amber-800 border border-amber-800',
+                ].join(' ')}>
+                  {rubric.ratedCount}/{rubric.totalCount} criteria rated
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Section 2 — Metadata + description */}
-      <div className="border-t border-[var(--color-border)] mt-3 pt-3">
+      <div className="border-t border-border mt-3 pt-3">
 
         <div className="flex items-center gap-4 flex-wrap text-body-sm text-text-secondary">
           <span className="flex items-center gap-1">
