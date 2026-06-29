@@ -1,0 +1,4 @@
+in terminal run: npm run build:ext
+go to chrome extension webpage and turn on dev mode
+"load unpacked" and go to extension/dist
+yay it's loaded!
