@@ -15,9 +15,18 @@ interface PointAnchor {
   type: 'point'
   pageUrl?: string
   pageName?: string
+  screenshotUrl?: string
 }
 
-type GalleryAnchor = BboxAnchor | PointAnchor
+interface HtmlCharOffsetAnchor {
+  type: 'html-char-offset'
+  screenshotUrl?: string
+  pageUrl?: string
+  pageName?: string
+  selector?: Array<{ type: string; exact?: string; prefix?: string; suffix?: string }>
+}
+
+type GalleryAnchor = BboxAnchor | PointAnchor | HtmlCharOffsetAnchor
 
 interface SavedAnnotation {
   id: string
@@ -53,7 +62,7 @@ export function TorusAnnotationViewer({
 
   const galleryAnnotations = savedAnnotations.filter(ann => {
     const anchorType = (ann.anchor as { type?: unknown }).type
-    return anchorType === 'bbox' || anchorType === 'point'
+    return anchorType === 'bbox' || anchorType === 'point' || anchorType === 'html-char-offset'
   })
 
   const [activeIdx, setActiveIdx] = useState(0)
@@ -75,8 +84,14 @@ export function TorusAnnotationViewer({
   const next = useCallback(() => setActiveIdx(i => Math.min(total - 1, i + 1)), [total])
 
   const anchor = current ? (current.anchor as unknown as GalleryAnchor) : null
-  const screenshotUrl = anchor && 'screenshotUrl' in anchor ? anchor.screenshotUrl : undefined
-  const textQuote = anchor && 'textQuote' in anchor ? (anchor as BboxAnchor).textQuote : undefined
+  const screenshotUrl = anchor?.screenshotUrl
+  const textQuote = anchor
+    ? 'textQuote' in anchor
+      ? (anchor as BboxAnchor).textQuote
+      : 'selector' in anchor
+        ? (anchor as HtmlCharOffsetAnchor).selector?.find(s => s.type === 'TextQuoteSelector')?.exact
+        : undefined
+    : undefined
   const pageName = anchor?.pageName
   const pageUrl = anchor?.pageUrl ?? sourceUrl ?? '#'
   const criterionLabel = current?.rubricItemId ? criterionById[current.rubricItemId] ?? null : null

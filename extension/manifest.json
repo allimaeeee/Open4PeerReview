@@ -6,7 +6,8 @@
   "permissions": ["activeTab", "tabs", "storage", "scripting", "webNavigation", "cookies"],
   "host_permissions": [
     "https://proton.oli.cmu.edu/*",
-    "https://oerhub.vercel.app/*"
+    "https://oerhub.vercel.app/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js",

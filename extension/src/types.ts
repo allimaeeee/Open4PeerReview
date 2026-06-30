@@ -22,6 +22,7 @@ export interface HtmlCharOffsetAnchor {
   selector: AnchorSelector[];
   screenshotUrl?: string;
   pageUrl?: string;
+  pageName?: string;
 }
 
 export interface BboxAnchor {
@@ -105,6 +106,7 @@ export type BackgroundMessageType =
   | 'GET_ANNOTATIONS'
   | 'GET_SCORES'
   | 'SET_REVIEW_STATUS'
+  | 'UPDATE_DOCUMENT_PAGES'
   | 'LOGIN'
   | 'LOGOUT'
   | 'GET_AUTH'
