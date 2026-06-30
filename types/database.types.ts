@@ -190,6 +190,7 @@ export type Database = {
           content_fingerprint: string | null
           coordinator_released_at: string | null
           coordinator_upload: boolean
+          course_access_code: string | null
           created_at: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"] | null
@@ -211,6 +212,7 @@ export type Database = {
           content_fingerprint?: string | null
           coordinator_released_at?: string | null
           coordinator_upload?: boolean
+          course_access_code?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"] | null
@@ -232,6 +234,7 @@ export type Database = {
           content_fingerprint?: string | null
           coordinator_released_at?: string | null
           coordinator_upload?: boolean
+          course_access_code?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"] | null
@@ -406,7 +409,7 @@ export type Database = {
           document_id: string
           id: string
           last_saved_at: string | null
-          general_comment: string | null
+          notes: string | null
           overall_comment: string | null
           reviewer_id: string
           rubric_id: string
@@ -419,7 +422,7 @@ export type Database = {
           document_id: string
           id?: string
           last_saved_at?: string | null
-          general_comment?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id: string
           rubric_id: string
@@ -432,7 +435,7 @@ export type Database = {
           document_id?: string
           id?: string
           last_saved_at?: string | null
-          general_comment?: string | null
+          notes?: string | null
           overall_comment?: string | null
           reviewer_id?: string
           rubric_id?: string

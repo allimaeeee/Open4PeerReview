@@ -21,7 +21,9 @@ export interface OERDocument {
   file_url: string | null
   storage_path: string | null
   file_type: string | null
+  platform: string | null
   source_url: string | null
+  course_access_code: string | null
   content_fingerprint: string | null
   pages: OERPage[] | null
 }
@@ -70,7 +72,7 @@ export interface Review {
   id: string
   status: 'unassigned' | 'assigned' | 'in_progress' | 'submitted'
   overall_comment: string | null
-  general_comment: string | null
+  notes: string | null
   last_saved_at: string | null
   rubric_id: string
   rubric: Rubric
@@ -95,7 +97,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
   const supabase = createBrowserSupabase()
 
   const reviewSelect = `
-    id, status, overall_comment, general_comment, last_saved_at, rubric_id,
+    id, status, overall_comment, notes, last_saved_at, rubric_id,
     rubric:rubrics ( id, title, description, operational_definition ),
     review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
     annotations ( id, rubric_item_id, anchor, body, tag ),

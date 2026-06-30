@@ -7,19 +7,19 @@ import { ReviewerApp, type Review, type OERPage } from './components/ReviewerApp
 export default async function ReviewerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ document?: string }>
+  searchParams: Promise<{ document?: string; review?: string }>
 }) {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { document: documentId } = await searchParams
+  const { document: documentId, review: reviewId } = await searchParams
 
   // Load the requested document, or fall back to the first one
   const docQuery = supabase
     .from('documents')
-    .select('id, title, file_url, storage_path, file_type, source_url, content_fingerprint, pages')
+    .select('id, title, file_url, storage_path, file_type, platform, source_url, course_access_code, content_fingerprint, pages')
 
   const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()
@@ -79,30 +79,40 @@ export default async function ReviewerPage({
     criteria_count: Array.isArray(rubric_items) ? rubric_items.length : 0,
   }))
 
-  // Existing in-progress review by this reviewer on this document.
-  // Filter by rubric_id to avoid loading a stale review whose rubric_id no longer
-  // matches the document's assigned rubrics — the DB submit trigger validates
-  // criteria based on the review's rubric_id, so a mismatched review causes a
-  // spurious "unscored criteria" error from the wrong rubric.
+  const reviewSelect = `
+    id, status, overall_comment, notes, last_saved_at,
+    rubric_id,
+    rubric:rubrics ( id, title, description, operational_definition ),
+    review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
+    annotations ( id, rubric_item_id, anchor, body, tag ),
+    score_comments ( id, rubric_item_id, score_level, body )
+  `
+
+  // When the extension's Console button is used it passes ?review=<id> so we load
+  // that specific review directly — no rubric filter needed.  Fallback: rubric-filtered
+  // query for direct browser access (rubric_id filter prevents loading a review whose
+  // rubric no longer matches the document's assignment and would cause submit errors).
   const rubricIds = rubricsRaw.map(r => r.id)
-  const { data: existingReview } = document && rubricIds.length > 0
-    ? await supabase
-        .from('reviews')
-        .select(`
-          id, status, overall_comment, notes, last_saved_at,
-          rubric_id,
-          rubric:rubrics ( id, title, description, operational_definition ),
-          review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
-          annotations ( id, rubric_item_id, anchor, body, tag ),
-          score_comments ( id, rubric_item_id, score_level, body )
-        `)
-        .eq('document_id', document.id)
-        .eq('reviewer_id', user.id)
-        .in('rubric_id', rubricIds)
-        .in('status', ['assigned', 'in_progress', 'submitted'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+  const { data: existingReview } = document
+    ? reviewId
+      ? await supabase
+          .from('reviews')
+          .select(reviewSelect)
+          .eq('id', reviewId)
+          .eq('reviewer_id', user.id)
+          .maybeSingle()
+      : rubricIds.length > 0
+        ? await supabase
+            .from('reviews')
+            .select(reviewSelect)
+            .eq('document_id', document.id)
+            .eq('reviewer_id', user.id)
+            .in('rubric_id', rubricIds)
+            .in('status', ['assigned', 'in_progress', 'submitted'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : { data: null }
     : { data: null }
 
   return (
