@@ -78,15 +78,29 @@ let completionText: HTMLElement;
 // ── Popup overlay (page DOM, not shadow) ──────────────────────────────────────
 
 let annotationPopup: HTMLElement;
+let annotationTooltip: HTMLElement | null = null;
 let pendingAnchor: HtmlCharOffsetAnchor | null = null;
 let pendingHotspotAnchor: PointAnchor | null = null;
-let pendingTorusScreenshot: Promise<string | null> | null = null;
 let hotspotMode = false;
 
 // ── Messaging ─────────────────────────────────────────────────────────────────
 
 function send<T = unknown>(msg: BackgroundMessage): Promise<BackgroundResponse<T>> {
-  return chrome.runtime.sendMessage(msg);
+  try {
+    return (chrome.runtime.sendMessage(msg) as Promise<BackgroundResponse<T>>)
+      .catch((err: Error) => {
+        if (err?.message?.includes('Extension context invalidated')) {
+          showToast('Extension reloaded — please refresh this page to reconnect.');
+        }
+        return { success: false, error: err?.message ?? 'messaging error' } as BackgroundResponse<T>;
+      });
+  } catch (err) {
+    const errMsg = (err as Error)?.message ?? '';
+    if (errMsg.includes('Extension context invalidated')) {
+      showToast('Extension reloaded — please refresh this page to reconnect.');
+    }
+    return Promise.resolve({ success: false, error: errMsg } as BackgroundResponse<T>);
+  }
 }
 
 // ── Anchoring (ported from lib/anchoring/html.ts) ─────────────────────────────
@@ -223,15 +237,62 @@ function markRange(
         ev.stopPropagation();
         onClick();
       });
+      mark.addEventListener('mouseenter', (ev) => showAnnotationTooltipFor(annotationId, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
+      mark.addEventListener('mousemove', (ev) => showAnnotationTooltipFor(annotationId, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
+      mark.addEventListener('mouseleave', hideAnnotationTooltip);
     } catch {
       // Skip partial overlaps
     }
   }
 }
 
+function clearPendingHighlight() {
+  document.querySelectorAll('mark[data-annotation-id="pending"]').forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize();
+  });
+}
+
+function applyPendingHighlight(range: Range) {
+  clearPendingHighlight();
+  const segments: [Text, number, number][] = [];
+  const ancestor = range.commonAncestorContainer;
+
+  if (ancestor.nodeType === Node.TEXT_NODE) {
+    segments.push([ancestor as Text, range.startOffset, range.endOffset]);
+  } else {
+    const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
+    let inRange = false;
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const isStart = node === range.startContainer;
+      const isEnd   = node === range.endContainer;
+      if (isStart) inRange = true;
+      if (!inRange) continue;
+      const s = isStart ? range.startOffset : 0;
+      const e = isEnd   ? range.endOffset   : node.length;
+      if (s < e) segments.push([node, s, e]);
+      if (isEnd) break;
+    }
+  }
+
+  for (const [textNode, s, e] of segments) {
+    const r = document.createRange();
+    r.setStart(textNode, s);
+    r.setEnd(textNode, e);
+    const mark = document.createElement('mark');
+    mark.dataset.annotationId = 'pending';
+    mark.style.cssText = 'background:rgba(254,214,91,0.6);border-radius:2px;padding:0;';
+    try { r.surroundContents(mark); } catch { /* skip partial overlaps */ }
+  }
+}
+
 function applyHighlights() {
-  // Remove old marks
-  document.querySelectorAll('mark[data-annotation-id]').forEach(m => {
+  // Remove saved marks only — pending mark is managed separately
+  document.querySelectorAll('mark[data-annotation-id]:not([data-annotation-id="pending"])').forEach(m => {
     const parent = m.parentNode;
     if (!parent) return;
     while (m.firstChild) parent.insertBefore(m.firstChild, m);
@@ -239,8 +300,17 @@ function applyHighlights() {
     parent.normalize();
   });
 
+  const base = currentPageBase();
   const textAnnotations = annotations
-    .filter(a => a.anchor.type === 'html-char-offset')
+    .filter(a => {
+      if (a.anchor.type !== 'html-char-offset') return false;
+      const anchor = a.anchor as HtmlCharOffsetAnchor;
+      if (!anchor.pageUrl) return true; // legacy annotations without pageUrl
+      try {
+        const anchorBase = new URL(anchor.pageUrl).origin + new URL(anchor.pageUrl).pathname;
+        return anchorBase === base;
+      } catch { return true; }
+    })
     .sort((a, b) => {
       const getStart = (ann: AnnotationRecord) => {
         if (ann.anchor.type !== 'html-char-offset') return 0;
@@ -269,7 +339,6 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
   el.id = `hotspot-marker-${ann.id}`;
   el.dataset.annotationId = ann.id;
   el.className = 'oer-hotspot-marker';
-  el.title = ann.body.slice(0, 80);
   el.style.cssText = `
     position: absolute;
     left: ${anchor.pageX}px;
@@ -290,13 +359,18 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
     </svg>
     <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:#3D6FA9;font-family:Inter,-apple-system,sans-serif;line-height:1;">${index}</div>
   `;
-  el.addEventListener('mouseenter', () => {
+  el.addEventListener('mouseenter', (ev) => {
     el.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.45))';
     el.style.transform = 'translate(-50%, -105%)';
+    showAnnotationTooltipFor(ann.id, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY);
+  });
+  el.addEventListener('mousemove', (ev) => {
+    showAnnotationTooltipFor(ann.id, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY);
   });
   el.addEventListener('mouseleave', () => {
     el.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.35))';
     el.style.transform = 'translate(-50%, -100%)';
+    hideAnnotationTooltip();
   });
   el.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -551,15 +625,46 @@ async function captureAnnotationScreenshot(): Promise<string | null> {
   if (!selectedReview) return null;
   try {
     const captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
-    if (!captureResp.success || !captureResp.data?.png) return null;
+    if (!captureResp.success || !captureResp.data?.png) {
+      console.error('[OER] CAPTURE_TAB failed:', captureResp.error);
+      return null;
+    }
     const uploadResp = await send<{ url: string }>({
       type: 'UPLOAD_SCREENSHOT',
       payload: { png: captureResp.data.png, reviewId: selectedReview.id },
     });
+    if (!uploadResp.success) console.error('[OER] UPLOAD_SCREENSHOT failed:', uploadResp.error);
     return uploadResp.success ? (uploadResp.data?.url ?? null) : null;
-  } catch {
+  } catch (err) {
+    console.error('[OER] captureAnnotationScreenshot threw:', err);
     return null;
   }
+}
+
+async function computePageFingerprint(): Promise<string> {
+  const text = document.body?.innerText ?? '';
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function updateDocumentPages(screenshotUrl: string | null) {
+  if (!selectedReview || !isTorusPage()) return;
+  const fingerprint = await computePageFingerprint();
+  await send({
+    type: 'UPDATE_DOCUMENT_PAGES',
+    payload: {
+      documentId: selectedReview.document_id,
+      storagePath: `torus/${selectedReview.document_id}/`,
+      pageEntry: {
+        url: window.location.href,
+        fingerprint,
+        storagePath: screenshotUrl ?? '',
+      },
+    },
+  });
 }
 
 // ── Annotation handling ───────────────────────────────────────────────────────
@@ -569,8 +674,8 @@ async function saveAnnotation(
   body: string,
   tag: HighlightTag | null,
   anchor: HtmlCharOffsetAnchor | BboxAnchor | PointAnchor,
-) {
-  if (!selectedReview) return;
+): Promise<AnnotationRecord | null> {
+  if (!selectedReview) return null;
   setSaveStatus('saving');
   const resp = await send<AnnotationRecord>({
     type: 'SAVE_ANNOTATION',
@@ -582,11 +687,37 @@ async function saveAnnotation(
       tag,
     },
   });
-  if (!resp.success || !resp.data) { setSaveStatus('error'); return; }
+  if (!resp.success || !resp.data) { setSaveStatus('error'); return null; }
   annotations.push(resp.data);
   setSaveStatus('saved');
   applyHighlights();
   refreshAnnotationList(rubricItemId ?? '__free__');
+  return resp.data;
+}
+
+// Take screenshot AFTER highlights/markers are painted, then patch the annotation anchor.
+async function attachScreenshotToAnnotations(savedAnns: AnnotationRecord[]) {
+  if (savedAnns.length === 0) return;
+  const screenshotUrl = await captureAnnotationScreenshot();
+
+  if (screenshotUrl) {
+    for (const ann of savedAnns) {
+      const updatedAnchor = { ...(ann.anchor as unknown as Record<string, unknown>), screenshotUrl };
+      const resp = await send<AnnotationRecord>({
+        type: 'SAVE_ANNOTATION',
+        payload: { id: ann.id, anchor: updatedAnchor },
+      });
+      if (!resp.success) continue;
+      const idx = annotations.findIndex(a => a.id === ann.id);
+      if (idx !== -1) {
+        annotations[idx] = { ...annotations[idx], anchor: updatedAnchor as unknown as HtmlCharOffsetAnchor | BboxAnchor | PointAnchor };
+        refreshAnnotationList(ann.rubric_item_id ?? '__free__');
+      }
+    }
+  }
+
+  // Track annotated Torus pages in documents.pages (fire-and-forget, non-critical)
+  updateDocumentPages(screenshotUrl).catch(() => { /* non-critical */ });
 }
 
 async function deleteAnnotation(annotationId: string) {
@@ -746,8 +877,70 @@ function createAnnotationPopupEl() {
   `;
   document.body.appendChild(annotationPopup);
 
-  // Prevent clicks inside popup from clearing the selection
-  annotationPopup.addEventListener('mousedown', e => e.preventDefault());
+  // Prevent clicks inside popup from clearing the text selection, but allow
+  // textarea and input clicks through so focus can be placed after interacting
+  // with criteria checkboxes.
+  annotationPopup.addEventListener('mousedown', e => {
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    e.preventDefault();
+  });
+}
+
+// ── Annotation hover tooltip ──────────────────────────────────────────────────
+
+function createAnnotationTooltip() {
+  annotationTooltip = document.createElement('div');
+  annotationTooltip.id = 'oer-ann-tooltip';
+  annotationTooltip.style.cssText = [
+    'position:fixed',
+    'z-index:2147483647',
+    'background:#1a202c',
+    'color:#e2e8f0',
+    'border-radius:8px',
+    'padding:8px 12px',
+    'font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif',
+    'font-size:12px',
+    'line-height:1.5',
+    'max-width:260px',
+    'box-shadow:0 4px 16px rgba(0,0,0,0.3)',
+    'pointer-events:none',
+    'display:none',
+    'word-break:break-word',
+  ].join(';');
+  document.body.appendChild(annotationTooltip);
+}
+
+function showAnnotationTooltipFor(annId: string, clientX: number, clientY: number) {
+  if (!annotationTooltip) return;
+  const ann = annotations.find(a => a.id === annId);
+  if (!ann) return;
+
+  const criterionLabel = ann.rubric_item_id
+    ? rubricItems.find(r => r.id === ann.rubric_item_id)?.label ?? null
+    : null;
+
+  let html = '';
+  if (criterionLabel) {
+    const code = criterionLabel.split(' · ')[0] ?? criterionLabel;
+    html += `<div style="font-size:10px;font-weight:700;color:#90cdf4;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;">${escHtml(code)}</div>`;
+  }
+  html += `<div>${escHtml(ann.body.slice(0, 140))}${ann.body.length > 140 ? '…' : ''}</div>`;
+
+  annotationTooltip.innerHTML = html;
+  annotationTooltip.style.display = 'block';
+
+  const tipW = 260;
+  let left = clientX - tipW / 2;
+  let top = clientY - (annotationTooltip.offsetHeight || 56) - 12;
+  left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
+  if (top < 8) top = clientY + 20;
+  annotationTooltip.style.left = `${left}px`;
+  annotationTooltip.style.top = `${top}px`;
+}
+
+function hideAnnotationTooltip() {
+  if (annotationTooltip) annotationTooltip.style.display = 'none';
 }
 
 function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
@@ -755,7 +948,8 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
   annotationPopup.style.position = 'absolute';
   const quote = (anchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact ?? '';
   const sel = window.getSelection();
-  const rect = sel?.getRangeAt(0).getBoundingClientRect();
+  const selRange = sel && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
+  const rect = selRange?.getBoundingClientRect();
 
   const criteriaCheckboxes = rubricItems.map(item => {
     const code = item.label.split(' · ')[0] ?? item.label;
@@ -827,39 +1021,30 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
       return;
     }
     const rawAnchor = pendingAnchor;
-    const screenshotCapture = pendingTorusScreenshot;
     hideAnnotationPopup();
-    window.getSelection()?.removeAllRanges();
 
-    // Always await screenshot (captured pre-emptively at selection time).
-    // On Torus: convert to BboxAnchor so it appears in the gallery viewer.
-    // On all other pages: attach screenshotUrl to the HtmlCharOffsetAnchor so it
-    // shows as a thumbnail in the annotation panel and in the platform console.
-    const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
-    let finalAnchor: HtmlCharOffsetAnchor | BboxAnchor = rawAnchor;
-    if (isTorusPage()) {
-      const quote = (rawAnchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact;
-      finalAnchor = {
-        type: 'bbox',
-        x: 0, y: 0,
-        width: document.documentElement.clientWidth,
-        height: document.documentElement.clientHeight,
-        screenshotUrl,
-        pageUrl: window.location.href,
-        pageName: document.title,
-        textQuote: quote,
-      } as BboxAnchor;
-    } else if (screenshotUrl) {
-      finalAnchor = { ...rawAnchor, screenshotUrl, pageUrl: window.location.href };
-    }
+    // Always keep the text-position anchor so applyHighlights() can mark the text in the DOM.
+    // Record pageUrl (for the "View" button) and pageName (shown on Torus multi-page courses).
+    // Screenshot is taken AFTER save so the highlight mark appears in the image.
+    const finalAnchor = {
+      ...rawAnchor,
+      pageUrl: window.location.href,
+      pageName: document.title,
+    } as HtmlCharOffsetAnchor;
 
+    const savedAnns: AnnotationRecord[] = [];
     if (checkedCriteria.length === 0) {
-      await saveAnnotation(null, body, selectedTag, finalAnchor);
+      const a = await saveAnnotation(null, body, selectedTag, finalAnchor);
+      if (a) savedAnns.push(a);
     } else {
       for (const criterionId of checkedCriteria) {
-        await saveAnnotation(criterionId, body, selectedTag, finalAnchor);
+        const a = await saveAnnotation(criterionId, body, selectedTag, finalAnchor);
+        if (a) savedAnns.push(a);
       }
     }
+
+    // Capture screenshot after highlight marks are in the DOM (~200 ms for paint).
+    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
   });
 
   // Position popup near selection
@@ -873,6 +1058,13 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
     annotationPopup.style.left = `${Math.max(4, left)}px`;
   }
 
+  // Apply persistent pending highlight and clear native browser selection.
+  // This keeps the selected text visually highlighted while the popup is open.
+  if (selRange) {
+    applyPendingHighlight(selRange);
+    sel?.removeAllRanges();
+  }
+
   annotationPopup.style.display = 'block';
   setTimeout(() => {
     (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
@@ -880,10 +1072,10 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
 }
 
 function hideAnnotationPopup() {
+  clearPendingHighlight();
   annotationPopup.style.display = 'none';
   pendingAnchor = null;
   pendingHotspotAnchor = null;
-  pendingTorusScreenshot = null;
 }
 
 // ── Hotspot mode ──────────────────────────────────────────────────────────────
@@ -928,8 +1120,6 @@ function exitHotspotMode() {
 
 function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number) {
   pendingHotspotAnchor = anchor;
-  // Pre-capture a screenshot immediately (before the popup obscures the page)
-  const screenshotCapture = captureAnnotationScreenshot();
 
   const criteriaCheckboxes = rubricItems.map(item => {
     const code = item.label.split(' · ')[0] ?? item.label;
@@ -978,21 +1168,26 @@ function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number)
       (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).style.borderColor = '#fc8181';
       return;
     }
-    const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
     const savedAnchor: PointAnchor = {
       ...pendingHotspotAnchor,
       pageName: document.title,
-      screenshotUrl,
     };
     hideAnnotationPopup();
     exitHotspotMode();
+
+    const savedAnns: AnnotationRecord[] = [];
     if (checkedCriteria.length === 0) {
-      await saveAnnotation(null, body, null, savedAnchor);
+      const a = await saveAnnotation(null, body, null, savedAnchor);
+      if (a) savedAnns.push(a);
     } else {
       for (const criterionId of checkedCriteria) {
-        await saveAnnotation(criterionId, body, null, savedAnchor);
+        const a = await saveAnnotation(criterionId, body, null, savedAnchor);
+        if (a) savedAnns.push(a);
       }
     }
+
+    // Screenshot after hotspot marker is placed in the DOM.
+    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
   });
 
   // Position near click, keep within viewport
@@ -1038,10 +1233,7 @@ function handleMouseUp(e: MouseEvent) {
 
   setTimeout(() => {
     const anchor = selectionToAnchor();
-    if (anchor) {
-      pendingTorusScreenshot = captureAnnotationScreenshot();
-      showAnnotationPopup(anchor);
-    }
+    if (anchor) showAnnotationPopup(anchor);
   }, 0);
 }
 
@@ -1259,7 +1451,7 @@ function renderReviewInterface() {
         <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
         <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
       </div>
-      <a class="btn-open-console" id="btn-open-console" href="https://oerhub.vercel.app/review?document=${selectedReview.document_id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
+      <a class="btn-open-console" id="btn-open-console" href="http://localhost:3000/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
       <button class="switch-btn" id="btn-switch-review" title="Switch review">⇄</button>
     </div>
 
@@ -2032,6 +2224,7 @@ async function handleLogin() {
 async function init() {
   createPanel();
   createAnnotationPopupEl();
+  createAnnotationTooltip();
 
   document.addEventListener('mouseup', handleMouseUp);
   document.addEventListener('keydown', (e) => {
@@ -2041,12 +2234,19 @@ async function init() {
     }
   });
 
-  // Re-apply hotspot markers when Torus navigates between pages (SPA routing)
+  // Re-apply all highlights and hotspot markers when Torus navigates (SPA routing).
+  // Torus renders content asynchronously, so we retry at 350ms, 900ms, and 2200ms to
+  // catch slow renders — applyHighlights is idempotent so multiple calls are safe.
+  function scheduleNavHighlights() {
+    setTimeout(applyHighlights, 350);
+    setTimeout(applyHighlights, 900);
+    setTimeout(applyHighlights, 2200);
+  }
   const origPush = history.pushState.bind(history);
   const origReplace = history.replaceState.bind(history);
-  history.pushState = (...args) => { origPush(...args); applyHotspotMarkers(); };
-  history.replaceState = (...args) => { origReplace(...args); applyHotspotMarkers(); };
-  window.addEventListener('popstate', applyHotspotMarkers);
+  history.pushState = (...args) => { origPush(...args); scheduleNavHighlights(); };
+  history.replaceState = (...args) => { origReplace(...args); scheduleNavHighlights(); };
+  window.addEventListener('popstate', scheduleNavHighlights);
 
   // Let the popup query current state
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

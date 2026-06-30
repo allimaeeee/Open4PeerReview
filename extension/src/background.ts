@@ -130,6 +130,20 @@ async function handleMessage(
       return patch(`reviews?id=eq.${reviewId}`, { status }, auth.access_token);
     }
 
+    case 'UPDATE_DOCUMENT_PAGES': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { documentId, storagePath, pageEntry } = msg.payload as {
+        documentId: string;
+        storagePath: string;
+        pageEntry: { url: string; fingerprint: string; storagePath: string };
+      };
+      return callRpc('update_torus_document_pages', {
+        p_document_id: documentId,
+        p_storage_path: storagePath,
+        p_page_entry: pageEntry,
+      }, auth.access_token);
+    }
+
     // ── Dashboard → background auth sync ────────────────────────────────────────
 
     case 'SYNC_AUTH': {
@@ -312,6 +326,7 @@ async function captureTab(windowId: number): Promise<BackgroundResponse<{ png: s
     const png = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
     return { success: true, data: { png } };
   } catch (err) {
+    console.error('[OER] captureTab failed:', err);
     return { success: false, error: (err as Error).message };
   }
 }
@@ -337,10 +352,15 @@ async function uploadScreenshot(
       },
       body: bytes,
     });
-    if (!res.ok) return { success: false, error: await res.text() };
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('[OER] uploadScreenshot failed:', res.status, text);
+      return { success: false, error: text };
+    }
     const url = `${SUPABASE_URL}/storage/v1/object/public/${SCREENSHOTS_BUCKET}/${filename}`;
     return { success: true, data: { url } };
   } catch (err) {
+    console.error('[OER] uploadScreenshot threw:', err);
     return { success: false, error: (err as Error).message };
   }
 }
@@ -377,6 +397,16 @@ async function patch<T>(path: string, body: unknown, token: string): Promise<Bac
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method: 'PATCH',
     headers: headers(token, { 'Prefer': 'return=representation' }),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return { success: false, error: await res.text() };
+  return { success: true };
+}
+
+async function callRpc<T>(fn: string, body: unknown, token: string): Promise<BackgroundResponse<T>> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: headers(token),
     body: JSON.stringify(body),
   });
   if (!res.ok) return { success: false, error: await res.text() };
