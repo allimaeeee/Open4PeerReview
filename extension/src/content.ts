@@ -305,9 +305,24 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
   document.body.appendChild(el);
 }
 
+function currentPageBase(): string {
+  return window.location.origin + window.location.pathname;
+}
+
 function applyHotspotMarkers() {
   document.querySelectorAll('.oer-hotspot-marker').forEach(m => m.remove());
-  const pointAnnotations = annotations.filter(a => a.anchor.type === 'point');
+  const base = currentPageBase();
+  const pointAnnotations = annotations.filter(a => {
+    if (a.anchor.type !== 'point') return false;
+    const anchor = a.anchor as PointAnchor;
+    if (!anchor.pageUrl) return true; // legacy annotations without pageUrl
+    try {
+      const anchorBase = new URL(anchor.pageUrl).origin + new URL(anchor.pageUrl).pathname;
+      return anchorBase === base;
+    } catch {
+      return true;
+    }
+  });
   pointAnnotations.forEach((ann, idx) => placeHotspotMarker(ann, idx + 1));
 }
 
@@ -553,8 +568,10 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
     ? `<span class="ann-tag ${ann.tag}">${ann.tag === 'action_item' ? 'Action Item' : 'Quick Fix'}</span>`
     : '';
 
-  const screenshotHtml = bboxAnchor?.screenshotUrl
-    ? `<img class="screenshot-thumb" src="${bboxAnchor.screenshotUrl}" alt="Screenshot" />`
+  // screenshotUrl can live on any anchor type (bbox, point, or html-char-offset)
+  const screenshotUrl = (ann.anchor as { screenshotUrl?: string }).screenshotUrl ?? null;
+  const screenshotHtml = screenshotUrl
+    ? `<img class="screenshot-thumb" src="${screenshotUrl}" alt="Screenshot" />`
     : '';
 
   const quoteHtml = quote
@@ -722,11 +739,13 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
     hideAnnotationPopup();
     window.getSelection()?.removeAllRanges();
 
-    // On Torus pages: await the pre-captured screenshot and convert the anchor to bbox
-    // so the annotation appears in the TorusAnnotationViewer gallery.
+    // Always await screenshot (captured pre-emptively at selection time).
+    // On Torus: convert to BboxAnchor so it appears in the gallery viewer.
+    // On all other pages: attach screenshotUrl to the HtmlCharOffsetAnchor so it
+    // shows as a thumbnail in the annotation panel and in the platform console.
+    const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
     let finalAnchor: HtmlCharOffsetAnchor | BboxAnchor = rawAnchor;
     if (isTorusPage()) {
-      const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
       const quote = (rawAnchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact;
       finalAnchor = {
         type: 'bbox',
@@ -738,6 +757,8 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
         pageName: document.title,
         textQuote: quote,
       } as BboxAnchor;
+    } else if (screenshotUrl) {
+      finalAnchor = { ...rawAnchor, screenshotUrl, pageUrl: window.location.href };
     }
 
     if (checkedCriteria.length === 0) {
@@ -815,6 +836,8 @@ function exitHotspotMode() {
 
 function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number) {
   pendingHotspotAnchor = anchor;
+  // Pre-capture a screenshot immediately (before the popup obscures the page)
+  const screenshotCapture = captureAnnotationScreenshot();
 
   const criteriaCheckboxes = rubricItems.map(item => {
     const code = item.label.split(' · ')[0] ?? item.label;
@@ -863,9 +886,11 @@ function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number)
       (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).style.borderColor = '#fc8181';
       return;
     }
+    const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
     const savedAnchor: PointAnchor = {
       ...pendingHotspotAnchor,
       pageName: document.title,
+      screenshotUrl,
     };
     hideAnnotationPopup();
     exitHotspotMode();
@@ -922,9 +947,7 @@ function handleMouseUp(e: MouseEvent) {
   setTimeout(() => {
     const anchor = selectionToAnchor();
     if (anchor) {
-      if (isTorusPage()) {
-        pendingTorusScreenshot = captureAnnotationScreenshot();
-      }
+      pendingTorusScreenshot = captureAnnotationScreenshot();
       showAnnotationPopup(anchor);
     }
   }, 0);
@@ -1920,6 +1943,13 @@ async function init() {
       exitHotspotMode();
     }
   });
+
+  // Re-apply hotspot markers when Torus navigates between pages (SPA routing)
+  const origPush = history.pushState.bind(history);
+  const origReplace = history.replaceState.bind(history);
+  history.pushState = (...args) => { origPush(...args); applyHotspotMarkers(); };
+  history.replaceState = (...args) => { origReplace(...args); applyHotspotMarkers(); };
+  window.addEventListener('popstate', applyHotspotMarkers);
 
   // Let the popup query current state
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
