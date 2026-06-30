@@ -13,6 +13,7 @@ import type { HighlightTag } from '@/types'
 import type { Json } from '@/types/database.types'
 import { PDFViewer, type TextSelection, type AnnotationConfirmPayload } from './PDFViewer'
 import HtmlViewerCanvas, { type HtmlTextSelection } from './HtmlViewerCanvas'
+import { TorusAnnotationViewer } from './TorusAnnotationViewer'
 import ReviewRightPanel from './ReviewRightPanel'
 import { Modal, ModalContent } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -749,7 +750,19 @@ export function ReviewerConsole({
         defaultLeftPercent={50}
         leftPanel={
           <div className="h-full overflow-hidden print:hidden">
-            {document.file_type === 'html' && document.content_fingerprint ? (
+            {document.platform === 'OLI Torus' ? (
+              <TorusAnnotationViewer
+                sourceUrl={document.source_url}
+                courseAccessCode={document.course_access_code}
+                savedAnnotations={savedAnnotations}
+                rubricItems={activeViewerCriteria}
+                onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
+                disabled={isSubmitted}
+                scrollToAnnotationId={scrollToAnnotationId}
+                onGoToAnnotation={() => setScrollToAnnotationId(null)}
+                onAnnotationViewFull={handleViewFullComment}
+              />
+            ) : document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas
                 snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
                 additionalPages={document.pages ?? undefined}

@@ -19,7 +19,7 @@ export default async function ReviewerPage({
   // Load the requested document, or fall back to the first one
   const docQuery = supabase
     .from('documents')
-    .select('id, title, file_url, storage_path, file_type, source_url, content_fingerprint, pages')
+    .select('id, title, file_url, storage_path, file_type, platform, source_url, course_access_code, content_fingerprint, pages')
 
   const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()

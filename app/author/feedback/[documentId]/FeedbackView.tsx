@@ -8,6 +8,7 @@ import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import { OerReadOnlyViewer } from './OerReadOnlyViewer'
+import { TorusReadOnlyViewer } from './TorusReadOnlyViewer'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,15 @@ interface ReviewRow {
 }
 
 interface Props {
-  document: { id: string; title: string; file_type?: string | null; content_fingerprint?: string | null }
+  document: {
+    id: string
+    title: string
+    file_type?: string | null
+    content_fingerprint?: string | null
+    platform?: string | null
+    source_url?: string | null
+    course_access_code?: string | null
+  }
   reviews: ReviewRow[]
   allRubrics?: { id: string; title: string; itemIds: string[] }[]
   pdfUrl?: string | null
@@ -198,10 +207,26 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
       <ResizablePanelLayout
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={setLeftPanelCollapsed}
-        leftPanelLabel="View OER"
+        leftPanelLabel={document.platform === 'OLI Torus' ? 'View Torus' : 'View OER'}
         rightPanelLabel="View Report"
         leftPanel={
-          snapshotSrc ? (
+          document.platform === 'OLI Torus' ? (
+            <TorusReadOnlyViewer
+              sourceUrl={document.source_url ?? null}
+              courseAccessCode={document.course_access_code ?? null}
+              annotations={allAnnotations}
+              scrollToAnnotationId={scrollToAnnotationId}
+              rubricItems={rubricItems}
+              onBack={() => setLeftPanelCollapsed(true)}
+              onViewFullComment={(rubricItemId) => {
+                setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
+                setTimeout(() => {
+                  window.document.getElementById(`criterion-${rubricItemId}`)
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 50)
+              }}
+            />
+          ) : snapshotSrc ? (
             <OerReadOnlyViewer
               snapshotSrc={snapshotSrc}
               annotations={allAnnotations}
