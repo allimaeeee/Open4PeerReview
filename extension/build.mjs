@@ -36,6 +36,12 @@ await Promise.all([
     outfile: resolve(OUT, 'popup.js'),
     format: 'iife',
   }),
+  build({
+    ...base,
+    entryPoints: [resolve(SRC, 'dashboard.ts')],
+    outfile: resolve(OUT, 'dashboard.js'),
+    format: 'iife',
+  }),
 ]);
 
 copyFileSync(resolve(__dirname, 'manifest.json'), resolve(OUT, 'manifest.json'));
