@@ -100,6 +100,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       hasGeneralComment,
       sourceUrl: doc.source_url ?? null,
       courseAccessCode: doc.course_access_code ?? null,
+      reviewId: myReview?.id ?? null,
     }
   })
 

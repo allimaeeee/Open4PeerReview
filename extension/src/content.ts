@@ -1929,6 +1929,26 @@ async function init() {
     return false;
   });
 
+  // ── Auto-login from platform deep link ───────────────────────────────────────
+  // When the dashboard opens Torus with ?oer_token=, decode and store auth so
+  // the reviewer never sees the login form.
+  const urlParams = new URLSearchParams(window.location.search);
+  const rawToken = urlParams.get('oer_token');
+  if (rawToken) {
+    try {
+      const auth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
+      if (auth.access_token && auth.user_id) {
+        await new Promise<void>(resolve => chrome.storage.local.set({ auth }, resolve));
+        // Remove the token from browser history so it isn't exposed in the URL bar
+        urlParams.delete('oer_token');
+        const clean = window.location.pathname
+          + (urlParams.toString() ? '?' + urlParams.toString() : '')
+          + window.location.hash;
+        window.history.replaceState({}, '', clean);
+      }
+    } catch { /* malformed token — fall through to normal auth */ }
+  }
+
   const authResp = await send<StoredAuth>({ type: 'GET_AUTH' });
   if (!authResp.success || !authResp.data) {
     renderContent('login');

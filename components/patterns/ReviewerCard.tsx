@@ -7,6 +7,7 @@ import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { RubricTagList } from '@/components/ui/RubricTagList'
 import { Modal } from '@/components/ui/Modal'
+import { createClient } from '@/lib/supabase/client'
 
 export interface RubricProgress {
   rubricId: string
@@ -29,6 +30,7 @@ export interface ReviewerCardProps {
   hasGeneralComment: boolean
   sourceUrl?: string | null
   courseAccessCode?: string | null
+  reviewId?: string | null
 }
 
 export function ReviewerCard({
@@ -45,10 +47,35 @@ export function ReviewerCard({
   hasGeneralComment,
   sourceUrl,
   courseAccessCode,
+  reviewId,
 }: ReviewerCardProps) {
   const [showTorusModal, setShowTorusModal] = useState(false)
   const [copied, setCopied] = useState(false)
   const router = useRouter()
+
+  const handleOpenInTorus = async () => {
+    setShowTorusModal(false)
+    let url = sourceUrl ?? '#'
+    if (url !== '#' && reviewId) {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          const authPayload = {
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            user_id: session.user.id,
+            email: session.user.email ?? '',
+            expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+          }
+          const token = btoa(encodeURIComponent(JSON.stringify(authPayload)))
+          const sep = url.includes('?') ? '&' : '?'
+          url = `${url}${sep}oer_review_id=${reviewId}&oer_token=${encodeURIComponent(token)}`
+        }
+      } catch { /* open without token if anything fails */ }
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
   const anyStarted = rubrics.some(r => pct(r) > 0)
@@ -231,18 +258,16 @@ export function ReviewerCard({
                   Open the live course in a new tab and annotate directly within the platform using the Chrome extension.
                 </p>
               </div>
-              <a
-                href={sourceUrl ?? '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setShowTorusModal(false)}
+              <button
+                type="button"
+                onClick={handleOpenInTorus}
                 className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-label-md font-semibold bg-primary text-on-primary hover:bg-primary-hover transition-colors"
               >
                 Open in Torus
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-              </a>
+              </button>
             </div>
 
             {/* Option 2: Review current annotations */}
