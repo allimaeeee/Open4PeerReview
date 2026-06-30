@@ -1,83 +1,86 @@
-// Runs on the OER Hub dashboard. Syncs the reviewer's Supabase session into
-// chrome.storage.local so the extension on OLI Torus pages can auto-login.
-// @supabase/ssr stores sessions in cookies (not localStorage), so we read
-// from document.cookie. Supabase SSR may split large cookies into chunks.
+// Runs on oerhub.vercel.app. Syncs the reviewer's Supabase session into
+// chrome.storage.local so the extension on OLI Torus can auto-login.
+//
+// Three strategies are tried in order:
+// 1. Scan localStorage for any sb-*-auth-token key (works when supabase-js
+//    browser client stores session there, which is the default).
+// 2. Send SYNC_AUTH_FROM_COOKIES to background — background reads oerhub
+//    cookies via chrome.cookies API, which can access HttpOnly tokens set
+//    by Next.js middleware.
+// 3. Retry after 2s in case the session is set asynchronously by the app.
 
 import type { StoredAuth } from './types';
 
-const SUPABASE_REF = 'lbmyfqeqkpmohlumlkdg';
-const COOKIE_BASE = `sb-${SUPABASE_REF}-auth-token`;
-
-interface SupabaseSession {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number;
-  user: { id: string; email: string };
+interface SupabaseLocalSession {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+  user?: { id: string; email: string };
 }
 
-function parseCookie(name: string): string | null {
-  const prefix = name + '=';
-  for (const part of document.cookie.split(';')) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
-    }
+function findSessionInLocalStorage(): SupabaseLocalSession | null {
+  // Try every localStorage key that looks like a Supabase auth token
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (!(key.startsWith('sb-') && key.endsWith('-auth-token'))) continue;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) ?? '') as SupabaseLocalSession;
+      if (parsed?.access_token && parsed?.user?.id) return parsed;
+    } catch { /* malformed — skip */ }
   }
   return null;
 }
 
-function getSupabaseSessionStr(): string | null {
-  // Try un-chunked cookie first
-  const single = parseCookie(COOKIE_BASE);
-  if (single) return single;
-
-  // Supabase SSR chunks large cookies: sb-{ref}-auth-token.0, .1, ...
-  let result = '';
-  let i = 0;
-  while (true) {
-    const chunk = parseCookie(`${COOKIE_BASE}.${i}`);
-    if (!chunk) break;
-    result += chunk;
-    i++;
-    if (i > 10) break; // safety cap
+function findSessionInSessionStorage(): SupabaseLocalSession | null {
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i);
+    if (!key) continue;
+    if (!(key.startsWith('sb-') && key.endsWith('-auth-token'))) continue;
+    try {
+      const parsed = JSON.parse(sessionStorage.getItem(key) ?? '') as SupabaseLocalSession;
+      if (parsed?.access_token && parsed?.user?.id) return parsed;
+    } catch { /* malformed — skip */ }
   }
-  if (result) return result;
+  return null;
+}
 
-  // Fall back to localStorage (standard supabase-js client)
-  return localStorage.getItem(COOKIE_BASE);
+function saveSessionToBackground(session: SupabaseLocalSession) {
+  const auth: StoredAuth = {
+    access_token: session.access_token!,
+    refresh_token: session.refresh_token ?? '',
+    user_id: session.user!.id,
+    email: session.user!.email ?? '',
+    expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+  };
+  // Save directly in the content script's context (no background round-trip needed)
+  chrome.storage.local.set({ auth });
+  // Also notify background so it has the value cached
+  chrome.runtime.sendMessage({ type: 'SYNC_AUTH', payload: session });
 }
 
 function syncAuth() {
-  const raw = getSupabaseSessionStr();
-  if (!raw) return;
-
-  let session: SupabaseSession;
-  try {
-    session = JSON.parse(raw) as SupabaseSession;
-  } catch {
+  // Strategy 1: localStorage
+  const lsSession = findSessionInLocalStorage();
+  if (lsSession) {
+    saveSessionToBackground(lsSession);
     return;
   }
 
-  if (!session.access_token || !session.user?.id) return;
+  // Strategy 2: sessionStorage
+  const ssSession = findSessionInSessionStorage();
+  if (ssSession) {
+    saveSessionToBackground(ssSession);
+    return;
+  }
 
-  const auth: StoredAuth = {
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
-    user_id: session.user.id,
-    email: session.user.email,
-    expires_at: session.expires_at,
-  };
-
-  chrome.storage.local.set({ auth });
+  // Strategy 3: ask background to read HttpOnly cookies
+  chrome.runtime.sendMessage({ type: 'SYNC_AUTH_FROM_COOKIES' });
 }
 
-// Sync immediately on page load and whenever cookies change
+// Run immediately, then retry once after 2s (for async session initialization)
 syncAuth();
+setTimeout(syncAuth, 2000);
 
-// Storage event fires when another tab updates localStorage (supabase-js standard client)
-window.addEventListener('storage', (e) => {
-  if (e.key === COOKIE_BASE) syncAuth();
-});
-
-// Re-sync every 30s to catch cookie-based session refreshes
-setInterval(syncAuth, 30_000);
+// Re-sync on localStorage changes (e.g. after token refresh)
+window.addEventListener('storage', syncAuth);

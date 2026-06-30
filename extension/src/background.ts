@@ -130,10 +130,112 @@ async function handleMessage(
       return patch(`reviews?id=eq.${reviewId}`, { status }, auth.access_token);
     }
 
+    // ── Dashboard → background auth sync ────────────────────────────────────────
+
+    case 'SYNC_AUTH': {
+      // dashboard.ts sends the raw localStorage session object directly
+      const s = msg.payload as {
+        access_token?: string; refresh_token?: string;
+        expires_at?: number; user?: { id: string; email: string };
+      };
+      if (!s.access_token || !s.user?.id) return { success: false, error: 'Invalid session' };
+      const authToStore: StoredAuth = {
+        access_token: s.access_token,
+        refresh_token: s.refresh_token ?? '',
+        user_id: s.user.id,
+        email: s.user.email ?? '',
+        expires_at: s.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+      };
+      await chrome.storage.local.set({ auth: authToStore });
+      return { success: true };
+    }
+
+    case 'SYNC_AUTH_FROM_COOKIES': {
+      // Read Supabase session from oerhub.vercel.app cookies (including HttpOnly)
+      const cookieAuth = await readSessionFromOerhubCookies();
+      if (cookieAuth) {
+        await chrome.storage.local.set({ auth: cookieAuth });
+        return { success: true };
+      }
+      return { success: false, error: 'No session found in cookies' };
+    }
+
     default:
       return { success: false, error: `Unknown message type` };
   }
 }
+
+// ── Supabase session from oerhub.vercel.app cookies ──────────────────────────
+// chrome.cookies can read HttpOnly cookies — this works even when the session
+// is set server-side by Next.js middleware.
+
+const SUPABASE_REF = 'lbmyfqeqkpmohlumlkdg';
+
+async function readSessionFromOerhubCookies(): Promise<StoredAuth | null> {
+  try {
+    const cookies = await chrome.cookies.getAll({ url: 'https://oerhub.vercel.app' });
+    const prefix = `sb-${SUPABASE_REF}-auth-token`;
+
+    // Try single cookie first
+    const single = cookies.find(c => c.name === prefix);
+    let sessionStr = single ? decodeURIComponent(single.value) : '';
+
+    if (!sessionStr) {
+      // Try chunked cookies: sb-{ref}-auth-token.0, .1, ...
+      const chunks = cookies
+        .filter(c => c.name.startsWith(prefix + '.'))
+        .sort((a, b) => {
+          const ai = parseInt(a.name.slice(prefix.length + 1));
+          const bi = parseInt(b.name.slice(prefix.length + 1));
+          return ai - bi;
+        });
+      if (chunks.length > 0) {
+        sessionStr = chunks.map(c => decodeURIComponent(c.value)).join('');
+      }
+    }
+
+    if (!sessionStr) return null;
+    const session = JSON.parse(sessionStr) as {
+      access_token?: string; refresh_token?: string;
+      expires_at?: number; user?: { id: string; email: string };
+    };
+    if (!session.access_token || !session.user?.id) return null;
+    return {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token ?? '',
+      user_id: session.user.id,
+      email: session.user.email ?? '',
+      expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Layer 2: tabs.onUpdated — backup for URL token when onBeforeNavigate misses
+chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
+  const url = changeInfo.url ?? tab.url ?? '';
+  if (!url.includes('proton.oli.cmu.edu')) return;
+
+  // Try URL token (from oer_token query param)
+  try {
+    const parsed = new URL(url);
+    const rawToken = parsed.searchParams.get('oer_token');
+    if (rawToken) {
+      const tokenAuth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
+      if (tokenAuth.access_token && tokenAuth.user_id) {
+        await chrome.storage.local.set({ auth: tokenAuth });
+        return;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: read from oerhub.vercel.app cookies
+  const cookieAuth = await readSessionFromOerhubCookies();
+  if (cookieAuth) {
+    await chrome.storage.local.set({ auth: cookieAuth });
+  }
+});
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
