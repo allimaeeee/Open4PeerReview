@@ -10,6 +10,7 @@ import type {
   HighlightTag,
   HtmlCharOffsetAnchor,
   BboxAnchor,
+  PointAnchor,
   AnchorSelector,
 } from './types';
 
@@ -63,6 +64,9 @@ let completionText: HTMLElement;
 
 let annotationPopup: HTMLElement;
 let pendingAnchor: HtmlCharOffsetAnchor | null = null;
+let pendingHotspotAnchor: PointAnchor | null = null;
+let pendingTorusScreenshot: Promise<string | null> | null = null;
+let hotspotMode = false;
 
 // ── Messaging ─────────────────────────────────────────────────────────────────
 
@@ -238,6 +242,58 @@ function applyHighlights() {
     const color = ann.tag ? (TAG_COLORS[ann.tag] ?? DEFAULT_HIGHLIGHT) : DEFAULT_HIGHLIGHT;
     markRange(range, ann.id, color, () => scrollToAnnotationInPanel(ann.id));
   }
+
+  applyHotspotMarkers();
+}
+
+// ── Hotspot markers ───────────────────────────────────────────────────────────
+
+function placeHotspotMarker(ann: AnnotationRecord, index: number) {
+  const anchor = ann.anchor as PointAnchor;
+  const el = document.createElement('div');
+  el.id = `hotspot-marker-${ann.id}`;
+  el.dataset.annotationId = ann.id;
+  el.className = 'oer-hotspot-marker';
+  el.title = ann.body.slice(0, 80);
+  el.style.cssText = `
+    position: absolute;
+    left: ${anchor.pageX}px;
+    top: ${anchor.pageY}px;
+    transform: translate(-50%, -100%);
+    width: 28px;
+    height: 36px;
+    cursor: pointer;
+    z-index: 2147483645;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.35));
+    pointer-events: auto;
+    transition: filter 0.15s, transform 0.15s;
+  `;
+  el.innerHTML = `
+    <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;top:0;left:0;">
+      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="#3D6FA9"/>
+      <circle cx="14" cy="14" r="7" fill="white" fill-opacity="0.9"/>
+    </svg>
+    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:#3D6FA9;font-family:Inter,-apple-system,sans-serif;line-height:1;">${index}</div>
+  `;
+  el.addEventListener('mouseenter', () => {
+    el.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.45))';
+    el.style.transform = 'translate(-50%, -105%)';
+  });
+  el.addEventListener('mouseleave', () => {
+    el.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.35))';
+    el.style.transform = 'translate(-50%, -100%)';
+  });
+  el.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    scrollToAnnotationInPanel(ann.id);
+  });
+  document.body.appendChild(el);
+}
+
+function applyHotspotMarkers() {
+  document.querySelectorAll('.oer-hotspot-marker').forEach(m => m.remove());
+  const pointAnnotations = annotations.filter(a => a.anchor.type === 'point');
+  pointAnnotations.forEach((ann, idx) => placeHotspotMarker(ann, idx + 1));
 }
 
 function scrollToAnnotationInPanel(annotationId: string) {
@@ -337,13 +393,42 @@ function refreshScoreButtons(rubricItemId: string) {
   }
 }
 
+// ── Torus detection & auto-screenshot ────────────────────────────────────────
+
+function isTorusPage(): boolean {
+  const href = window.location.href;
+  const sourceUrl = selectedReview?.documents?.source_url ?? '';
+  if (sourceUrl) {
+    try {
+      const sourceHost = new URL(sourceUrl).hostname;
+      return window.location.hostname === sourceHost;
+    } catch { /* ignore */ }
+  }
+  return /torus|oli\.cmu\.edu|course-author\.oli|torus\.oli/.test(href);
+}
+
+async function captureAnnotationScreenshot(): Promise<string | null> {
+  if (!selectedReview) return null;
+  try {
+    const captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
+    if (!captureResp.success || !captureResp.data?.png) return null;
+    const uploadResp = await send<{ url: string }>({
+      type: 'UPLOAD_SCREENSHOT',
+      payload: { png: captureResp.data.png, reviewId: selectedReview.id },
+    });
+    return uploadResp.success ? (uploadResp.data?.url ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Annotation handling ───────────────────────────────────────────────────────
 
 async function saveAnnotation(
   rubricItemId: string | null,
   body: string,
   tag: HighlightTag | null,
-  anchor: HtmlCharOffsetAnchor | BboxAnchor,
+  anchor: HtmlCharOffsetAnchor | BboxAnchor | PointAnchor,
 ) {
   if (!selectedReview) return;
   setSaveStatus('saving');
@@ -393,10 +478,14 @@ function refreshAnnotationList(rubricItemId: string) {
   container.querySelectorAll<HTMLButtonElement>('.ann-delete').forEach(btn => {
     btn.addEventListener('click', () => deleteAnnotation(btn.dataset.id!));
   });
+  container.querySelectorAll<HTMLButtonElement>('.ann-edit').forEach(btn => {
+    btn.addEventListener('click', () => editAnnotation(btn.dataset.id!));
+  });
 }
 
 function renderAnnotationItem(ann: AnnotationRecord): string {
   const isScreenshot = ann.anchor.type === 'bbox';
+  const isHotspot = ann.anchor.type === 'point';
   const bboxAnchor = isScreenshot ? (ann.anchor as BboxAnchor) : null;
   const quote = ann.anchor.type === 'html-char-offset'
     ? (() => {
@@ -418,15 +507,59 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
     ? `<div class="ann-quote">"${quote.slice(0, 60)}${quote.length > 60 ? '…' : ''}"</div>`
     : '';
 
+  const hotspotBadge = isHotspot
+    ? `<div class="ann-hotspot-label">📍 Hotspot</div>`
+    : '';
+
   return `
     <div class="ann-item" id="ann-${ann.id}">
       ${screenshotHtml}
+      ${hotspotBadge}
       ${quoteHtml}
       <div class="ann-body">${escHtml(ann.body)}</div>
       ${tagHtml}
+      <button class="ann-edit" data-id="${ann.id}" title="Edit">✎</button>
       <button class="ann-delete" data-id="${ann.id}" title="Delete">×</button>
     </div>
   `;
+}
+
+function editAnnotation(annotationId: string) {
+  const item = shadow.getElementById(`ann-${annotationId}`);
+  const ann = annotations.find(a => a.id === annotationId);
+  if (!item || !ann) return;
+
+  const savedInnerHTML = item.innerHTML;
+  item.innerHTML = `
+    <textarea class="ann-edit-input" rows="3">${escHtml(ann.body)}</textarea>
+    <div class="inline-note-actions" style="margin-top:4px;">
+      <button class="ann-edit-cancel">Cancel</button>
+      <button class="ann-edit-confirm">Save</button>
+    </div>
+  `;
+  (item.querySelector('.ann-edit-input') as HTMLTextAreaElement)?.focus();
+
+  item.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
+    item.innerHTML = savedInnerHTML;
+    item.querySelector<HTMLButtonElement>('.ann-delete')?.addEventListener('click',
+      () => deleteAnnotation(annotationId));
+    item.querySelector<HTMLButtonElement>('.ann-edit')?.addEventListener('click',
+      () => editAnnotation(annotationId));
+  });
+
+  item.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
+    const newBody = (item.querySelector('.ann-edit-input') as HTMLTextAreaElement).value.trim();
+    if (!newBody) return;
+    setSaveStatus('saving');
+    const resp = await send({ type: 'UPDATE_ANNOTATION', payload: { id: annotationId, body: newBody } });
+    if (resp.success) {
+      ann.body = newBody;
+      setSaveStatus('saved');
+    } else {
+      setSaveStatus('error');
+    }
+    refreshAnnotationList(ann.rubric_item_id ?? '__free__');
+  });
 }
 
 // ── Text selection popup ──────────────────────────────────────────────────────
@@ -456,13 +589,16 @@ function createAnnotationPopupEl() {
 
 function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
   pendingAnchor = anchor;
+  annotationPopup.style.position = 'absolute';
   const quote = (anchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact ?? '';
   const sel = window.getSelection();
   const rect = sel?.getRangeAt(0).getBoundingClientRect();
 
-  const rubricOptions = rubricItems.map(item => {
-    const parts = item.label.split(' · ');
-    return `<option value="${item.id}">${parts[0] ?? item.label}</option>`;
+  const criteriaCheckboxes = rubricItems.map(item => {
+    const code = item.label.split(' · ')[0] ?? item.label;
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
+    </label>`;
   }).join('');
 
   annotationPopup.innerHTML = `
@@ -471,11 +607,11 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
     </div>
 
     <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criterion</label>
-      <select id="oer-pop-criterion" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:inherit;background:#fff;outline:none;">
-        <option value="">— Free note —</option>
-        ${rubricOptions}
-      </select>
+      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criteria <span style="font-weight:400;color:#a0aec0;">(select all that apply)</span></label>
+      <div style="max-height:110px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
+        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
+      </div>
+      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave all unchecked to save as a general note</div>
     </div>
 
     <div style="margin-bottom:8px;">
@@ -519,16 +655,44 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
 
   annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
     if (!pendingAnchor) return;
-    const criterionId = (annotationPopup.querySelector('#oer-pop-criterion') as HTMLSelectElement).value || null;
+    const checkedCriteria = [...annotationPopup.querySelectorAll<HTMLInputElement>('.oer-crit-check:checked')]
+      .map(cb => cb.value);
     const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
     if (!body) {
       (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)
         .style.borderColor = '#fc8181';
       return;
     }
+    const rawAnchor = pendingAnchor;
+    const screenshotCapture = pendingTorusScreenshot;
     hideAnnotationPopup();
     window.getSelection()?.removeAllRanges();
-    await saveAnnotation(criterionId, body, selectedTag, pendingAnchor);
+
+    // On Torus pages: await the pre-captured screenshot and convert the anchor to bbox
+    // so the annotation appears in the TorusAnnotationViewer gallery.
+    let finalAnchor: HtmlCharOffsetAnchor | BboxAnchor = rawAnchor;
+    if (isTorusPage()) {
+      const screenshotUrl = screenshotCapture ? (await screenshotCapture ?? undefined) : undefined;
+      const quote = (rawAnchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact;
+      finalAnchor = {
+        type: 'bbox',
+        x: 0, y: 0,
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight,
+        screenshotUrl,
+        pageUrl: window.location.href,
+        pageName: document.title,
+        textQuote: quote,
+      } as BboxAnchor;
+    }
+
+    if (checkedCriteria.length === 0) {
+      await saveAnnotation(null, body, selectedTag, finalAnchor);
+    } else {
+      for (const criterionId of checkedCriteria) {
+        await saveAnnotation(criterionId, body, selectedTag, finalAnchor);
+      }
+    }
   });
 
   // Position popup near selection
@@ -551,29 +715,164 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
 function hideAnnotationPopup() {
   annotationPopup.style.display = 'none';
   pendingAnchor = null;
+  pendingHotspotAnchor = null;
+  pendingTorusScreenshot = null;
+}
+
+// ── Hotspot mode ──────────────────────────────────────────────────────────────
+
+function enterHotspotMode() {
+  hotspotMode = true;
+  document.body.style.cursor = 'crosshair';
+  shadow.getElementById('btn-hotspot')?.classList.add('active');
+
+  const banner = document.createElement('div');
+  banner.id = 'oer-hotspot-banner';
+  banner.style.cssText = `
+    position: fixed;
+    top: 12px;
+    left: calc(50% - ${PANEL_WIDTH / 2}px);
+    transform: translateX(-50%);
+    background: #3D6FA9;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-family: Inter, -apple-system, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 2147483646;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+    white-space: nowrap;
+  `;
+  banner.innerHTML = `📍 Click anywhere to place a hotspot &nbsp;<span style="background:rgba(255,255,255,0.2);padding:2px 7px;border-radius:10px;font-size:11px;">Esc to cancel</span>`;
+  document.body.appendChild(banner);
+}
+
+function exitHotspotMode() {
+  hotspotMode = false;
+  document.body.style.cursor = '';
+  shadow.getElementById('btn-hotspot')?.classList.remove('active');
+  document.getElementById('oer-hotspot-banner')?.remove();
+}
+
+function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number) {
+  pendingHotspotAnchor = anchor;
+
+  const criteriaCheckboxes = rubricItems.map(item => {
+    const code = item.label.split(' · ')[0] ?? item.label;
+    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
+    </label>`;
+  }).join('');
+
+  annotationPopup.style.position = 'fixed';
+  annotationPopup.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+      <svg width="14" height="14" viewBox="0 0 28 36" fill="#3D6FA9"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>
+      <span style="font-size:12px;font-weight:600;color:#2d3748;">Hotspot Annotation</span>
+    </div>
+
+    <div style="margin-bottom:8px;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criteria <span style="font-weight:400;color:#a0aec0;">(select all that apply)</span></label>
+      <div style="max-height:100px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
+        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
+      </div>
+      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave unchecked to save as a general note</div>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
+      <textarea id="oer-pop-body" rows="3" placeholder="Describe this hotspot…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;color:#1a202c;box-sizing:border-box;outline:none;"></textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button id="oer-pop-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
+      <button id="oer-pop-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Save Hotspot</button>
+    </div>
+  `;
+
+  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', () => {
+    hideAnnotationPopup();
+    exitHotspotMode();
+  });
+
+  annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
+    if (!pendingHotspotAnchor) return;
+    const checkedCriteria = [...annotationPopup.querySelectorAll<HTMLInputElement>('.oer-crit-check:checked')]
+      .map(cb => cb.value);
+    const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
+    if (!body) {
+      (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).style.borderColor = '#fc8181';
+      return;
+    }
+    const savedAnchor: PointAnchor = {
+      ...pendingHotspotAnchor,
+      pageName: document.title,
+    };
+    hideAnnotationPopup();
+    exitHotspotMode();
+    if (checkedCriteria.length === 0) {
+      await saveAnnotation(null, body, null, savedAnchor);
+    } else {
+      for (const criterionId of checkedCriteria) {
+        await saveAnnotation(criterionId, body, null, savedAnchor);
+      }
+    }
+  });
+
+  // Position near click, keep within viewport
+  const popupW = 300;
+  const popupH = 280;
+  let left = clientX + 12;
+  let top = clientY - popupH / 2;
+  if (left + popupW > window.innerWidth - PANEL_WIDTH - 8) left = clientX - popupW - 12;
+  top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
+  annotationPopup.style.top = `${top}px`;
+  annotationPopup.style.left = `${Math.max(8, left)}px`;
+  annotationPopup.style.display = 'block';
+
+  setTimeout(() => {
+    (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
+  }, 0);
 }
 
 function handleMouseUp(e: MouseEvent) {
   if (!selectedReview) return;
 
-  // Ignore clicks inside our popup or panel host
   const target = e.target as HTMLElement;
-  if (
-    target.closest('#oer-ann-popup') ||
-    target.closest('#oer-review-host')
-  ) return;
+  if (target.closest('#oer-ann-popup') || target.closest('#oer-review-host')) return;
 
-  // Hide popup if clicking elsewhere
   if (annotationPopup.style.display !== 'none') {
-    if (!target.closest('#oer-ann-popup')) {
-      hideAnnotationPopup();
-    }
+    if (!target.closest('#oer-ann-popup')) hideAnnotationPopup();
+    return;
+  }
+
+  if (hotspotMode) {
+    if (target.classList.contains('oer-hotspot-marker') || target.closest('.oer-hotspot-marker')) return;
+    const anchor: PointAnchor = {
+      type: 'point',
+      pageX: e.pageX,
+      pageY: e.pageY,
+      relX: e.pageX / document.documentElement.scrollWidth,
+      relY: e.pageY / document.documentElement.scrollHeight,
+      pageUrl: window.location.href,
+    };
+    showHotspotPopup(anchor, e.clientX, e.clientY);
     return;
   }
 
   setTimeout(() => {
     const anchor = selectionToAnchor();
-    if (anchor) showAnnotationPopup(anchor);
+    if (anchor) {
+      if (isTorusPage()) {
+        pendingTorusScreenshot = captureAnnotationScreenshot();
+      }
+      showAnnotationPopup(anchor);
+    }
   }, 0);
 }
 
@@ -631,7 +930,7 @@ function showPinPopup(thumbPng: string, screenshotUrl: string) {
     <div style="margin-bottom:8px;">
       <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Link to criterion (optional)</label>
       <select id="pin-criterion" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:inherit;background:#fff;box-sizing:border-box;outline:none;">
-        <option value="">— Free note —</option>
+        <option value="">— General note —</option>
         ${rubricOptions}
       </select>
     </div>
@@ -663,6 +962,7 @@ function showPinPopup(thumbPng: string, screenshotUrl: string) {
       width: document.documentElement.clientWidth,
       height: document.documentElement.clientHeight,
       screenshotUrl,
+      pageUrl: window.location.href,
     };
     remove();
     await saveAnnotation(criterionId, body, null, anchor);
@@ -803,8 +1103,18 @@ function renderReviewInterface() {
     <div class="criterion-list" id="criterion-list"></div>
 
     <div style="padding:12px 16px;border-top:1px solid #f0f4f8;">
-      <p class="section-label" style="margin-bottom:8px;">Free Notes</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <p class="section-label">General Notes</p>
+        <button class="add-note-btn" id="btn-add-general-note">+ Add Note</button>
+      </div>
       <div class="ann-list" id="ann-list-__free__"></div>
+      <div id="general-note-form" style="display:none;margin-top:8px;">
+        <textarea class="inline-note-input" id="general-note-input" rows="3" placeholder="Add a general note…"></textarea>
+        <div class="inline-note-actions">
+          <button class="inline-note-cancel" id="btn-cancel-general-note">Cancel</button>
+          <button class="inline-note-save" id="btn-save-general-note">Save Note</button>
+        </div>
+      </div>
     </div>
   `;
 
@@ -815,6 +1125,31 @@ function renderReviewInterface() {
     selectedReview = null;
     sessionStorage.removeItem(SESSION_KEY);
     renderContent('select-review');
+  });
+
+  shadow.getElementById('btn-add-general-note')?.addEventListener('click', () => {
+    const form = shadow.getElementById('general-note-form')!;
+    form.style.display = 'block';
+    shadow.getElementById('btn-add-general-note')!.style.display = 'none';
+    (shadow.getElementById('general-note-input') as HTMLTextAreaElement)?.focus();
+  });
+
+  shadow.getElementById('btn-cancel-general-note')?.addEventListener('click', () => {
+    shadow.getElementById('general-note-form')!.style.display = 'none';
+    (shadow.getElementById('general-note-input') as HTMLTextAreaElement).value = '';
+    shadow.getElementById('btn-add-general-note')!.style.display = '';
+  });
+
+  shadow.getElementById('btn-save-general-note')?.addEventListener('click', async () => {
+    const input = shadow.getElementById('general-note-input') as HTMLTextAreaElement;
+    const body = input?.value.trim() ?? '';
+    if (!body) { if (input) input.style.borderColor = '#fc8181'; return; }
+    input.style.borderColor = '#e2e8f0';
+    shadow.getElementById('general-note-form')!.style.display = 'none';
+    input.value = '';
+    shadow.getElementById('btn-add-general-note')!.style.display = '';
+    const anchor: BboxAnchor = { type: 'bbox', x: 0, y: 0, width: 0, height: 0, pageUrl: window.location.href };
+    await saveAnnotation(null, body, null, anchor);
   });
 
   renderRubricCriteria();
@@ -854,6 +1189,14 @@ function renderRubricCriteria() {
           </div>
           <div class="ann-section-label">Annotations</div>
           <div class="ann-list" id="ann-list-${item.id}"></div>
+          <button class="add-crit-comment-btn" data-item="${item.id}">+ Add Comment</button>
+          <div class="crit-comment-form" id="crit-comment-form-${item.id}" style="display:none;">
+            <textarea class="inline-note-input" id="crit-comment-input-${item.id}" rows="2" placeholder="Add a comment…"></textarea>
+            <div class="inline-note-actions">
+              <button class="inline-note-cancel crit-comment-cancel" data-item="${item.id}">Cancel</button>
+              <button class="inline-note-save crit-comment-save" data-item="${item.id}">Save</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -877,6 +1220,45 @@ function renderRubricCriteria() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleScore(btn.dataset.item!, btn.dataset.level as CriterionScore);
+    });
+  });
+
+  // Add Comment buttons
+  list.querySelectorAll<HTMLButtonElement>('.add-crit-comment-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.item!;
+      const form = shadow.getElementById(`crit-comment-form-${itemId}`)!;
+      const isOpen = form.style.display !== 'none';
+      form.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) {
+        (shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement)?.focus();
+      }
+    });
+  });
+
+  list.querySelectorAll<HTMLButtonElement>('.crit-comment-cancel').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.item!;
+      shadow.getElementById(`crit-comment-form-${itemId}`)!.style.display = 'none';
+      const input = shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement;
+      if (input) { input.value = ''; input.style.borderColor = '#e2e8f0'; }
+    });
+  });
+
+  list.querySelectorAll<HTMLButtonElement>('.crit-comment-save').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.item!;
+      const input = shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement;
+      const body = input?.value.trim() ?? '';
+      if (!body) { if (input) input.style.borderColor = '#fc8181'; return; }
+      input.style.borderColor = '#e2e8f0';
+      shadow.getElementById(`crit-comment-form-${itemId}`)!.style.display = 'none';
+      input.value = '';
+      const anchor: BboxAnchor = { type: 'bbox', x: 0, y: 0, width: 0, height: 0 };
+      await saveAnnotation(itemId, body, null, anchor);
     });
   });
 
@@ -1136,11 +1518,39 @@ function createPanel() {
       .ann-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-top: 4px; text-transform: uppercase; }
       .ann-tag.action_item { background: #fed7aa; color: #c2410c; }
       .ann-tag.quick_fix   { background: #bfdbfe; color: #1d4ed8; }
+
+      .screenshot-thumb { width: 100%; height: 56px; object-fit: cover; border-radius: 4px; margin-bottom: 3px; border: 1px solid #e2e8f0; display: block; }
+
+      .add-note-btn { background: none; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 10px; font-weight: 600; color: #a0aec0; cursor: pointer; padding: 2px 7px; font-family: inherit; transition: all 0.12s; }
+      .add-note-btn:hover { border-color: #3D6FA9; color: #3D6FA9; }
+
+      .inline-note-input { width: 100%; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; }
+      .inline-note-input:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+
+      .inline-note-actions { display: flex; gap: 6px; margin-top: 4px; }
+      .inline-note-cancel { flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f7fafc; font-size: 11px; cursor: pointer; font-family: inherit; color: #4a5568; }
+      .inline-note-save { flex: 1; padding: 5px; border-radius: 5px; border: none; background: #3D6FA9; color: white; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+
+      .add-crit-comment-btn { margin-top: 8px; background: none; border: 1px dashed #e2e8f0; border-radius: 5px; font-size: 11px; font-weight: 500; color: #a0aec0; cursor: pointer; padding: 5px; width: 100%; font-family: inherit; transition: all 0.12s; }
+      .add-crit-comment-btn:hover { border-color: #3D6FA9; color: #3D6FA9; border-style: solid; }
+      .crit-comment-form { margin-top: 6px; }
+
+      .btn-hotspot { display: flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+      .btn-hotspot:hover { background: #edf2f7; border-color: #cbd5e0; }
+      .btn-hotspot.active { background: #ebf4ff; border-color: #3D6FA9; color: #3D6FA9; }
+
+      .ann-edit { position: absolute; top: 5px; right: 22px; background: none; border: none; cursor: pointer; color: #cbd5e0; font-size: 13px; line-height: 1; padding: 2px 3px; border-radius: 3px; display: none; font-family: inherit; }
+      .ann-item:hover .ann-edit { display: block; }
+      .ann-edit:hover { color: #3D6FA9; }
       .ann-delete { position: absolute; top: 5px; right: 5px; background: none; border: none; cursor: pointer; color: #cbd5e0; font-size: 15px; line-height: 1; padding: 2px; border-radius: 3px; display: none; font-family: inherit; }
       .ann-item:hover .ann-delete { display: block; }
       .ann-delete:hover { color: #e53e3e; }
 
-      .screenshot-thumb { width: 100%; height: 56px; object-fit: cover; border-radius: 4px; margin-bottom: 3px; border: 1px solid #e2e8f0; display: block; }
+      .ann-edit-input { width: 100%; padding: 5px 7px; border: 1px solid #3D6FA9; border-radius: 5px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; }
+      .ann-edit-cancel { flex: 1; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0; background: #f7fafc; font-size: 11px; cursor: pointer; font-family: inherit; color: #4a5568; }
+      .ann-edit-confirm { flex: 1; padding: 4px; border-radius: 4px; border: none; background: #3D6FA9; color: white; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+
+      .ann-hotspot-label { font-size: 10px; font-weight: 600; color: #3D6FA9; margin-bottom: 3px; }
     </style>
 
     <div class="panel">
@@ -1155,12 +1565,20 @@ function createPanel() {
       <div class="panel-body" id="panel-body"></div>
 
       <div class="panel-ft">
-        <button class="btn-pin" id="btn-pin">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 2L14 6L9 11L5 7L10 2Z"/><path d="M5 7L2 14"/><path d="M7 4L12 9"/>
-          </svg>
-          Pin Screenshot
-        </button>
+        <div style="display:flex;gap:5px;flex:1;">
+          <button class="btn-pin" id="btn-pin">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 2L14 6L9 11L5 7L10 2Z"/><path d="M5 7L2 14"/><path d="M7 4L12 9"/>
+            </svg>
+            Screenshot
+          </button>
+          <button class="btn-hotspot" id="btn-hotspot">
+            <svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor">
+              <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/>
+            </svg>
+            Hotspot
+          </button>
+        </div>
         <span class="save-status" id="save-status"></span>
       </div>
     </div>
@@ -1175,6 +1593,10 @@ function createPanel() {
     host.style.width = host.style.width === '48px' ? `${PANEL_WIDTH}px` : '48px';
   });
   shadow.getElementById('btn-pin')?.addEventListener('click', handlePinScreenshot);
+  shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
+    if (!selectedReview) { showToast('Select a review first'); return; }
+    if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
+  });
 }
 
 // ── Review selection ──────────────────────────────────────────────────────────
@@ -1249,7 +1671,10 @@ async function init() {
 
   document.addEventListener('mouseup', handleMouseUp);
   document.addEventListener('keydown', (e) => {
-    if ((e as KeyboardEvent).key === 'Escape') hideAnnotationPopup();
+    if ((e as KeyboardEvent).key === 'Escape') {
+      hideAnnotationPopup();
+      exitHotspotMode();
+    }
   });
 
   // Let the popup query current state
