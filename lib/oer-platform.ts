@@ -1,3 +1,16 @@
+const OLI_TORUS_RULES = [
+  (h: string) => h === 'proton.oli.cmu.edu' || h.endsWith('.proton.oli.cmu.edu'),
+]
+
+export function isTorusUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url)
+    return OLI_TORUS_RULES.some(r => r(hostname))
+  } catch {
+    return false
+  }
+}
+
 const PLATFORM_RULES: { match: (hostname: string) => boolean; name: string }[] = [
   {
     name: 'OpenStax',

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { uploadDocument, assignRubrics } from '@/lib/supabase/queries'
+import { uploadDocument, assignRubrics, submitTorusLink } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { Modal, ModalContent } from '@/components/ui/Modal'
@@ -14,9 +14,9 @@ import { Button } from '@/components/ui/Button'
 import { SelectionCard } from '@/components/ui/SelectionCard'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
-import { isKnownOerUrl } from '@/lib/oer-platform'
+import { isKnownOerUrl, isTorusUrl } from '@/lib/oer-platform'
 
-type SourceTab = 'pdf' | 'openstax'
+type SourceTab = 'pdf' | 'openstax' | 'torus'
 
 const STEPS = ['Resource', 'Rubrics', 'License', 'Review']
 
@@ -68,6 +68,8 @@ export function SubmissionModal({
   const [file, setFile] = useState<File | null>(null)
   const [openstaxUrl, setOpenstaxUrl] = useState('')
   const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
+  const [torusUrl, setTorusUrl] = useState('')
+  const [torusCourseAccessCode, setTorusCourseAccessCode] = useState('')
   const [submissionScope, setSubmissionScope] = useState<'organization' | 'public'>('organization')
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -102,6 +104,8 @@ export function SubmissionModal({
     setFile(null)
     setOpenstaxUrl('')
     setAdditionalPageUrls([])
+    setTorusUrl('')
+    setTorusCourseAccessCode('')
     setSubmissionScope('organization')
     setSelectedRubrics(new Set())
     setError(null)
@@ -149,6 +153,13 @@ export function SubmissionModal({
     if (sourceTab === 'pdf') {
       if (!file)                                     { setError('Please select a PDF file.'); return }
       if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
+      //Change to regular URL upload     
+    } else if (sourceTab === 'torus') {
+      if (!torusUrl.trim()) { setError('Please enter an OLI Torus URL.'); return }
+      if (!isTorusUrl(torusUrl.trim())) {
+        setError('URL must be from OLI Torus (proton.oli.cmu.edu).')
+        return
+      }
     } else {
       if (!openstaxUrl.trim()) { setError('Please enter an OER URL.'); return }
       if (!isKnownOerUrl(openstaxUrl.trim())) {
@@ -207,6 +218,20 @@ export function SubmissionModal({
         if (selectedRubrics.size > 0) {
           await assignRubrics(supabase, doc.id, Array.from(selectedRubrics))
         }
+      } else if (sourceTab === 'torus') {
+        await submitTorusLink(supabase, {
+          url: torusUrl.trim(),
+          title: title.trim(),
+          authors: authors.trim(),
+          subjectMatter: finalSubjectMatter,
+          ccLicense: ccLicense as CreativeCommonsLicense,
+          thirdPartyDisclosure: thirdPartyDisclosure.trim() || null,
+          courseAccessCode: torusCourseAccessCode.trim() || null,
+          rubricIds: Array.from(selectedRubrics),
+          submissionScope: [submissionScope],
+          isDraft: false,
+          coordinatorUpload: false,
+        })
       } else {
         const res = await fetch('/api/snapshot', {
           method: 'POST',
@@ -300,7 +325,7 @@ export function SubmissionModal({
         <p className="text-label-md font-label font-semibold uppercase tracking-wide text-text-secondary mb-4">
           Resource Type
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <SelectionCard
             selectionMode="radio"
             isSelected={sourceTab === 'openstax'}
@@ -328,11 +353,44 @@ export function SubmissionModal({
               </svg>
             }
           />
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={sourceTab === 'torus'}
+            onChange={() => { setSourceTab('torus'); touch() }}
+            disabled={loading}
+            title="OLI Torus"
+            size="compact"
+            icon={
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            }
+          />
         </div>
       </div>
 
       {/* Conditional source input */}
-      {sourceTab === 'openstax' ? (
+      {sourceTab === 'torus' ? (
+        <div className="space-y-4">
+          <Input
+            label="Torus Course URL"
+            placeholder="https://torus.oli.cmu.edu/..."
+            value={torusUrl}
+            onChange={e => { setTorusUrl(e.target.value); touch() }}
+            disabled={loading}
+            helperText="Paste the URL to your OLI Torus course section."
+          />
+          <Input
+            label="Course Access Code"
+            optional
+            placeholder="e.g. ABC-123"
+            value={torusCourseAccessCode}
+            onChange={e => { setTorusCourseAccessCode(e.target.value); touch() }}
+            disabled={loading}
+            helperText="If your course requires an access code, reviewers will need it to view the content."
+          />
+        </div>
+      ) : sourceTab === 'openstax' ? (
         <div className="space-y-3">
           <Input
             label="Resource URL"
@@ -510,7 +568,10 @@ export function SubmissionModal({
     { label: 'Title',         value: title || '—' },
     { label: 'Author(s)',     value: authors || '—' },
     { label: 'Subject Area',  value: isOther ? (customSubject || '—') : ((EXPERT_DOMAIN_LABELS[subjectMatter as ExpertDomain] ?? subjectMatter) || '—') },
-    { label: 'Resource Type', value: sourceTab === 'pdf' ? `PDF — ${file?.name ?? ''}` : `OpenStax URL — ${openstaxUrl}` },
+    { label: 'Resource Type', value: sourceTab === 'pdf' ? `PDF — ${file?.name ?? ''}` : sourceTab === 'torus' ? `OLI Torus — ${torusUrl}` : `OpenStax URL — ${openstaxUrl}` },
+    ...(sourceTab === 'torus' && torusCourseAccessCode.trim()
+      ? [{ label: 'Access Code', value: torusCourseAccessCode.trim() }]
+      : []),
     ...(sourceTab === 'openstax' && additionalPageUrls.filter(u => u.trim()).length > 0
       ? [{ label: 'Additional Pages', value: `${additionalPageUrls.filter(u => u.trim()).length} additional page(s)` }]
       : []),

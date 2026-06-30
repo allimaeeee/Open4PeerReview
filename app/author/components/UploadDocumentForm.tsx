@@ -3,14 +3,14 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { uploadDocument, assignRubrics, saveDraftDocument } from '@/lib/supabase/queries'
+import { uploadDocument, assignRubrics, saveDraftDocument, submitTorusLink } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { Select } from '@/components/ui/Select'
 import { SelectionCard } from '@/components/ui/SelectionCard'
-import { isKnownOerUrl } from '@/lib/oer-platform'
+import { isKnownOerUrl, isTorusUrl } from '@/lib/oer-platform'
 
-type SourceTab = 'pdf' | 'url'
+type SourceTab = 'pdf' | 'url' | 'torus'
 
 interface RubricOption {
   id: string
@@ -49,6 +49,8 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
   const [file, setFile] = useState<File | null>(null)
   const [oerUrl, setOerUrl] = useState('')
   const [additionalPageUrls, setAdditionalPageUrls] = useState<string[]>([])
+  const [torusUrl, setTorusUrl] = useState('')
+  const [torusCourseAccessCode, setTorusCourseAccessCode] = useState('')
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   // Scope: single-select; org members default to org, no-org authors default to public
   const [submissionScope, setSubmissionScope] = useState<'organization' | 'public'>(
@@ -97,7 +99,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
       if (sourceTab === 'pdf') {
         if (!file) { setError('Please select a PDF file.'); return }
         if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
-      } else {
+      } else if (sourceTab === 'url') {
         if (!oerUrl.trim()) { setError('Please enter an OER URL.'); return }
         if (!isKnownOerUrl(oerUrl.trim())) {
           setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
@@ -109,6 +111,12 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
             setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
             return
           }
+        }
+      } else {
+        if (!torusUrl.trim()) { setError('Please enter an OLI Torus URL.'); return }
+        if (!isTorusUrl(torusUrl.trim())) {
+          setError('URL must be from OLI Torus (proton.oli.cmu.edu).')
+          return
         }
       }
     }
@@ -124,6 +132,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
 
       const hasFile = sourceTab === 'pdf' && !!file
       const hasUrl = sourceTab === 'url' && !!oerUrl.trim() && isKnownOerUrl(oerUrl.trim())
+      const hasTorus = sourceTab === 'torus' && !!torusUrl.trim() && isTorusUrl(torusUrl.trim())
 
       if (hasFile) {
         const doc = await uploadDocument(
@@ -158,6 +167,21 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
         }
         const data = await res.json()
         docId = data.documentId
+      } else if (hasTorus) {
+        const doc = await submitTorusLink(supabase, {
+          url: torusUrl.trim(),
+          title: effectiveTitle,
+          authors: effectiveAuthors,
+          subjectMatter: effectiveSubjectMatter,
+          ccLicense: effectiveLicense,
+          thirdPartyDisclosure: thirdPartyDisclosure.trim() || null,
+          courseAccessCode: torusCourseAccessCode.trim() || null,
+          rubricIds: Array.from(selectedRubrics),
+          submissionScope: scopeArray,
+          isDraft,
+          coordinatorUpload: asCoordinator,
+        })
+        docId = doc.id
       } else {
         // No content source — metadata-only draft
         const doc = await saveDraftDocument(supabase, {
@@ -305,7 +329,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Content Source <span className="text-red-500">*</span>
         </label>
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-3 gap-3 mb-3">
           <button
             type="button"
             onClick={() => setSourceTab('url')}
@@ -324,7 +348,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
             <span className={['flex-1 text-sm font-semibold', sourceTab === 'url' ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
-              OpenStax URL
+              OER URL
             </span>
             <div className={['h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0', sourceTab === 'url' ? 'border-[#1e3a5f]' : 'border-slate-300'].join(' ')}>
               {sourceTab === 'url' && <div className="h-2 w-2 rounded-full bg-[#1e3a5f]" />}
@@ -354,6 +378,30 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
               {sourceTab === 'pdf' && <div className="h-2 w-2 rounded-full bg-[#1e3a5f]" />}
             </div>
           </button>
+          <button
+            type="button"
+            onClick={() => setSourceTab('torus')}
+            disabled={loading}
+            className={[
+              'flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition-all duration-150',
+              sourceTab === 'torus'
+                ? 'border-[#1e3a5f] bg-[#1e3a5f]/5'
+                : 'border-slate-200 bg-white hover:border-slate-300',
+            ].join(' ')}
+          >
+            <svg
+              className={['h-5 w-5 shrink-0', sourceTab === 'torus' ? 'text-[#1e3a5f]' : 'text-slate-400'].join(' ')}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            <span className={['flex-1 text-sm font-semibold', sourceTab === 'torus' ? 'text-[#1e3a5f]' : 'text-slate-700'].join(' ')}>
+              OLI Torus
+            </span>
+            <div className={['h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0', sourceTab === 'torus' ? 'border-[#1e3a5f]' : 'border-slate-300'].join(' ')}>
+              {sourceTab === 'torus' && <div className="h-2 w-2 rounded-full bg-[#1e3a5f]" />}
+            </div>
+          </button>
         </div>
 
         {sourceTab === 'pdf' ? (
@@ -378,6 +426,39 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
               onChange={e => setFile(e.target.files?.[0] ?? null)}
               disabled={loading}
             />
+          </div>
+        ) : sourceTab === 'torus' ? (
+          <div className="space-y-3">
+            <div>
+              <input
+                type="url"
+                placeholder="https://proton.oli.cmu.edu/..."
+                value={torusUrl}
+                onChange={e => setTorusUrl(e.target.value)}
+                disabled={loading}
+                className={inputBase}
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Paste the URL to your OLI Torus course section.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Course access code
+                <span className="ml-1.5 font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. ABC-123"
+                value={torusCourseAccessCode}
+                onChange={e => setTorusCourseAccessCode(e.target.value)}
+                disabled={loading}
+                className={inputBase}
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                If your course requires an access code, reviewers will need it to view the content.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -541,9 +622,9 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              {sourceTab === 'url' ? 'Fetching snapshot…' : 'Uploading…'}
+              {sourceTab === 'url' ? 'Fetching snapshot…' : sourceTab === 'torus' ? 'Linking course…' : 'Uploading…'}
             </>
-          ) : sourceTab === 'url' ? 'Link OER Content' : 'Submit for Review'}
+          ) : sourceTab === 'url' ? 'Link OER Content' : sourceTab === 'torus' ? 'Link Torus Course' : 'Submit for Review'}
         </button>
       </div>
     </form>

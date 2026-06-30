@@ -240,6 +240,56 @@ export async function assignRubrics(
   if (error) throw error
 }
 
+/** Insert a document row for an OLI Torus course link */
+export async function submitTorusLink(
+  supabase: Client,
+  opts: {
+    url: string
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: CreativeCommonsLicense
+    thirdPartyDisclosure: string | null
+    courseAccessCode: string | null
+    rubricIds: string[]
+    submissionScope: string[]
+    isDraft?: boolean
+    coordinatorUpload?: boolean
+  }
+) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      author_id: user.id,
+      title: opts.title,
+      file_url: opts.url,
+      file_type: 'html',
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      source_url: opts.url,
+      platform: 'OLI Torus',
+      course_access_code: opts.courseAccessCode,
+      submission_scope: opts.submissionScope,
+      is_draft: opts.isDraft ?? false,
+      coordinator_upload: opts.coordinatorUpload ?? false,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+
+  if (opts.rubricIds.length > 0) {
+    await assignRubrics(supabase, data.id, opts.rubricIds)
+  }
+
+  return data
+}
+
 /** Save a metadata-only draft with no content source yet */
 export async function saveDraftDocument(
   supabase: Client,
@@ -369,7 +419,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id, storage_path, file_type, content_fingerprint, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
+    .select('id, title, author_id, storage_path, file_type, content_fingerprint, platform, source_url, course_access_code, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
     .eq('id', documentId)
     .single()
 
@@ -444,10 +494,10 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, platform, created_at, subject_matter,
-      creative_commons_license, third_party_content_disclosure, source_url,
+      creative_commons_license, third_party_content_disclosure, source_url, course_access_code,
       author:users!author_id ( id, display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title, rubric_items ( id ) ) ),
-      reviews ( id, status, reviewer_id, submitted_at, rubric_id, general_comment, review_scores ( id, rubric_item_id, criterion_scores ) )
+      reviews ( id, status, reviewer_id, submitted_at, rubric_id, notes, review_scores ( id, rubric_item_id, criterion_scores ) )
     `)
     .order('created_at', { ascending: false })
 

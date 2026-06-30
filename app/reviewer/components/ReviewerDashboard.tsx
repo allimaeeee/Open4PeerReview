@@ -22,7 +22,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const assignedIds = new Set((assignmentsData ?? []).map(a => a.document_id))
 
   type ReviewScoreRow = { id: string; rubric_item_id: string; criterion_scores: string[] }
-  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; general_comment: string | null; review_scores: ReviewScoreRow[] }
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; notes: string | null; review_scores: ReviewScoreRow[] }
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
@@ -85,11 +85,11 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReview = reviews.filter(r => r.reviewer_id === userId).find(r => r.status === 'in_progress')
       ?? reviews.filter(r => r.reviewer_id === userId)[0]
-    const hasGeneralComment = typeof myReview?.general_comment === 'string' && myReview.general_comment.trim().length > 0
+    const hasGeneralComment = typeof myReview?.notes === 'string' && myReview.notes.trim().length > 0
     return {
       id: doc.id,
       title: doc.title,
-      platform: getFileLabel(doc.file_type),
+      platform: doc.platform ?? getFileLabel(doc.file_type),
       authorName: author?.display_name ?? author?.email ?? 'Unknown',
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
@@ -98,6 +98,9 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       rubrics: mapRubricsWithProgress(doc),
       reviewUrl: `/review?document=${doc.id}`,
       hasGeneralComment,
+      sourceUrl: doc.source_url ?? null,
+      courseAccessCode: doc.course_access_code ?? null,
+      reviewId: myReview?.id ?? null,
     }
   })
 
