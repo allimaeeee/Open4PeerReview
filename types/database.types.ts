@@ -190,6 +190,7 @@ export type Database = {
           content_fingerprint: string | null
           coordinator_released_at: string | null
           coordinator_upload: boolean
+          course_access_code: string | null
           created_at: string
           creative_commons_license: Database["public"]["Enums"]["creative_commons_license"]
           file_type: Database["public"]["Enums"]["file_type"] | null
@@ -211,6 +212,7 @@ export type Database = {
           content_fingerprint?: string | null
           coordinator_released_at?: string | null
           coordinator_upload?: boolean
+          course_access_code?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"] | null
@@ -232,6 +234,7 @@ export type Database = {
           content_fingerprint?: string | null
           coordinator_released_at?: string | null
           coordinator_upload?: boolean
+          course_access_code?: string | null
           created_at?: string
           creative_commons_license?: Database["public"]["Enums"]["creative_commons_license"]
           file_type?: Database["public"]["Enums"]["file_type"] | null

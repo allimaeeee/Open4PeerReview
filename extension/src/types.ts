@@ -29,9 +29,22 @@ export interface BboxAnchor {
   width: number;
   height: number;
   screenshotUrl?: string;
+  pageUrl?: string;
+  pageName?: string;
+  textQuote?: string;
 }
 
-export type Anchor = HtmlCharOffsetAnchor | BboxAnchor;
+export interface PointAnchor {
+  type: 'point';
+  pageX: number;
+  pageY: number;
+  relX: number;
+  relY: number;
+  pageUrl?: string;
+  pageName?: string;
+}
+
+export type Anchor = HtmlCharOffsetAnchor | BboxAnchor | PointAnchor;
 
 export interface RubricItem {
   id: string;

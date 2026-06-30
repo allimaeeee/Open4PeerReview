@@ -21,7 +21,9 @@ export interface OERDocument {
   file_url: string | null
   storage_path: string | null
   file_type: string | null
+  platform: string | null
   source_url: string | null
+  course_access_code: string | null
   content_fingerprint: string | null
   pages: OERPage[] | null
 }
