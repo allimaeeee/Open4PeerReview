@@ -2,3 +2,25 @@ in terminal run: npm run build:ext
 go to chrome extension webpage and turn on dev mode
 "load unpacked" and go to extension/dist
 yay it's loaded!
+
+
+
+Test the Torus auto-screenshot flow:
+1. Open a Torus page that matches your review's source URL
+2. Open the extension panel and select a review
+3. Select some text on the page → the annotation popup should appear
+4. Add a note and click Annotate — the extension captures a screenshot in the background as soon as you selected the text, so by the time you submit it should be ready
+5. The annotation should now show up in the gallery view of the in-platform review console (left panel) with the screenshot, page name, and quoted text
+
+Test the gallery viewer (web app):
+1. Open the review console for a Torus document
+2. The left panel should now show a carousel instead of a scrollable list — prev/next arrows, annotation count, screenshot image, page name, criterion label, and quoted text
+3. The thumbnail strip at the bottom lets you jump between annotations
+4. "View annotation" button on the screenshot takes you to the Torus page
+
+Test hotspot pageName:
+1. Enable hotspot mode via the pin button in the extension footer
+2. Click somewhere on the Torus page → fill in the popup → save
+3. In the review console gallery, the hotspot annotation should show pageName (the page's document.title)
+
+Let me know what you see and I can debug from there.
