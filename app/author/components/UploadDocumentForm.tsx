@@ -115,7 +115,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
       } else {
         if (!torusUrl.trim()) { setError('Please enter an OLI Torus URL.'); return }
         if (!isTorusUrl(torusUrl.trim())) {
-          setError('URL must be from OLI Torus (torus.oli.cmu.edu).')
+          setError('URL must be from OLI Torus (proton.oli.cmu.edu).')
           return
         }
       }
@@ -432,7 +432,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
             <div>
               <input
                 type="url"
-                placeholder="https://torus.oli.cmu.edu/..."
+                placeholder="https://proton.oli.cmu.edu/..."
                 value={torusUrl}
                 onChange={e => setTorusUrl(e.target.value)}
                 disabled={loading}

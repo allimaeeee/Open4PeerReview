@@ -84,7 +84,7 @@ export function ReviewRightPanel({
   )
 
   // Unlinked highlights: annotations with a non-empty anchor that haven't been linked to a criterion.
-  // Free notes (anchor={}) are now stored in reviews.general_comment, not rendered here.
+  // Free notes (anchor={}) are now stored in reviews.notes, not rendered here.
   const unlinkedHighlights = useMemo(
     () => generalAnnotations.filter(a => Object.keys(a.anchor).length > 0),
     [generalAnnotations]
