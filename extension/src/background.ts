@@ -12,6 +12,27 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxibXlmcWVxa3Btb2hsdW1sa2RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNTk1MDEsImV4cCI6MjA5NzYzNTUwMX0.Hnnv3rVNyzgeN1v8yik2U3uJ8FwvxYCmiffH_hooIac';
 const SCREENSHOTS_BUCKET = 'screenshots';
 
+// ── Auto-login: capture oer_token before any page redirect ───────────────────
+// onBeforeNavigate fires before the request is sent, so we save the token
+// before Torus can redirect and strip query params.
+
+chrome.webNavigation.onBeforeNavigate.addListener(
+  (details) => {
+    if (details.frameId !== 0) return; // main frame only
+    let url: URL;
+    try { url = new URL(details.url); } catch { return; }
+    const rawToken = url.searchParams.get('oer_token');
+    if (!rawToken) return;
+    try {
+      const auth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
+      if (auth.access_token && auth.user_id) {
+        chrome.storage.local.set({ auth });
+      }
+    } catch { /* malformed token — ignore */ }
+  },
+  { url: [{ hostContains: 'proton.oli.cmu.edu' }] },
+);
+
 // ── Message handler ───────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener(

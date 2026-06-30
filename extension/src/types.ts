@@ -20,6 +20,8 @@ export interface HtmlCharOffsetAnchor {
   type: 'html-char-offset';
   pageIndex: number;
   selector: AnchorSelector[];
+  screenshotUrl?: string;
+  pageUrl?: string;
 }
 
 export interface BboxAnchor {
@@ -42,6 +44,7 @@ export interface PointAnchor {
   relY: number;
   pageUrl?: string;
   pageName?: string;
+  screenshotUrl?: string;
 }
 
 export type Anchor = HtmlCharOffsetAnchor | BboxAnchor | PointAnchor;
