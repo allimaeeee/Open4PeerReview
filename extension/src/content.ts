@@ -333,6 +333,77 @@ function scrollToAnnotationInPanel(annotationId: string) {
   setTimeout(() => el?.classList.remove('highlighted'), 1200);
 }
 
+// ── "View annotation" — navigate to page + scroll to location ─────────────────
+
+const GOTO_ANN_KEY = 'oer_goto_annotation_id';
+
+function scrollToAnchorOnPage(anchor: AnnotationRecord['anchor'], annId: string) {
+  if (anchor.type === 'point') {
+    const pa = anchor as PointAnchor;
+    window.scrollTo({ top: Math.max(0, pa.pageY - window.innerHeight / 2), behavior: 'smooth' });
+    // Flash the hotspot marker
+    setTimeout(() => {
+      const marker = document.getElementById(`hotspot-marker-${annId}`);
+      if (marker) {
+        marker.style.filter = 'drop-shadow(0 0 12px rgba(61,111,169,0.9))';
+        marker.style.transform = 'translate(-50%, -110%) scale(1.25)';
+        setTimeout(() => {
+          marker.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.35))';
+          marker.style.transform = 'translate(-50%, -100%)';
+        }, 1500);
+      }
+    }, 400);
+  } else if (anchor.type === 'bbox') {
+    const ba = anchor as BboxAnchor;
+    window.scrollTo({ top: Math.max(0, ba.y - window.innerHeight / 2), behavior: 'smooth' });
+  } else if (anchor.type === 'html-char-offset') {
+    const range = resolveAnchor(anchor as HtmlCharOffsetAnchor);
+    if (range) {
+      const el = range.startContainer.parentElement;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+
+function goToAnnotation(ann: AnnotationRecord) {
+  const targetUrl = (ann.anchor as { pageUrl?: string }).pageUrl ?? null;
+
+  // Check if navigation to a different page is needed
+  if (targetUrl) {
+    try {
+      const targetBase = new URL(targetUrl).origin + new URL(targetUrl).pathname;
+      if (targetBase !== currentPageBase()) {
+        // Store annotation ID so we scroll to it after the page loads
+        sessionStorage.setItem(GOTO_ANN_KEY, ann.id);
+        window.location.href = targetUrl;
+        return;
+      }
+    } catch { /* malformed URL — fall through to same-page scroll */ }
+  }
+
+  // Same page — scroll directly
+  scrollToAnchorOnPage(ann.anchor, ann.id);
+  scrollToAnnotationInPanel(ann.id);
+}
+
+// Called during init() — if we navigated here via goToAnnotation, execute the scroll
+function checkPendingAnnotationNavigation() {
+  const annId = sessionStorage.getItem(GOTO_ANN_KEY);
+  if (!annId) return;
+  sessionStorage.removeItem(GOTO_ANN_KEY);
+  // Wait for annotations to load before scrolling (they load async in selectReview)
+  const tryScroll = (attempts = 0) => {
+    const ann = annotations.find(a => a.id === annId);
+    if (ann) {
+      scrollToAnchorOnPage(ann.anchor, ann.id);
+      scrollToAnnotationInPanel(ann.id);
+    } else if (attempts < 10) {
+      setTimeout(() => tryScroll(attempts + 1), 300);
+    }
+  };
+  setTimeout(() => tryScroll(), 600);
+}
+
 // ── Save status ───────────────────────────────────────────────────────────────
 
 function setSaveStatus(status: 'saving' | 'saved' | 'error' | 'idle') {
@@ -550,6 +621,13 @@ function refreshAnnotationList(rubricItemId: string) {
   container.querySelectorAll<HTMLButtonElement>('.ann-edit').forEach(btn => {
     btn.addEventListener('click', () => editAnnotation(btn.dataset.id!));
   });
+  container.querySelectorAll<HTMLButtonElement>('.ann-goto').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const annId = btn.dataset.id!;
+      const ann = annotations.find(a => a.id === annId);
+      if (ann) goToAnnotation(ann);
+    });
+  });
 }
 
 function renderAnnotationItem(ann: AnnotationRecord): string {
@@ -582,13 +660,27 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
     ? `<div class="ann-hotspot-label">📍 Hotspot</div>`
     : '';
 
+  // Page label — show when the annotation is on a specific (named) page
+  const anchorPageName = (ann.anchor as { pageName?: string }).pageName ?? null;
+  const pageLabelHtml = anchorPageName
+    ? `<div class="ann-page-label" title="${escHtml(anchorPageName)}">📄 ${escHtml(anchorPageName.slice(0, 40))}${anchorPageName.length > 40 ? '…' : ''}</div>`
+    : '';
+
+  // "View" button — only shown for annotations that have a page URL to navigate to
+  const anchorPageUrl = (ann.anchor as { pageUrl?: string }).pageUrl ?? null;
+  const gotoBtn = anchorPageUrl
+    ? `<button class="ann-goto" data-id="${ann.id}" title="Go to annotation on page">↗ View</button>`
+    : '';
+
   return `
     <div class="ann-item" id="ann-${ann.id}">
       ${screenshotHtml}
       ${hotspotBadge}
+      ${pageLabelHtml}
       ${quoteHtml}
       <div class="ann-body">${escHtml(ann.body)}</div>
       ${tagHtml}
+      ${gotoBtn}
       <button class="ann-edit" data-id="${ann.id}" title="Edit">✎</button>
       <button class="ann-delete" data-id="${ann.id}" title="Delete">×</button>
     </div>
@@ -1167,7 +1259,7 @@ function renderReviewInterface() {
         <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
         <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
       </div>
-      <a class="btn-open-console" id="btn-open-console" href="https://oerhub.vercel.app/reviewer/${selectedReview.id}" target="_blank" title="Open full review console">↗ Console</a>
+      <a class="btn-open-console" id="btn-open-console" href="https://oerhub.vercel.app/review?document=${selectedReview.document_id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
       <button class="switch-btn" id="btn-switch-review" title="Switch review">⇄</button>
     </div>
 
@@ -1661,7 +1753,7 @@ function createPanel() {
       .ann-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #a0aec0; margin-bottom: 6px; }
 
       .ann-list { display: flex; flex-direction: column; gap: 5px; }
-      .ann-item { position: relative; background: #f7fafc; border: 1px solid #e8edf2; border-radius: 6px; padding: 7px 28px 7px 9px; font-size: 12px; color: #4a5568; line-height: 1.4; }
+      .ann-item { position: relative; background: #f7fafc; border: 1px solid #e8edf2; border-radius: 6px; padding: 7px 28px 9px 9px; font-size: 12px; color: #4a5568; line-height: 1.4; }
       .ann-item.highlighted { background: #fffbeb; border-color: #fbbf24; }
       .ann-quote { font-style: italic; color: #a0aec0; font-size: 11px; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .ann-body { }
@@ -1688,6 +1780,10 @@ function createPanel() {
       .btn-hotspot { display: flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.15s; }
       .btn-hotspot:hover { background: #edf2f7; border-color: #cbd5e0; }
       .btn-hotspot.active { background: #ebf4ff; border-color: #3D6FA9; color: #3D6FA9; }
+
+      .ann-page-label { font-size: 10px; color: #a0aec0; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ann-goto { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; padding: 3px 7px; border-radius: 4px; border: 1px solid #3D6FA9; background: none; color: #3D6FA9; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.12s; }
+      .ann-goto:hover { background: #3D6FA9; color: white; }
 
       .ann-edit { position: absolute; top: 5px; right: 22px; background: none; border: none; cursor: pointer; color: #cbd5e0; font-size: 13px; line-height: 1; padding: 2px 3px; border-radius: 3px; display: none; font-family: inherit; }
       .ann-item:hover .ann-edit { display: block; }
@@ -1884,6 +1980,7 @@ async function selectReview(reviewId: string) {
 
   renderContent('review');
   applyHighlights();
+  checkPendingAnnotationNavigation();
 }
 
 function parseScoreComment(comment: string | null): ScoreCommentMap {
