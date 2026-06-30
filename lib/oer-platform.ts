@@ -1,5 +1,5 @@
 const OLI_TORUS_RULES = [
-  (h: string) => h === 'torus.oli.cmu.edu' || h.endsWith('.torus.oli.cmu.edu'),
+  (h: string) => h === 'proton.oli.cmu.edu' || h.endsWith('.proton.oli.cmu.edu'),
 ]
 
 export function isTorusUrl(url: string): boolean {

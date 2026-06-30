@@ -22,7 +22,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const assignedIds = new Set((assignmentsData ?? []).map(a => a.document_id))
 
   type ReviewScoreRow = { id: string; rubric_item_id: string; criterion_scores: string[] }
-  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; general_comment: string | null; review_scores: ReviewScoreRow[] }
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; notes: string | null; review_scores: ReviewScoreRow[] }
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
@@ -85,7 +85,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReview = reviews.filter(r => r.reviewer_id === userId).find(r => r.status === 'in_progress')
       ?? reviews.filter(r => r.reviewer_id === userId)[0]
-    const hasGeneralComment = typeof myReview?.general_comment === 'string' && myReview.general_comment.trim().length > 0
+    const hasGeneralComment = typeof myReview?.notes === 'string' && myReview.notes.trim().length > 0
     return {
       id: doc.id,
       title: doc.title,
