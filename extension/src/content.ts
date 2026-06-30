@@ -51,13 +51,28 @@ let scores = new Map<string, ReviewScoreRecord>();
 
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
+type ScoreCommentMap = { does_not_meet: string; exceeds: string };
+const scoreComments = new Map<string, ScoreCommentMap>();
 
 // ── Shadow DOM refs ───────────────────────────────────────────────────────────
 
 let shadow: ShadowRoot;
+let panelHost: HTMLElement;
 let panelBody: HTMLElement;
 let saveStatusEl: HTMLElement;
 let completionFill: HTMLElement;
+
+// ── Panel drag / resize state ─────────────────────────────────────────────────
+
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+let isDragging = false;
+let isResizing = false;
+let resizeDir: ResizeDir | null = null;
+let dragOffset = { x: 0, y: 0 };
+let resizeSt = { x: 0, y: 0, w: 0, h: 0, l: 0, t: 0 };
+let savedPanelH = 560;
+const MIN_PANEL_W = 280;
+const MIN_PANEL_H = 300;
 let completionText: HTMLElement;
 
 // ── Popup overlay (page DOM, not shadow) ──────────────────────────────────────
@@ -319,7 +334,15 @@ function setSaveStatus(status: 'saving' | 'saved' | 'error' | 'idle') {
 
 function updateCompletion() {
   if (!completionFill || !completionText || rubricItems.length === 0) return;
-  const scored = rubricItems.filter(item => scores.get(item.id)?.score != null).length;
+  const scored = rubricItems.filter(item => {
+    const s = scores.get(item.id);
+    const levels = s?.criterion_scores ?? [];
+    if (levels.length === 0) return false;
+    const comments = scoreComments.get(item.id) ?? { does_not_meet: '', exceeds: '' };
+    if (levels.includes('does_not_meet') && !comments.does_not_meet.trim()) return false;
+    if (levels.includes('exceeds') && !comments.exceeds.trim()) return false;
+    return true;
+  }).length;
   const pct = Math.round((scored / rubricItems.length) * 100);
   completionFill.style.width = `${pct}%`;
   completionText.textContent = `${scored}/${rubricItems.length}`;
@@ -329,29 +352,39 @@ function updateCompletion() {
 
 function toggleScore(rubricItemId: string, level: CriterionScore) {
   const current = scores.get(rubricItemId);
-  const newLevel: CriterionScore | null = current?.score === level ? null : level;
+  const currentLevels = current?.criterion_scores ?? [];
 
-  // Optimistic update
-  if (newLevel === null) {
+  let newLevels: CriterionScore[];
+  if (currentLevels.includes(level)) {
+    newLevels = currentLevels.filter(s => s !== level);
+    if (level === 'does_not_meet' || level === 'exceeds') {
+      const prev = scoreComments.get(rubricItemId) ?? { does_not_meet: '', exceeds: '' };
+      scoreComments.set(rubricItemId, { ...prev, [level]: '' });
+    }
+  } else {
+    newLevels = [...currentLevels, level];
+  }
+
+  if (newLevels.length === 0) {
     scores.delete(rubricItemId);
   } else {
+    const primary: CriterionScore = newLevels.includes('exemplifies') ? 'exemplifies'
+      : newLevels.includes('exceeds') ? 'exceeds'
+      : 'does_not_meet';
     scores.set(rubricItemId, {
       id: current?.id ?? '',
       review_id: selectedReview!.id,
       rubric_item_id: rubricItemId,
-      score: newLevel,
-      criterion_scores: [newLevel],
+      score: primary,
+      criterion_scores: newLevels,
       comment: current?.comment ?? null,
     });
   }
-  pendingScores.set(rubricItemId, newLevel);
 
-  // Update score buttons for this criterion
   refreshScoreButtons(rubricItemId);
   updateCompletion();
   setSaveStatus('saving');
 
-  // Debounce the actual save
   const existing = scoreTimers.get(rubricItemId);
   if (existing) clearTimeout(existing);
   const timer = setTimeout(() => flushScore(rubricItemId), SCORE_DEBOUNCE_MS);
@@ -360,17 +393,23 @@ function toggleScore(rubricItemId: string, level: CriterionScore) {
 
 async function flushScore(rubricItemId: string) {
   if (!selectedReview) return;
-  const level = pendingScores.get(rubricItemId);
-  pendingScores.delete(rubricItemId);
   scoreTimers.delete(rubricItemId);
+
+  const s = scores.get(rubricItemId);
+  const levels = s?.criterion_scores ?? [];
+  const comments = scoreComments.get(rubricItemId);
+  const parts: string[] = [];
+  if (comments?.does_not_meet) parts.push(`Does Not Meet: ${comments.does_not_meet}`);
+  if (comments?.exceeds) parts.push(`Exceeds: ${comments.exceeds}`);
 
   const resp = await send({
     type: 'SAVE_SCORE',
     payload: {
       review_id: selectedReview.id,
       rubric_item_id: rubricItemId,
-      score: level ?? null,
-      criterion_scores: level ? [level] : [],
+      score: levels[0] ?? null,
+      criterion_scores: levels,
+      comment: parts.join('\n\n') || null,
     },
   });
   setSaveStatus(resp.success ? 'saved' : 'error');
@@ -378,18 +417,33 @@ async function flushScore(rubricItemId: string) {
 
 function refreshScoreButtons(rubricItemId: string) {
   const score = scores.get(rubricItemId);
-  const current = score?.score ?? null;
+  const currentLevels = score?.criterion_scores ?? [];
   const item = shadow.getElementById(`crit-body-${rubricItemId}`);
   if (!item) return;
+
   item.querySelectorAll<HTMLButtonElement>('.score-btn').forEach(btn => {
     const level = btn.dataset.level as CriterionScore;
-    btn.className = `score-btn ${level === current ? `active ${current}` : ''}`;
+    const isActive = currentLevels.includes(level);
+    btn.className = `score-btn ${isActive ? `active ${level}` : ''}`;
   });
-  // Update badge in header
+
+  (['does_not_meet', 'exceeds'] as const).forEach(lvl => {
+    const box = shadow.getElementById(`score-comment-${lvl}-${rubricItemId}`);
+    if (box) box.style.display = currentLevels.includes(lvl) ? 'block' : 'none';
+  });
+
   const badge = shadow.getElementById(`badge-${rubricItemId}`);
   if (badge) {
-    badge.textContent = current ? SCORE_ABBR[current] : '—';
-    badge.className = `score-badge ${current ?? 'unscored'}`;
+    if (currentLevels.length === 0) {
+      badge.textContent = '—';
+      badge.className = 'score-badge unscored';
+    } else if (currentLevels.length === 1) {
+      badge.textContent = SCORE_ABBR[currentLevels[0]];
+      badge.className = `score-badge ${currentLevels[0]}`;
+    } else {
+      badge.textContent = currentLevels.map(l => SCORE_ABBR[l]).join('+');
+      badge.className = 'score-badge multi';
+    }
   }
 }
 
@@ -700,7 +754,7 @@ function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
     const top = rect.top + window.scrollY - annotationPopup.offsetHeight - 8;
     const left = Math.min(
       rect.left + window.scrollX,
-      window.innerWidth - PANEL_WIDTH - 308
+      window.innerWidth - 316
     );
     annotationPopup.style.top = `${Math.max(window.scrollY + 4, top)}px`;
     annotationPopup.style.left = `${Math.max(4, left)}px`;
@@ -980,7 +1034,7 @@ function showToast(message: string) {
     toast.style.cssText = `
       position: fixed;
       bottom: 20px;
-      right: ${PANEL_WIDTH + 16}px;
+      right: 20px;
       background: #2d3748;
       color: white;
       padding: 8px 14px;
@@ -1086,10 +1140,11 @@ function renderReviewInterface() {
   if (!panelBody || !selectedReview) return;
   panelBody.innerHTML = `
     <div class="rubric-header">
-      <div>
+      <div style="flex:1;min-width:0;">
         <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
         <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
       </div>
+      <a class="btn-open-console" id="btn-open-console" href="https://oerhub.vercel.app/reviewer/${selectedReview.id}" target="_blank" title="Open full review console">↗ Console</a>
       <button class="switch-btn" id="btn-switch-review" title="Switch review">⇄</button>
     </div>
 
@@ -1166,8 +1221,15 @@ function renderRubricCriteria() {
     const code = labelParts[0] ?? `C${idx + 1}`;
     const name = labelParts.slice(1).join(' · ') || item.label;
     const score = scores.get(item.id);
-    const level = score?.score ?? null;
+    const selectedLevels = score?.criterion_scores ?? [];
+    const badgeClass = selectedLevels.length === 0 ? 'unscored'
+      : selectedLevels.length === 1 ? selectedLevels[0]
+      : 'multi';
+    const badgeText = selectedLevels.length === 0 ? '—'
+      : selectedLevels.length === 1 ? SCORE_ABBR[selectedLevels[0]]
+      : selectedLevels.map(l => SCORE_ABBR[l]).join('+');
     const annCount = annotations.filter(a => a.rubric_item_id === item.id).length;
+    const savedComments = scoreComments.get(item.id) ?? { does_not_meet: '', exceeds: '' };
 
     return `
       <div class="criterion-item">
@@ -1176,16 +1238,24 @@ function renderRubricCriteria() {
           <span class="crit-code">${escHtml(code)}</span>
           <span class="crit-name">${escHtml(name)}</span>
           ${annCount > 0 ? `<span class="ann-count">${annCount}</span>` : ''}
-          <span class="score-badge ${level ?? 'unscored'}" id="badge-${item.id}">${level ? SCORE_ABBR[level] : '—'}</span>
+          <span class="score-badge ${badgeClass}" id="badge-${item.id}">${escHtml(badgeText)}</span>
         </div>
         <div class="criterion-bd" id="crit-body-${item.id}">
           <div class="crit-desc">${escHtml(item.description.slice(0, 200))}${item.description.length > 200 ? '…' : ''}</div>
           <div class="score-btns">
             ${((['does_not_meet', 'exemplifies', 'exceeds'] as CriterionScore[])).map(lvl => `
-              <button class="score-btn ${lvl === level ? `active ${lvl}` : ''}" data-level="${lvl}" data-item="${item.id}">
+              <button class="score-btn ${selectedLevels.includes(lvl) ? `active ${lvl}` : ''}" data-level="${lvl}" data-item="${item.id}">
                 ${SCORE_LABELS[lvl]}
               </button>
             `).join('')}
+          </div>
+          <div class="score-comment-box score-comment-dnm" id="score-comment-does_not_meet-${item.id}" style="display:${selectedLevels.includes('does_not_meet') ? 'block' : 'none'};">
+            <div class="score-comment-label">Why does this not meet the standard? <span class="score-comment-required">required</span></div>
+            <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="2" placeholder="Describe what's missing or needs improvement…">${escHtml(savedComments.does_not_meet)}</textarea>
+          </div>
+          <div class="score-comment-box score-comment-exc" id="score-comment-exceeds-${item.id}" style="display:${selectedLevels.includes('exceeds') ? 'block' : 'none'};">
+            <div class="score-comment-label">Why does this exceed the standard? <span class="score-comment-required">required</span></div>
+            <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="2" placeholder="Describe what makes this exemplary…">${escHtml(savedComments.exceeds)}</textarea>
           </div>
           <div class="ann-section-label">Annotations</div>
           <div class="ann-list" id="ann-list-${item.id}"></div>
@@ -1262,6 +1332,21 @@ function renderRubricCriteria() {
     });
   });
 
+  // Score comment inputs (required when Does Not Meet or Exceeds is selected)
+  list.querySelectorAll<HTMLTextAreaElement>('.score-comment-input').forEach(ta => {
+    ta.addEventListener('input', () => {
+      const itemId = ta.dataset.item!;
+      const level = ta.dataset.level as 'does_not_meet' | 'exceeds';
+      const prev = scoreComments.get(itemId) ?? { does_not_meet: '', exceeds: '' };
+      scoreComments.set(itemId, { ...prev, [level]: ta.value });
+      updateCompletion();
+      setSaveStatus('saving');
+      const existing = scoreTimers.get(itemId);
+      if (existing) clearTimeout(existing);
+      scoreTimers.set(itemId, setTimeout(() => flushScore(itemId), SCORE_DEBOUNCE_MS));
+    });
+  });
+
   // Populate open criterion annotation lists
   rubricItems.forEach(item => {
     const body = shadow.getElementById(`crit-body-${item.id}`);
@@ -1274,14 +1359,21 @@ function renderRubricCriteria() {
 function createPanel() {
   const host = document.createElement('div');
   host.id = 'oer-review-host';
+  panelHost = host;
+  const defaultW = PANEL_WIDTH;
+  const defaultH = 560;
+  const initRight = 16;
+  const initTop = 16;
   host.style.cssText = `
     position: fixed !important;
-    top: 0 !important;
-    right: 0 !important;
-    width: ${PANEL_WIDTH}px !important;
-    height: 100vh !important;
+    top: ${initTop}px !important;
+    right: ${initRight}px !important;
+    width: ${defaultW}px !important;
+    height: ${defaultH}px !important;
     z-index: 2147483647 !important;
     pointer-events: auto !important;
+    overflow: visible !important;
+    border-radius: 12px !important;
   `;
 
   shadow = host.attachShadow({ mode: 'open' });
@@ -1292,17 +1384,21 @@ function createPanel() {
       :host { display: block; }
 
       .panel {
-        width: ${PANEL_WIDTH}px;
-        height: 100vh;
+        width: 100%;
+        height: 100%;
         background: #fff;
-        border-left: 1px solid #e2e8f0;
+        border: 1px solid #c8d5e3;
+        border-radius: 12px;
         display: flex;
         flex-direction: column;
         font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
         font-size: 14px;
         color: #1a202c;
-        box-shadow: -4px 0 24px rgba(0,0,0,0.08);
+        box-shadow: 0 8px 40px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
+        overflow: hidden;
       }
+      .panel.collapsed .panel-body { display: none; }
+      .panel.collapsed .panel-ft   { display: none; }
 
       .panel-hd {
         display: flex;
@@ -1313,7 +1409,25 @@ function createPanel() {
         color: #fff;
         flex-shrink: 0;
         gap: 8px;
+        cursor: grab;
+        border-radius: 11px 11px 0 0;
+        user-select: none;
       }
+      .panel-hd.dragging { cursor: grabbing; }
+
+      /* Resize handles — positioned relative to :host */
+      .resize-handle {
+        position: absolute;
+        z-index: 10;
+      }
+      .rh-n  { top: -5px; left: 12px; right: 12px; height: 10px; cursor: n-resize; }
+      .rh-s  { bottom: -5px; left: 12px; right: 12px; height: 10px; cursor: s-resize; }
+      .rh-e  { right: -5px; top: 12px; bottom: 12px; width: 10px; cursor: e-resize; }
+      .rh-w  { left: -5px; top: 12px; bottom: 12px; width: 10px; cursor: w-resize; }
+      .rh-ne { top: -5px; right: -5px; width: 16px; height: 16px; cursor: ne-resize; }
+      .rh-nw { top: -5px; left: -5px; width: 16px; height: 16px; cursor: nw-resize; }
+      .rh-se { bottom: -5px; right: -5px; width: 16px; height: 16px; cursor: se-resize; }
+      .rh-sw { bottom: -5px; left: -5px; width: 16px; height: 16px; cursor: sw-resize; }
 
       .logo {
         display: flex;
@@ -1508,6 +1622,19 @@ function createPanel() {
       .score-btn.active.exemplifies   { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
       .score-btn.active.exceeds       { background: #fde8d8; border-color: #fdba74; color: #c4622d; }
 
+      .score-badge.multi { background: #e2e8f0; color: #2d3748; }
+
+      .score-comment-box { margin: 4px 0 8px; padding: 8px 10px; border-radius: 6px; border: 1.5px solid #e2e8f0; }
+      .score-comment-dnm { background: #fff5f5; border-color: #fc8181; }
+      .score-comment-exc { background: #fffaf5; border-color: #fdba74; }
+      .score-comment-label { font-size: 11px; font-weight: 600; color: #4a5568; margin-bottom: 4px; }
+      .score-comment-required { font-size: 10px; font-weight: 500; color: #e53e3e; margin-left: 3px; }
+      .score-comment-input { width: 100%; padding: 5px 7px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; background: #fff; }
+      .score-comment-input:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+
+      .btn-open-console { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f7fafc; color: #3D6FA9; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; text-decoration: none; flex-shrink: 0; }
+      .btn-open-console:hover { background: #ebf4ff; border-color: #3D6FA9; }
+
       .ann-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #a0aec0; margin-bottom: 6px; }
 
       .ann-list { display: flex; flex-direction: column; gap: 5px; }
@@ -1554,12 +1681,12 @@ function createPanel() {
     </style>
 
     <div class="panel">
-      <div class="panel-hd">
+      <div class="panel-hd" id="panel-hd">
         <div class="logo">
           <div class="logo-dot"></div>
           OER Review
         </div>
-        <button class="hd-btn" id="btn-min" title="Minimize">−</button>
+        <button class="hd-btn" id="btn-min" title="Collapse">−</button>
       </div>
 
       <div class="panel-body" id="panel-body"></div>
@@ -1582,6 +1709,16 @@ function createPanel() {
         <span class="save-status" id="save-status"></span>
       </div>
     </div>
+
+    <!-- Resize handles (positioned relative to :host) -->
+    <div class="resize-handle rh-n"  data-dir="n"></div>
+    <div class="resize-handle rh-s"  data-dir="s"></div>
+    <div class="resize-handle rh-e"  data-dir="e"></div>
+    <div class="resize-handle rh-w"  data-dir="w"></div>
+    <div class="resize-handle rh-ne" data-dir="ne"></div>
+    <div class="resize-handle rh-nw" data-dir="nw"></div>
+    <div class="resize-handle rh-se" data-dir="se"></div>
+    <div class="resize-handle rh-sw" data-dir="sw"></div>
   `;
 
   document.body.appendChild(host);
@@ -1589,13 +1726,106 @@ function createPanel() {
   panelBody = shadow.getElementById('panel-body') as HTMLElement;
   saveStatusEl = shadow.getElementById('save-status') as HTMLElement;
 
+  // ── Minimize / collapse ──────────────────────────────────────────────────────
   shadow.getElementById('btn-min')?.addEventListener('click', () => {
-    host.style.width = host.style.width === '48px' ? `${PANEL_WIDTH}px` : '48px';
+    const panel = shadow.querySelector('.panel')!;
+    const willCollapse = !panel.classList.contains('collapsed');
+    const btn = shadow.getElementById('btn-min') as HTMLButtonElement;
+    if (willCollapse) {
+      savedPanelH = host.offsetHeight;
+      panel.classList.add('collapsed');
+      host.style.height = 'auto';
+      if (btn) btn.textContent = '+';
+    } else {
+      panel.classList.remove('collapsed');
+      host.style.height = `${savedPanelH}px`;
+      if (btn) btn.textContent = '−';
+    }
   });
+
   shadow.getElementById('btn-pin')?.addEventListener('click', handlePinScreenshot);
   shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
     if (!selectedReview) { showToast('Select a review first'); return; }
     if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
+  });
+
+  // ── Drag to move (header) ────────────────────────────────────────────────────
+  const hd = shadow.getElementById('panel-hd')!;
+  hd.addEventListener('mousedown', (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return; // don't drag on buttons
+    isDragging = true;
+    const rect = host.getBoundingClientRect();
+    dragOffset.x = e.clientX - rect.left;
+    dragOffset.y = e.clientY - rect.top;
+    hd.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  // ── Resize handles ───────────────────────────────────────────────────────────
+  shadow.querySelectorAll<HTMLElement>('.resize-handle').forEach(handle => {
+    handle.addEventListener('mousedown', (e: MouseEvent) => {
+      isResizing = true;
+      resizeDir = handle.dataset.dir as ResizeDir;
+      const rect = host.getBoundingClientRect();
+      resizeSt = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height, l: rect.left, t: rect.top };
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
+  // ── Global mousemove / mouseup ───────────────────────────────────────────────
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (isDragging) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const w = host.offsetWidth;
+      const h = host.offsetHeight;
+      let l = e.clientX - dragOffset.x;
+      let t = e.clientY - dragOffset.y;
+      l = Math.max(0, Math.min(l, vw - w));
+      t = Math.max(0, Math.min(t, vh - 40));
+      host.style.left  = `${l}px`;
+      host.style.top   = `${t}px`;
+      host.style.right = 'auto';
+    }
+    if (isResizing && resizeDir) {
+      const dx = e.clientX - resizeSt.x;
+      const dy = e.clientY - resizeSt.y;
+      let w = resizeSt.w, h = resizeSt.h, l = resizeSt.l, t = resizeSt.t;
+      const maxH = window.innerHeight - 16;
+
+      if (resizeDir.includes('e')) w = Math.max(MIN_PANEL_W, resizeSt.w + dx);
+      if (resizeDir.includes('s')) h = Math.max(MIN_PANEL_H, Math.min(maxH, resizeSt.h + dy));
+      if (resizeDir.includes('w')) {
+        const clamped = Math.max(MIN_PANEL_W, resizeSt.w - dx);
+        l = resizeSt.l + (resizeSt.w - clamped);
+        w = clamped;
+      }
+      if (resizeDir.includes('n')) {
+        const clamped = Math.max(MIN_PANEL_H, Math.min(maxH, resizeSt.h - dy));
+        t = resizeSt.t + (resizeSt.h - clamped);
+        h = clamped;
+      }
+
+      host.style.width  = `${w}px`;
+      host.style.height = `${h}px`;
+      host.style.left   = `${l}px`;
+      host.style.top    = `${t}px`;
+      host.style.right  = 'auto';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      hd.classList.remove('dragging');
+    }
+    if (isResizing) {
+      isResizing = false;
+      resizeDir = null;
+      document.body.style.userSelect = '';
+    }
   });
 }
 
@@ -1623,10 +1853,24 @@ async function selectReview(reviewId: string) {
   rubricItems = itemsResp.data ?? [];
   annotations = annResp.data ?? [];
   scores.clear();
-  (scoresResp.data ?? []).forEach(s => scores.set(s.rubric_item_id, s));
+  scoreComments.clear();
+  (scoresResp.data ?? []).forEach(s => {
+    scores.set(s.rubric_item_id, s);
+    if (s.comment) scoreComments.set(s.rubric_item_id, parseScoreComment(s.comment));
+  });
 
   renderContent('review');
   applyHighlights();
+}
+
+function parseScoreComment(comment: string | null): ScoreCommentMap {
+  const result: ScoreCommentMap = { does_not_meet: '', exceeds: '' };
+  if (!comment) return result;
+  const dnm = comment.match(/Does Not Meet: ([\s\S]*?)(?:\n\nExceeds:|$)/);
+  const exc = comment.match(/Exceeds: ([\s\S]*?)$/);
+  if (dnm) result.does_not_meet = dnm[1].trim();
+  if (exc) result.exceeds = exc[1].trim();
+  return result;
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -1697,6 +1941,13 @@ async function init() {
   if (!assignResp.success) { renderContent('login'); return; }
 
   assignments = assignResp.data ?? [];
+
+  // Auto-select review from URL param (deep link from dashboard)
+  const urlReviewId = new URLSearchParams(window.location.search).get('oer_review_id');
+  if (urlReviewId && assignments.some(a => a.id === urlReviewId)) {
+    await selectReview(urlReviewId);
+    return;
+  }
 
   // Restore previously selected review from session storage
   const savedId = sessionStorage.getItem(SESSION_KEY);

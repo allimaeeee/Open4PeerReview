@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Rubric scoring and annotation layer for OLI Torus peer review",
   "permissions": ["activeTab", "tabs", "storage", "scripting"],
-  "host_permissions": ["https://proton.oli.cmu.edu/*"],
+  "host_permissions": [
+    "https://proton.oli.cmu.edu/*",
+    "https://oerhub.vercel.app/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -13,6 +16,11 @@
     {
       "matches": ["https://proton.oli.cmu.edu/*"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://oerhub.vercel.app/*"],
+      "js": ["dashboard.js"],
       "run_at": "document_idle"
     }
   ],

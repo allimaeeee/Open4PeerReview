@@ -153,6 +153,7 @@ export function SubmissionModal({
     if (sourceTab === 'pdf') {
       if (!file)                                     { setError('Please select a PDF file.'); return }
       if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
+      //Change to regular URL upload
     } else if (sourceTab === 'torus') {
       if (!torusUrl.trim()) { setError('Please enter an OLI Torus URL.'); return }
       if (!isTorusUrl(torusUrl.trim())) {
