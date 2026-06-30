@@ -107,7 +107,9 @@ export type BackgroundMessageType =
   | 'SET_REVIEW_STATUS'
   | 'LOGIN'
   | 'LOGOUT'
-  | 'GET_AUTH';
+  | 'GET_AUTH'
+  | 'SYNC_AUTH'
+  | 'SYNC_AUTH_FROM_COOKIES';
 
 export interface BackgroundMessage {
   type: BackgroundMessageType;
