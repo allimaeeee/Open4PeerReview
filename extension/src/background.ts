@@ -7,9 +7,8 @@ import type {
   Anchor,
 } from './types';
 
-const SUPABASE_URL = 'https://lbmyfqeqkpmohlumlkdg.supabase.co';
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxibXlmcWVxa3Btb2hsdW1sa2RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwNTk1MDEsImV4cCI6MjA5NzYzNTUwMX0.Hnnv3rVNyzgeN1v8yik2U3uJ8FwvxYCmiffH_hooIac';
+const SUPABASE_URL = "https://nkcyjfuzmmkuavhmqyvu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rY3lqZnV6bW1rdWF2aG1xeXZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2ODMyNzksImV4cCI6MjA5MTI1OTI3OX0._KEfRSNTIehhl2biJnixwl3yjf_Y2zylWKsOhcBXLeU";
 const SCREENSHOTS_BUCKET = 'screenshots';
 
 // ── Auto-login: capture oer_token before any page redirect ───────────────────
