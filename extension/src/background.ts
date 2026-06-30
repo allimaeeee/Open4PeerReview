@@ -120,7 +120,7 @@ async function handleMessage(
 
     case 'SAVE_SCORE': {
       if (!auth) return { success: false, error: 'Not authenticated' };
-      return upsertScore(msg.payload as SaveScorePayload, auth.access_token);
+      return upsertScore(msg.payload as unknown as SaveScorePayload, auth.access_token);
     }
 
     case 'SET_REVIEW_STATUS': {
