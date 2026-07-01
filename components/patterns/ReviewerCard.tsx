@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { RubricTagList } from '@/components/ui/RubricTagList'
 import { Modal } from '@/components/ui/Modal'
 import { createClient } from '@/lib/supabase/client'
+import { openInTorus } from '@/lib/torus'
 
 export interface RubricProgress {
   rubricId: string
@@ -65,26 +66,7 @@ export function ReviewerCard({
 
   const handleOpenInTorus = async () => {
     setShowTorusModal(false)
-    let url = sourceUrl ?? '#'
-    if (url !== '#' && activeReviewId) {
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          const authPayload = {
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            user_id: session.user.id,
-            email: session.user.email ?? '',
-            expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
-          }
-          const token = btoa(encodeURIComponent(JSON.stringify(authPayload)))
-          const sep = url.includes('?') ? '&' : '?'
-          url = `${url}${sep}oer_review_id=${activeReviewId}&oer_token=${encodeURIComponent(token)}`
-        }
-      } catch { /* open without token if anything fails */ }
-    }
-    window.open(url, '_blank', 'noopener,noreferrer')
+    await openInTorus(createClient(), sourceUrl, activeReviewId)
   }
 
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0

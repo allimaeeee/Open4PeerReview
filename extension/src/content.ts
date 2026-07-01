@@ -695,6 +695,37 @@ function isTorusPage(): boolean {
   return /torus|oli\.cmu\.edu|course-author\.oli|torus\.oli/.test(href);
 }
 
+// Picks the assignment that corresponds to the OER currently open in the tab,
+// so the reviewer lands straight in their console instead of choosing from a list.
+function resolveAssignmentForCurrentPage(list: ReviewAssignment[]): ReviewAssignment | null {
+  if (list.length === 0) return null;
+
+  const currentHref = window.location.href.replace(/\/$/, '');
+  const scored = list
+    .map(a => {
+      const sourceUrl = a.documents?.source_url;
+      if (!sourceUrl) return { a, score: 0 };
+      try {
+        const src = new URL(sourceUrl);
+        const srcHref = src.href.replace(/\/$/, '');
+        if (window.location.hostname !== src.hostname) return { a, score: 0 };
+        if (currentHref === srcHref) return { a, score: 2 };
+        if (currentHref.startsWith(srcHref + '/') || srcHref.startsWith(currentHref + '/')) return { a, score: 1 };
+        return { a, score: 0 };
+      } catch {
+        return { a, score: 0 };
+      }
+    })
+    .filter(s => s.score > 0)
+    .sort((x, y) => y.score - x.score || (x.a.status === 'in_progress' ? -1 : 1));
+
+  if (scored.length > 0) return scored[0].a;
+
+  // No document on this page matched a source_url — fall back to the reviewer's
+  // most actionable assignment rather than asking them to pick.
+  return list.find(a => a.status === 'in_progress') ?? list[0];
+}
+
 async function captureAnnotationScreenshot(): Promise<string | null> {
   if (!selectedReview) return null;
   try {
@@ -1395,7 +1426,7 @@ function escHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'select-review' | 'review') {
+function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'review') {
   if (!panelBody) return;
 
   switch (state) {
@@ -1442,25 +1473,6 @@ function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'select-r
       `;
       break;
 
-    case 'select-review':
-      panelBody.innerHTML = `
-        <div style="padding:16px;">
-          <p class="section-label">Select review to annotate</p>
-          <div class="assignment-list">
-            ${assignments.map(a => `
-              <div class="assignment-card" data-id="${a.id}">
-                <div class="assignment-title">${escHtml(a.documents?.title ?? 'Untitled')}</div>
-                <div class="assignment-rubric">${escHtml(a.rubrics?.title ?? 'Unknown rubric')} · ${a.status}</div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-      shadow.querySelectorAll<HTMLElement>('.assignment-card').forEach(card => {
-        card.addEventListener('click', () => selectReview(card.dataset.id!));
-      });
-      break;
-
     case 'review':
       renderReviewInterface();
       break;
@@ -1494,7 +1506,6 @@ function renderReviewInterface() {
         <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
       </div>
       <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
-      <button class="switch-btn" id="btn-switch-review" title="Switch review">⇄</button>
     </div>
 
     ${rubricTabsHtml}
@@ -1526,12 +1537,6 @@ function renderReviewInterface() {
 
   completionFill = shadow.getElementById('completion-fill') as HTMLElement;
   completionText = shadow.getElementById('completion-text') as HTMLElement;
-
-  shadow.getElementById('btn-switch-review')?.addEventListener('click', () => {
-    selectedReview = null;
-    sessionStorage.removeItem(SESSION_KEY);
-    renderContent('select-review');
-  });
 
   shadow.querySelectorAll<HTMLButtonElement>('.rubric-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1975,13 +1980,6 @@ function createPanel() {
 
       .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #a0aec0; }
 
-      /* Assignments */
-      .assignment-list { display: flex; flex-direction: column; gap: 6px; }
-      .assignment-card { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all 0.15s; background: #fff; }
-      .assignment-card:hover { border-color: #3D6FA9; background: #eff6ff; }
-      .assignment-title { font-size: 13px; font-weight: 600; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
-      .assignment-rubric { font-size: 11px; color: #718096; }
-
       /* Rubric header */
       .rubric-header {
         padding: 10px 14px;
@@ -1995,8 +1993,6 @@ function createPanel() {
       }
       .doc-title { font-size: 12px; font-weight: 600; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
       .rubric-name { font-size: 11px; color: #718096; margin-top: 1px; }
-      .switch-btn { background: none; border: none; font-size: 16px; cursor: pointer; color: #a0aec0; padding: 2px; border-radius: 4px; flex-shrink: 0; }
-      .switch-btn:hover { color: #3D6FA9; background: #eff6ff; }
 
       .rubric-tabs { display: flex; gap: 2px; padding: 0 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; overflow-x: auto; flex-shrink: 0; }
       .rubric-tab {
@@ -2328,7 +2324,9 @@ async function handleLogin() {
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });
   assignments = assignResp.data ?? [];
-  renderContent(assignments.length === 0 ? 'no-assignments' : 'select-review');
+  if (assignments.length === 0) { renderContent('no-assignments'); return; }
+  const match = resolveAssignmentForCurrentPage(assignments);
+  await selectReview((match ?? assignments[0]).id);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -2408,7 +2406,9 @@ async function init() {
     return;
   }
 
-  renderContent(assignments.length === 0 ? 'no-assignments' : 'select-review');
+  if (assignments.length === 0) { renderContent('no-assignments'); return; }
+  const match = resolveAssignmentForCurrentPage(assignments);
+  await selectReview((match ?? assignments[0]).id);
 }
 
 init();

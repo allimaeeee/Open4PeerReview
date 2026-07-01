@@ -73,7 +73,7 @@
     ` : `
       <div class="review-box">
         <div class="review-label">No active review</div>
-        <div class="review-rubric" style="margin-top:2px;">Navigate to a Torus page and select a review in the panel.</div>
+        <div class="review-rubric" style="margin-top:2px;">Navigate to the OER you're assigned to review on Torus \u2014 the panel will open automatically.</div>
       </div>
     `;
     app.innerHTML = `

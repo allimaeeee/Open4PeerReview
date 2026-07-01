@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import ViewerPanelHeader from './ViewerPanelHeader'
+import { openInTorus } from '@/lib/torus'
 
 interface BboxAnchor {
   type: 'bbox'
@@ -37,6 +39,10 @@ interface SavedAnnotation {
 }
 
 interface TorusAnnotationViewerProps {
+  // Only reviewers deep-link into the extension with an auth token — the author's
+  // read-only feedback view omits these and gets a plain course link instead.
+  supabase?: SupabaseClient
+  reviewId?: string | null
   sourceUrl: string | null
   courseAccessCode: string | null
   savedAnnotations: SavedAnnotation[]
@@ -51,6 +57,8 @@ interface TorusAnnotationViewerProps {
 }
 
 export function TorusAnnotationViewer({
+  supabase,
+  reviewId,
   sourceUrl,
   courseAccessCode,
   savedAnnotations,
@@ -62,6 +70,14 @@ export function TorusAnnotationViewer({
   pulseAnnotationId,
   onPulseComplete,
 }: TorusAnnotationViewerProps) {
+  const handleOpenInTorus = () => {
+    if (supabase) {
+      openInTorus(supabase, sourceUrl, reviewId ?? null)
+    } else if (sourceUrl) {
+      window.open(sourceUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const criterionById = Object.fromEntries(rubricItems.map(r => [r.id, r.label]))
 
   const galleryAnnotations = savedAnnotations.filter(ann => {
@@ -115,28 +131,26 @@ export function TorusAnnotationViewer({
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
         {sourceUrl ? (
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 min-w-0 text-body-sm text-primary hover:underline truncate"
+          <button
+            type="button"
+            onClick={handleOpenInTorus}
+            className="flex-1 min-w-0 text-body-sm text-primary hover:underline truncate text-left"
           >
             {sourceUrl}
-          </a>
+          </button>
         ) : (
           <span className="flex-1 text-body-sm text-text-muted">No course URL</span>
         )}
-        <a
-          href={sourceUrl ?? '#'}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={handleOpenInTorus}
           className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-label-sm font-semibold bg-primary text-on-primary hover:bg-primary-hover transition-colors"
         >
           Open in Torus
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
-        </a>
+        </button>
       </div>
 
       {/* Access code banner */}
@@ -164,17 +178,16 @@ export function TorusAnnotationViewer({
             Use the OER Review Chrome extension on the OLI Torus page to capture screenshots and annotations.
           </p>
           {sourceUrl && (
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={handleOpenInTorus}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md text-label-md font-semibold bg-primary text-on-primary hover:bg-primary-hover transition-colors"
             >
               Open in Torus
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-            </a>
+            </button>
           )}
         </div>
       ) : (

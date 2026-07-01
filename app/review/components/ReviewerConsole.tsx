@@ -752,6 +752,8 @@ export function ReviewerConsole({
           <div className="h-full overflow-hidden print:hidden">
             {document.platform === 'OLI Torus' ? (
               <TorusAnnotationViewer
+                supabase={supabase}
+                reviewId={review.id}
                 sourceUrl={document.source_url}
                 courseAccessCode={document.course_access_code}
                 savedAnnotations={savedAnnotations}
