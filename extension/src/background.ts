@@ -182,7 +182,7 @@ async function handleMessage(
 // chrome.cookies can read HttpOnly cookies — this works even when the session
 // is set server-side by Next.js middleware.
 
-const SUPABASE_REF = 'lbmyfqeqkpmohlumlkdg';
+const SUPABASE_REF = 'nkcyjfuzmmkuavhmqyvu';
 
 async function readSessionFromOerhubCookies(): Promise<StoredAuth | null> {
   try {

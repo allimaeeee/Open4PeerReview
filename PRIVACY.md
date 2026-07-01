@@ -198,4 +198,4 @@ The following table summarizes the technical facts underlying this Privacy Polic
 - **`content.ts`:** Injects a Shadow DOM review panel (380 px, right-aligned) into OLI Torus pages; listens for text selection events; computes char-offset anchors (exact text, prefix, suffix); supports rubric scoring (Does Not Meet / Exemplifies / Exceeds) with 1.5 s debounce auto-save; highlights and navigates existing annotations
 - **`types.ts`:** Defines `StoredAuth` (`access_token`, `refresh_token`, `user_id`, `email`, `expires_at`), `AnnotationRecord` (`review_id`, `rubric_item_id`, `anchor`, `body`, `tag`), `ReviewScoreRecord`, and `ReviewAssignment`
 - **`popup.html` / `popup.ts`:** Extension popup showing login status (email), current review assignment name, and login/logout controls
-- **Data endpoint:** `https://lbmyfqeqkpmohlumlkdg.supabase.co` (O4PR Supabase project, HTTPS only)
+- **Data endpoint:** `https://nkcyjfuzmmkuavhmqyvu.supabase.co` (O4PR Supabase project, HTTPS only)
