@@ -10,11 +10,16 @@ export default async function ReviewerPage({
   searchParams: Promise<{ document?: string; review?: string }>
 }) {
   const supabase = await createClient()
+  const { document: documentId, review: reviewId } = await searchParams
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { document: documentId, review: reviewId } = await searchParams
+  if (!user) {
+    const params = new URLSearchParams()
+    if (documentId) params.set('document', documentId)
+    if (reviewId) params.set('review', reviewId)
+    const next = params.size > 0 ? `/review?${params.toString()}` : '/review'
+    redirect(`/login?next=${encodeURIComponent(next)}`)
+  }
 
   // Load the requested document, or fall back to the first one
   const docQuery = supabase

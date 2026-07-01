@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "build:ext": "node extension/build.mjs",
-    "watch:ext": "node --watch extension/build.mjs"
+    "build:ext:dev": "OERHUB_ENV=dev node extension/build.mjs",
+    "watch:ext": "node --watch extension/build.mjs",
+    "watch:ext:dev": "OERHUB_ENV=dev node --watch extension/build.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

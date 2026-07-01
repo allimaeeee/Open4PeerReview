@@ -40,20 +40,27 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       .filter((r): r is RubricRow => r !== null)
   }
 
+  // Each rubric assigned to a document has its own independent review row
+  // (document_id, rubric_id, reviewer_id) — never collapse them into "the" review.
   function mapRubricsWithProgress(doc: Doc) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReviews = reviews.filter(rev => rev.reviewer_id === userId)
-    const myReview = myReviews.find(r => r.status === 'submitted')
-      ?? myReviews.find(r => r.status === 'in_progress')
-      ?? myReviews[0]
-    const myScores = myReview?.review_scores ?? []
     return mapRubrics(doc).map(r => {
+      const myReview = myReviews.find(rev => rev.rubric_id === r.id) ?? null
+      const myScores = myReview?.review_scores ?? []
       const rubricItemIds = new Set((r.rubric_items ?? []).map(item => item.id))
       const totalCount = rubricItemIds.size
       const ratedCount = myScores.filter(
         rs => rubricItemIds.has(rs.rubric_item_id) && (rs.criterion_scores ?? []).length > 0
       ).length
-      return { rubricId: r.id, rubricTitle: r.title, ratedCount, totalCount }
+      return {
+        rubricId: r.id,
+        rubricTitle: r.title,
+        ratedCount,
+        totalCount,
+        reviewId: myReview?.id ?? null,
+        status: myReview?.status ?? null,
+      }
     })
   }
 
@@ -64,13 +71,12 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   for (const doc of documents) {
     const reviews = (doc.reviews ?? []) as ReviewRow[]
     const myReviews = reviews.filter(r => r.reviewer_id === userId)
-    // Prefer submitted over in_progress — a reviewer may have multiple reviews
-    // (e.g. a stale one from a reassigned rubric plus a newly-submitted one).
-    const myReview = myReviews.find(r => r.status === 'submitted')
-      ?? myReviews.find(r => r.status === 'in_progress')
-      ?? myReviews[0]
-    if (myReview?.status === 'in_progress') activeReviews.push(doc)
-    else if (myReview?.status === 'submitted') completedReviews.push(doc)
+    // A document can have several independent per-rubric reviews at once —
+    // surface it as "active" if any rubric still needs work.
+    const hasInProgress = myReviews.some(r => r.status === 'in_progress')
+    const allSubmitted = myReviews.length > 0 && myReviews.every(r => r.status === 'submitted')
+    if (hasInProgress) activeReviews.push(doc)
+    else if (allSubmitted) completedReviews.push(doc)
     else if (assignedIds.has(doc.id)) taskPool.push(doc)
   }
 
@@ -83,9 +89,11 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const activeCards = activeReviews.map(doc => {
     const author = doc.author as AuthorRow
     const reviews = (doc.reviews ?? []) as ReviewRow[]
-    const myReview = reviews.filter(r => r.reviewer_id === userId).find(r => r.status === 'in_progress')
-      ?? reviews.filter(r => r.reviewer_id === userId)[0]
-    const hasGeneralComment = typeof myReview?.notes === 'string' && myReview.notes.trim().length > 0
+    const myReviews = reviews.filter(r => r.reviewer_id === userId)
+    const hasGeneralComment = myReviews.some(r => typeof r.notes === 'string' && r.notes.trim().length > 0)
+    const rubrics = mapRubricsWithProgress(doc)
+    // Default tab: the rubric that's actively in progress, else the first assigned rubric.
+    const defaultRubric = rubrics.find(r => r.status === 'in_progress') ?? rubrics[0] ?? null
     return {
       id: doc.id,
       title: doc.title,
@@ -95,12 +103,11 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
       description: doc.third_party_content_disclosure ?? '',
       claimedAt: doc.created_at,
-      rubrics: mapRubricsWithProgress(doc),
-      reviewUrl: `/review?document=${doc.id}`,
+      rubrics,
       hasGeneralComment,
       sourceUrl: doc.source_url ?? null,
       courseAccessCode: doc.course_access_code ?? null,
-      reviewId: myReview?.id ?? null,
+      defaultRubricId: defaultRubric?.rubricId ?? null,
     }
   })
 

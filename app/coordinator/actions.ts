@@ -280,34 +280,41 @@ export async function acceptDocument(documentId: string) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
-  // Resolve rubric: prefer document-assigned rubrics, fall back to preset (mirrors ReviewerApp logic)
+  // Resolve rubrics: every rubric assigned to the document gets its own review row,
+  // falling back to the preset rubric if none are assigned (mirrors ReviewerApp logic)
   const { data: docRubrics } = await supabase
     .from('document_rubrics')
     .select('rubric_id')
     .eq('document_id', documentId)
-    .order('created_at', { ascending: true })
-    .limit(1)
 
-  let rubricId = docRubrics?.[0]?.rubric_id ?? null
+  let rubricIds = (docRubrics ?? []).map(r => r.rubric_id)
 
-  if (!rubricId) {
+  if (rubricIds.length === 0) {
     const { data: presets } = await supabase
       .from('rubrics')
       .select('id')
       .eq('is_preset', true)
       .order('title')
       .limit(1)
-    rubricId = presets?.[0]?.id ?? null
+    if (presets?.[0]) rubricIds = [presets[0].id]
   }
 
-  if (!rubricId) throw new Error('No rubric available for this document')
+  if (rubricIds.length === 0) throw new Error('No rubric available for this document')
 
+  // Ignore duplicates — reviewer already has a review for that rubric (e.g., opened the console first)
   const { error } = await supabase
     .from('reviews')
-    .insert({ document_id: documentId, reviewer_id: user.id, rubric_id: rubricId, status: 'in_progress' })
+    .upsert(
+      rubricIds.map(rubricId => ({
+        document_id: documentId,
+        reviewer_id: user.id,
+        rubric_id: rubricId,
+        status: 'in_progress' as const,
+      })),
+      { onConflict: 'document_id,rubric_id,reviewer_id', ignoreDuplicates: true }
+    )
 
-  // Ignore unique violations — reviewer already has a review (e.g., opened the console first)
-  if (error && error.code !== '23505') throw error
+  if (error) throw error
 
   await supabase
     .from('document_acceptances')

@@ -97,6 +97,27 @@ async function handleMessage(
       return get(`review_scores?review_id=eq.${reviewId}`, auth.access_token);
     }
 
+    case 'GET_SCORE_COMMENTS': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { reviewId } = msg.payload as { reviewId: string };
+      return get(`score_comments?review_id=eq.${reviewId}&order=created_at.asc`, auth.access_token);
+    }
+
+    case 'SAVE_SCORE_COMMENT': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { id, ...fields } = msg.payload as { id?: string } & Record<string, unknown>;
+      if (id) {
+        return patch(`score_comments?id=eq.${id}`, fields, auth.access_token);
+      }
+      return post('score_comments', fields, auth.access_token);
+    }
+
+    case 'DELETE_SCORE_COMMENT': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { id } = msg.payload as { id: string };
+      return del(`score_comments?id=eq.${id}`, auth.access_token);
+    }
+
     case 'SAVE_ANNOTATION': {
       if (!auth) return { success: false, error: 'Not authenticated' };
       const { id, ...fields } = msg.payload as { id?: string } & Record<string, unknown>;

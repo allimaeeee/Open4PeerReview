@@ -348,32 +348,39 @@ export async function createDocumentAssignments(
 
   if (error) throw error
 
-  // Determine which rubric to use for pre-created review rows
+  // Every rubric assigned to the document gets its own review row per reviewer —
+  // matches the reviews table's real uq_review constraint on (document_id, rubric_id, reviewer_id).
   const { data: docRubrics } = await supabase
     .from('document_rubrics')
     .select('rubric_id')
     .eq('document_id', documentId)
-    .limit(1)
 
-  const { data: presetRubric } = docRubrics?.length === 0
-    ? await supabase.from('rubrics').select('id').eq('is_preset', true).limit(1).single()
-    : { data: null }
+  let rubricIds = (docRubrics ?? []).map(r => r.rubric_id)
 
-  const rubricId = docRubrics?.[0]?.rubric_id ?? presetRubric?.id
-  if (!rubricId) return
+  if (rubricIds.length === 0) {
+    const { data: presetRubric } = await supabase
+      .from('rubrics')
+      .select('id')
+      .eq('is_preset', true)
+      .limit(1)
+      .single()
+    if (presetRubric) rubricIds = [presetRubric.id]
+  }
 
-  // Pre-create review rows with status 'assigned' for each newly assigned reviewer
+  if (rubricIds.length === 0) return
+
+  // Pre-create review rows with status 'assigned' for each reviewer × rubric pair.
   // Ignore duplicates — reviewers who already have a review row keep their existing status
   await supabase
     .from('reviews')
     .upsert(
-      reviewerIds.map(reviewerId => ({
+      reviewerIds.flatMap(reviewerId => rubricIds.map(rubricId => ({
         document_id: documentId,
         reviewer_id: reviewerId,
         rubric_id: rubricId,
         status: 'assigned' as const,
-      })),
-      { onConflict: 'document_id,reviewer_id', ignoreDuplicates: true }
+      }))),
+      { onConflict: 'document_id,rubric_id,reviewer_id', ignoreDuplicates: true }
     )
 }
 

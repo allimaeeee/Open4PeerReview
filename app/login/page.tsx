@@ -1,8 +1,8 @@
 //Login page
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -10,6 +10,14 @@ import { Card } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,7 +27,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Only trust a same-origin relative path (e.g. from the extension's Console
+  // link bouncing through /login) — never redirect to an absolute/external URL.
+  const rawNext = searchParams.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -43,7 +57,7 @@ export default function LoginPage() {
         if (roles.includes('coordinator')) destination = '/coordinator'
         else if (roles.includes('author')) destination = '/author'
 
-        router.push(destination)
+        router.push(next ?? destination)
         router.refresh()
       }
 
