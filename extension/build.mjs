@@ -9,6 +9,9 @@ const OUT = resolve(__dirname, 'dist');
 
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
+const isDev = process.env.OERHUB_ENV === 'dev';
+const OERHUB_URL = isDev ? 'http://localhost:3000' : 'https://oerhub.vercel.app';
+
 const base = {
   bundle: true,
   platform: 'browser',
@@ -16,6 +19,8 @@ const base = {
   minify: false,
   sourcemap: true,
 };
+
+console.log(`  Building extension for ${isDev ? 'DEV (localhost:3000)' : 'PRODUCTION'} — OERHUB_URL=${OERHUB_URL}`);
 
 await Promise.all([
   build({
@@ -26,6 +31,7 @@ await Promise.all([
   }),
   build({
     ...base,
+    define: { __OERHUB_URL__: JSON.stringify(OERHUB_URL) },
     entryPoints: [resolve(SRC, 'content.ts')],
     outfile: resolve(OUT, 'content.js'),
     format: 'iife',

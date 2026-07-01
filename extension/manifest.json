@@ -7,6 +7,7 @@
   "host_permissions": [
     "https://proton.oli.cmu.edu/*",
     "https://oerhub.vercel.app/*",
+    "http://localhost:3000/*",
     "<all_urls>"
   ],
   "background": {
@@ -20,7 +21,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://oerhub.vercel.app/*"],
+      "matches": ["https://oerhub.vercel.app/*", "http://localhost:3000/*"],
       "js": ["dashboard.js"],
       "run_at": "document_idle"
     }

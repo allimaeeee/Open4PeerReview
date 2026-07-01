@@ -6,6 +6,7 @@ import type {
   RubricItem,
   AnnotationRecord,
   ReviewScoreRecord,
+  ScoreCommentRecord,
   CriterionScore,
   HighlightTag,
   HtmlCharOffsetAnchor,
@@ -19,6 +20,10 @@ import type {
 const PANEL_WIDTH = 380;
 const CONTEXT = 32;
 const SCORE_DEBOUNCE_MS = 1500;
+// Injected at build time via esbuild `define` — see extension/build.mjs.
+// `npm run build:ext:dev` points this at localhost for local testing.
+declare const __OERHUB_URL__: string;
+const OERHUB_URL = __OERHUB_URL__;
 
 const SCORE_LABELS: Record<CriterionScore, string> = {
   does_not_meet: 'Does Not Meet',
@@ -39,6 +44,8 @@ const TAG_COLORS: Record<string, string> = {
 
 const DEFAULT_HIGHLIGHT = 'rgba(254,214,91,0.45)';
 const SESSION_KEY = 'oer_review_id';
+const PANEL_GEOM_KEY = 'oer_panel_geom';
+const EXPANDED_CRIT_KEY = 'oer_expanded_criteria';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -51,7 +58,9 @@ let scores = new Map<string, ReviewScoreRecord>();
 
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
-type ScoreCommentMap = { does_not_meet: string; exceeds: string };
+type ScoreCommentEntry = { id: string | null; body: string };
+type ScoreCommentMap = { does_not_meet: ScoreCommentEntry; exceeds: ScoreCommentEntry };
+const EMPTY_SCORE_COMMENTS: ScoreCommentMap = { does_not_meet: { id: null, body: '' }, exceeds: { id: null, body: '' } };
 const scoreComments = new Map<string, ScoreCommentMap>();
 
 // ── Shadow DOM refs ───────────────────────────────────────────────────────────
@@ -238,8 +247,7 @@ function markRange(
         onClick();
       });
       mark.addEventListener('mouseenter', (ev) => showAnnotationTooltipFor(annotationId, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
-      mark.addEventListener('mousemove', (ev) => showAnnotationTooltipFor(annotationId, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY));
-      mark.addEventListener('mouseleave', hideAnnotationTooltip);
+      mark.addEventListener('mouseleave', scheduleHideTooltip);
     } catch {
       // Skip partial overlaps
     }
@@ -364,13 +372,10 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
     el.style.transform = 'translate(-50%, -105%)';
     showAnnotationTooltipFor(ann.id, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY);
   });
-  el.addEventListener('mousemove', (ev) => {
-    showAnnotationTooltipFor(ann.id, (ev as MouseEvent).clientX, (ev as MouseEvent).clientY);
-  });
   el.addEventListener('mouseleave', () => {
     el.style.filter = 'drop-shadow(0 2px 5px rgba(0,0,0,0.35))';
     el.style.transform = 'translate(-50%, -100%)';
-    hideAnnotationTooltip();
+    scheduleHideTooltip();
   });
   el.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -400,7 +405,43 @@ function applyHotspotMarkers() {
   pointAnnotations.forEach((ann, idx) => placeHotspotMarker(ann, idx + 1));
 }
 
+// Torus renders page content asynchronously (both on a full reload/re-visit and
+// on in-app SPA navigation), so a single synchronous applyHighlights() call right
+// after fetching annotations can run before the text it's searching for has been
+// painted into the DOM. Retry a few times — applyHighlights is idempotent, so the
+// extra calls are harmless once the content has already settled.
+function scheduleHighlightRetries() {
+  setTimeout(applyHighlights, 350);
+  setTimeout(applyHighlights, 900);
+  setTimeout(applyHighlights, 2200);
+}
+
 function scrollToAnnotationInPanel(annotationId: string) {
+  const ann = annotations.find(a => a.id === annotationId);
+
+  // Expand the owning criterion accordion — its annotation list is only
+  // rendered into the DOM once opened, so the target element won't exist yet.
+  if (ann?.rubric_item_id) {
+    const body = shadow.getElementById(`crit-body-${ann.rubric_item_id}`);
+    if (body && !body.classList.contains('open')) {
+      body.classList.add('open');
+      const icon = shadow.getElementById(`expand-${ann.rubric_item_id}`);
+      if (icon) icon.textContent = '▼';
+      saveExpandedCriteria();
+    }
+    refreshAnnotationList(ann.rubric_item_id);
+  }
+
+  // Expand the panel itself if the user had it minimized.
+  const panel = shadow.querySelector('.panel');
+  if (panel?.classList.contains('collapsed')) {
+    panel.classList.remove('collapsed');
+    panelHost.style.height = `${savedPanelH}px`;
+    const minBtn = shadow.getElementById('btn-min') as HTMLButtonElement | null;
+    if (minBtn) minBtn.textContent = '−';
+    savePanelGeometry();
+  }
+
   const el = shadow.getElementById(`ann-${annotationId}`);
   el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   el?.classList.add('highlighted');
@@ -498,9 +539,9 @@ function updateCompletion() {
     const s = scores.get(item.id);
     const levels = s?.criterion_scores ?? [];
     if (levels.length === 0) return false;
-    const comments = scoreComments.get(item.id) ?? { does_not_meet: '', exceeds: '' };
-    if (levels.includes('does_not_meet') && !comments.does_not_meet.trim()) return false;
-    if (levels.includes('exceeds') && !comments.exceeds.trim()) return false;
+    const comments = scoreComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
+    if (levels.includes('does_not_meet') && !comments.does_not_meet.body.trim()) return false;
+    if (levels.includes('exceeds') && !comments.exceeds.body.trim()) return false;
     return true;
   }).length;
   const pct = Math.round((scored / rubricItems.length) * 100);
@@ -518,8 +559,8 @@ function toggleScore(rubricItemId: string, level: CriterionScore) {
   if (currentLevels.includes(level)) {
     newLevels = currentLevels.filter(s => s !== level);
     if (level === 'does_not_meet' || level === 'exceeds') {
-      const prev = scoreComments.get(rubricItemId) ?? { does_not_meet: '', exceeds: '' };
-      scoreComments.set(rubricItemId, { ...prev, [level]: '' });
+      const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
+      scoreComments.set(rubricItemId, { ...prev, [level]: { id: prev[level].id, body: '' } });
     }
   } else {
     newLevels = [...currentLevels, level];
@@ -557,22 +598,55 @@ async function flushScore(rubricItemId: string) {
 
   const s = scores.get(rubricItemId);
   const levels = s?.criterion_scores ?? [];
-  const comments = scoreComments.get(rubricItemId);
-  const parts: string[] = [];
-  if (comments?.does_not_meet) parts.push(`Does Not Meet: ${comments.does_not_meet}`);
-  if (comments?.exceeds) parts.push(`Exceeds: ${comments.exceeds}`);
 
-  const resp = await send({
-    type: 'SAVE_SCORE',
-    payload: {
-      review_id: selectedReview.id,
-      rubric_item_id: rubricItemId,
-      score: levels[0] ?? null,
-      criterion_scores: levels,
-      comment: parts.join('\n\n') || null,
-    },
+  const [scoreResp, dnmOk, exceedsOk] = await Promise.all([
+    send({
+      type: 'SAVE_SCORE',
+      payload: {
+        review_id: selectedReview.id,
+        rubric_item_id: rubricItemId,
+        score: levels[0] ?? null,
+        criterion_scores: levels,
+      },
+    }),
+    syncScoreComment(rubricItemId, 'does_not_meet'),
+    syncScoreComment(rubricItemId, 'exceeds'),
+  ]);
+  setSaveStatus(scoreResp.success && dnmOk && exceedsOk ? 'saved' : 'error');
+}
+
+// Mirrors the web app's handleAddScoreComment/handleEditScoreComment/handleDeleteScoreComment
+// (ReviewerConsole.tsx) so DNM/Exceeds comments made in either client show up in the other —
+// both read/write the same `score_comments` rows keyed by (review_id, rubric_item_id, score_level).
+async function syncScoreComment(rubricItemId: string, level: 'does_not_meet' | 'exceeds'): Promise<boolean> {
+  if (!selectedReview) return false;
+  const entry = scoreComments.get(rubricItemId)?.[level] ?? EMPTY_SCORE_COMMENTS[level];
+  const body = entry.body.trim();
+
+  if (!body) {
+    if (!entry.id) return true;
+    const resp = await send({ type: 'DELETE_SCORE_COMMENT', payload: { id: entry.id } });
+    if (resp.success) {
+      const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
+      scoreComments.set(rubricItemId, { ...prev, [level]: { id: null, body: '' } });
+    }
+    return resp.success;
+  }
+
+  if (entry.id) {
+    const resp = await send({ type: 'SAVE_SCORE_COMMENT', payload: { id: entry.id, body } });
+    return resp.success;
+  }
+
+  const resp = await send<ScoreCommentRecord>({
+    type: 'SAVE_SCORE_COMMENT',
+    payload: { review_id: selectedReview.id, rubric_item_id: rubricItemId, score_level: level, body },
   });
-  setSaveStatus(resp.success ? 'saved' : 'error');
+  if (resp.success && resp.data) {
+    const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
+    scoreComments.set(rubricItemId, { ...prev, [level]: { id: resp.data.id, body } });
+  }
+  return resp.success;
 }
 
 function refreshScoreButtons(rubricItemId: string) {
@@ -889,6 +963,19 @@ function createAnnotationPopupEl() {
 
 // ── Annotation hover tooltip ──────────────────────────────────────────────────
 
+let tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Grace period before hiding so the cursor can travel from the mark/marker
+// into the tooltip to reach its Edit/Delete/Open buttons.
+function scheduleHideTooltip() {
+  cancelHideTooltip();
+  tooltipHideTimer = setTimeout(hideAnnotationTooltip, 200);
+}
+
+function cancelHideTooltip() {
+  if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+}
+
 function createAnnotationTooltip() {
   annotationTooltip = document.createElement('div');
   annotationTooltip.id = 'oer-ann-tooltip';
@@ -904,15 +991,18 @@ function createAnnotationTooltip() {
     'line-height:1.5',
     'max-width:260px',
     'box-shadow:0 4px 16px rgba(0,0,0,0.3)',
-    'pointer-events:none',
+    'pointer-events:auto',
     'display:none',
     'word-break:break-word',
   ].join(';');
+  annotationTooltip.addEventListener('mouseenter', cancelHideTooltip);
+  annotationTooltip.addEventListener('mouseleave', scheduleHideTooltip);
   document.body.appendChild(annotationTooltip);
 }
 
 function showAnnotationTooltipFor(annId: string, clientX: number, clientY: number) {
   if (!annotationTooltip) return;
+  cancelHideTooltip();
   const ann = annotations.find(a => a.id === annId);
   if (!ann) return;
 
@@ -920,15 +1010,42 @@ function showAnnotationTooltipFor(annId: string, clientX: number, clientY: numbe
     ? rubricItems.find(r => r.id === ann.rubric_item_id)?.label ?? null
     : null;
 
+  const actionBtnStyle = 'cursor:pointer;background:rgba(255,255,255,0.12);border:none;color:#e2e8f0;' +
+    'font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;';
+
   let html = '';
   if (criterionLabel) {
     const code = criterionLabel.split(' · ')[0] ?? criterionLabel;
     html += `<div style="font-size:10px;font-weight:700;color:#90cdf4;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;">${escHtml(code)}</div>`;
   }
   html += `<div>${escHtml(ann.body.slice(0, 140))}${ann.body.length > 140 ? '…' : ''}</div>`;
+  html += `
+    <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.12);">
+      <button class="tt-open" style="${actionBtnStyle}">↗ Open</button>
+      <button class="tt-edit" style="${actionBtnStyle}">✎ Edit</button>
+      <button class="tt-delete" style="cursor:pointer;background:rgba(229,62,62,0.25);border:none;color:#feb2b2;font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;">🗑 Delete</button>
+    </div>
+  `;
 
   annotationTooltip.innerHTML = html;
   annotationTooltip.style.display = 'block';
+
+  annotationTooltip.querySelector('.tt-open')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    hideAnnotationTooltip();
+    scrollToAnnotationInPanel(annId);
+  });
+  annotationTooltip.querySelector('.tt-edit')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    hideAnnotationTooltip();
+    scrollToAnnotationInPanel(annId);
+    editAnnotation(annId);
+  });
+  annotationTooltip.querySelector('.tt-delete')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    hideAnnotationTooltip();
+    deleteAnnotation(annId);
+  });
 
   const tipW = 260;
   let left = clientX - tipW / 2;
@@ -940,6 +1057,7 @@ function showAnnotationTooltipFor(annId: string, clientX: number, clientY: numbe
 }
 
 function hideAnnotationTooltip() {
+  cancelHideTooltip();
   if (annotationTooltip) annotationTooltip.style.display = 'none';
 }
 
@@ -1237,100 +1355,6 @@ function handleMouseUp(e: MouseEvent) {
   }, 0);
 }
 
-// ── Screenshot (pin) ──────────────────────────────────────────────────────────
-
-async function handlePinScreenshot() {
-  if (!selectedReview) return;
-
-  const captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
-  if (!captureResp.success || !captureResp.data) {
-    showToast('Screenshot capture failed');
-    return;
-  }
-
-  showToast('Uploading screenshot…');
-
-  const uploadResp = await send<{ url: string }>({
-    type: 'UPLOAD_SCREENSHOT',
-    payload: { png: captureResp.data.png, reviewId: selectedReview.id },
-  });
-  if (!uploadResp.success || !uploadResp.data) {
-    showToast('Upload failed — check Supabase Storage bucket "screenshots"');
-    return;
-  }
-
-  showPinPopup(captureResp.data.png, uploadResp.data.url);
-}
-
-function showPinPopup(thumbPng: string, screenshotUrl: string) {
-  const rubricOptions = rubricItems.map(item => {
-    const parts = item.label.split(' · ');
-    return `<option value="${item.id}">${parts[0] ?? item.label}</option>`;
-  }).join('');
-
-  const popup = document.createElement('div');
-  popup.style.cssText = `
-    position: fixed;
-    top: 50%;
-    left: calc(50% - ${PANEL_WIDTH / 2}px);
-    transform: translate(-50%, -50%);
-    z-index: 2147483647;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-    padding: 16px;
-    width: 320px;
-    font-family: Inter, -apple-system, sans-serif;
-    font-size: 13px;
-    color: #1a202c;
-  `;
-  popup.innerHTML = `
-    <div style="font-weight:600;margin-bottom:10px;font-size:14px;">Pin Screenshot</div>
-    <img src="${thumbPng}" style="width:100%;height:100px;object-fit:cover;border-radius:6px;margin-bottom:10px;border:1px solid #e2e8f0;" />
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Link to criterion (optional)</label>
-      <select id="pin-criterion" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:inherit;background:#fff;box-sizing:border-box;outline:none;">
-        <option value="">— General note —</option>
-        ${rubricOptions}
-      </select>
-    </div>
-    <div style="margin-bottom:10px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
-      <textarea id="pin-body" rows="3" placeholder="Describe what you're capturing…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;box-sizing:border-box;outline:none;"></textarea>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button id="pin-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
-      <button id="pin-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Save Pin</button>
-    </div>
-  `;
-
-  const backdrop = document.createElement('div');
-  backdrop.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2147483646;`;
-
-  document.body.appendChild(backdrop);
-  document.body.appendChild(popup);
-
-  const remove = () => { backdrop.remove(); popup.remove(); };
-  backdrop.addEventListener('click', remove);
-  popup.querySelector('#pin-cancel')?.addEventListener('click', remove);
-  popup.querySelector('#pin-save')?.addEventListener('click', async () => {
-    const criterionId = (popup.querySelector('#pin-criterion') as HTMLSelectElement).value || null;
-    const body = (popup.querySelector('#pin-body') as HTMLTextAreaElement).value.trim() || 'Screenshot';
-    const anchor: BboxAnchor = {
-      type: 'bbox',
-      x: 0, y: 0,
-      width: document.documentElement.clientWidth,
-      height: document.documentElement.clientHeight,
-      screenshotUrl,
-      pageUrl: window.location.href,
-    };
-    remove();
-    await saveAnnotation(criterionId, body, null, anchor);
-    showToast('Screenshot pinned');
-  });
-}
-
 // ── Toast ─────────────────────────────────────────────────────────────────────
 
 function showToast(message: string) {
@@ -1445,15 +1469,35 @@ function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'select-r
 
 function renderReviewInterface() {
   if (!panelBody || !selectedReview) return;
+
+  // A document can have several independent per-rubric reviews assigned to the
+  // same reviewer — surface them as tabs instead of only ever showing the one
+  // the extension happened to land on.
+  const siblingReviews = assignments.filter(a => a.document_id === selectedReview!.document_id);
+  const rubricTabsHtml = siblingReviews.length > 1
+    ? `
+      <div class="rubric-tabs" id="rubric-tabs">
+        ${siblingReviews.map(sib => `
+          <button
+            class="rubric-tab${sib.id === selectedReview!.id ? ' active' : ''}"
+            data-review-id="${sib.id}"
+          >${escHtml(sib.rubrics?.title ?? 'Untitled rubric')}</button>
+        `).join('')}
+      </div>
+    `
+    : '';
+
   panelBody.innerHTML = `
     <div class="rubric-header">
       <div style="flex:1;min-width:0;">
         <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
         <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
       </div>
-      <a class="btn-open-console" id="btn-open-console" href="http://localhost:3000/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
+      <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
       <button class="switch-btn" id="btn-switch-review" title="Switch review">⇄</button>
     </div>
+
+    ${rubricTabsHtml}
 
     <div class="completion-bar">
       <div class="completion-track">
@@ -1487,6 +1531,13 @@ function renderReviewInterface() {
     selectedReview = null;
     sessionStorage.removeItem(SESSION_KEY);
     renderContent('select-review');
+  });
+
+  shadow.querySelectorAll<HTMLButtonElement>('.rubric-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetId = tab.dataset.reviewId!;
+      if (targetId !== selectedReview?.id) selectReview(targetId);
+    });
   });
 
   shadow.getElementById('btn-add-general-note')?.addEventListener('click', () => {
@@ -1536,7 +1587,7 @@ function renderRubricCriteria() {
       : selectedLevels.length === 1 ? SCORE_ABBR[selectedLevels[0]]
       : selectedLevels.map(l => SCORE_ABBR[l]).join('+');
     const annCount = annotations.filter(a => a.rubric_item_id === item.id).length;
-    const savedComments = scoreComments.get(item.id) ?? { does_not_meet: '', exceeds: '' };
+    const savedComments = scoreComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
 
     return `
       <div class="criterion-item">
@@ -1558,11 +1609,11 @@ function renderRubricCriteria() {
           </div>
           <div class="score-comment-box score-comment-dnm" id="score-comment-does_not_meet-${item.id}" style="display:${selectedLevels.includes('does_not_meet') ? 'block' : 'none'};">
             <div class="score-comment-label">Why does this not meet the standard? <span class="score-comment-required">required</span></div>
-            <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="2" placeholder="Describe what's missing or needs improvement…">${escHtml(savedComments.does_not_meet)}</textarea>
+            <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="2" placeholder="Describe what's missing or needs improvement…">${escHtml(savedComments.does_not_meet.body)}</textarea>
           </div>
           <div class="score-comment-box score-comment-exc" id="score-comment-exceeds-${item.id}" style="display:${selectedLevels.includes('exceeds') ? 'block' : 'none'};">
             <div class="score-comment-label">Why does this exceed the standard? <span class="score-comment-required">required</span></div>
-            <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="2" placeholder="Describe what makes this exemplary…">${escHtml(savedComments.exceeds)}</textarea>
+            <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="2" placeholder="Describe what makes this exemplary…">${escHtml(savedComments.exceeds.body)}</textarea>
           </div>
           <div class="ann-section-label">Annotations</div>
           <div class="ann-list" id="ann-list-${item.id}"></div>
@@ -1589,6 +1640,7 @@ function renderRubricCriteria() {
       const isOpen = body.classList.toggle('open');
       if (icon) icon.textContent = isOpen ? '▼' : '▶';
       if (isOpen) refreshAnnotationList(id);
+      saveExpandedCriteria();
     });
   });
 
@@ -1644,8 +1696,8 @@ function renderRubricCriteria() {
     ta.addEventListener('input', () => {
       const itemId = ta.dataset.item!;
       const level = ta.dataset.level as 'does_not_meet' | 'exceeds';
-      const prev = scoreComments.get(itemId) ?? { does_not_meet: '', exceeds: '' };
-      scoreComments.set(itemId, { ...prev, [level]: ta.value });
+      const prev = scoreComments.get(itemId) ?? EMPTY_SCORE_COMMENTS;
+      scoreComments.set(itemId, { ...prev, [level]: { id: prev[level].id, body: ta.value } });
       updateCompletion();
       setSaveStatus('saving');
       const existing = scoreTimers.get(itemId);
@@ -1654,11 +1706,66 @@ function renderRubricCriteria() {
     });
   });
 
-  // Populate open criterion annotation lists
+  // Restore which criterion accordions were expanded before this render
+  // (e.g. after a reload/navigation, or a full re-render triggered by delete).
+  const expanded = new Set(loadExpandedCriteria());
   rubricItems.forEach(item => {
+    if (!expanded.has(item.id)) return;
     const body = shadow.getElementById(`crit-body-${item.id}`);
-    if (body?.classList.contains('open')) refreshAnnotationList(item.id);
+    const icon = shadow.getElementById(`expand-${item.id}`);
+    if (!body) return;
+    body.classList.add('open');
+    if (icon) icon.textContent = '▼';
+    refreshAnnotationList(item.id);
   });
+}
+
+// ── Persisted UI state (survives page reload / same-tab navigation) ───────────
+
+function saveExpandedCriteria() {
+  const openIds = Array.from(shadow.querySelectorAll('.criterion-bd.open'))
+    .map(el => el.id.replace('crit-body-', ''));
+  try { sessionStorage.setItem(EXPANDED_CRIT_KEY, JSON.stringify(openIds)); } catch { /* storage unavailable */ }
+}
+
+function loadExpandedCriteria(): string[] {
+  try {
+    const raw = sessionStorage.getItem(EXPANDED_CRIT_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch { return []; }
+}
+
+interface PanelGeometry {
+  left: number | null;
+  top: number;
+  right: number | null;
+  width: number;
+  height: number;
+  collapsed: boolean;
+}
+
+function savePanelGeometry() {
+  if (!panelHost || !shadow) return;
+  const panel = shadow.querySelector('.panel');
+  const collapsed = panel?.classList.contains('collapsed') ?? false;
+  const rect = panelHost.getBoundingClientRect();
+  const usesLeft = panelHost.style.left !== '' && panelHost.style.left !== 'auto';
+  const geom: PanelGeometry = {
+    left: usesLeft ? rect.left : null,
+    top: rect.top,
+    right: usesLeft ? null : window.innerWidth - rect.right,
+    width: rect.width,
+    height: collapsed ? savedPanelH : rect.height,
+    collapsed,
+  };
+  try { sessionStorage.setItem(PANEL_GEOM_KEY, JSON.stringify(geom)); } catch { /* storage unavailable */ }
+}
+
+function loadPanelGeometry(): PanelGeometry | null {
+  try {
+    const raw = sessionStorage.getItem(PANEL_GEOM_KEY);
+    return raw ? (JSON.parse(raw) as PanelGeometry) : null;
+  } catch { return null; }
 }
 
 // ── Panel creation ────────────────────────────────────────────────────────────
@@ -1671,12 +1778,23 @@ function createPanel() {
   const defaultH = 560;
   const initRight = 16;
   const initTop = 16;
+
+  // Restore prior position/size so reloading or navigating the OLI Torus page
+  // doesn't reset the console back to its default corner and dimensions.
+  const savedGeom = loadPanelGeometry();
+  const startW = savedGeom?.width ?? defaultW;
+  const expandedH = savedGeom?.height ?? defaultH;
+  const startH = savedGeom?.collapsed ? defaultH : expandedH;
+  savedPanelH = expandedH; // height to restore to when un-collapsing
+
   host.style.cssText = `
     position: fixed !important;
-    top: ${initTop}px !important;
-    right: ${initRight}px !important;
-    width: ${defaultW}px !important;
-    height: ${defaultH}px !important;
+    top: ${savedGeom?.top ?? initTop}px !important;
+    ${savedGeom?.left != null
+      ? `left: ${savedGeom.left}px !important;`
+      : `right: ${savedGeom?.right ?? initRight}px !important;`}
+    width: ${startW}px !important;
+    height: ${startH}px !important;
     z-index: 2147483647 !important;
     pointer-events: auto !important;
     overflow: visible !important;
@@ -1792,23 +1910,6 @@ function createPanel() {
         gap: 8px;
       }
 
-      .btn-pin {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 11px;
-        border-radius: 6px;
-        border: 1px solid #e2e8f0;
-        background: #f7fafc;
-        color: #4a5568;
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        font-family: inherit;
-        transition: all 0.15s;
-      }
-      .btn-pin:hover { background: #edf2f7; border-color: #cbd5e0; }
-
       .save-status { font-size: 11px; color: #a0aec0; }
       .save-status.saving { color: #C4622D; }
       .save-status.saved  { color: #38a169; }
@@ -1896,6 +1997,15 @@ function createPanel() {
       .rubric-name { font-size: 11px; color: #718096; margin-top: 1px; }
       .switch-btn { background: none; border: none; font-size: 16px; cursor: pointer; color: #a0aec0; padding: 2px; border-radius: 4px; flex-shrink: 0; }
       .switch-btn:hover { color: #3D6FA9; background: #eff6ff; }
+
+      .rubric-tabs { display: flex; gap: 2px; padding: 0 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; overflow-x: auto; flex-shrink: 0; }
+      .rubric-tab {
+        background: none; border: none; border-bottom: 2px solid transparent;
+        padding: 7px 10px; font-size: 11px; font-weight: 600; color: #718096;
+        cursor: pointer; white-space: nowrap; font-family: inherit; transition: color 0.15s, border-color 0.15s;
+      }
+      .rubric-tab:hover { color: #3D6FA9; }
+      .rubric-tab.active { color: #3D6FA9; border-bottom-color: #3D6FA9; }
 
       /* Completion */
       .completion-bar { padding: 7px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #f0f4f8; }
@@ -2004,12 +2114,6 @@ function createPanel() {
 
       <div class="panel-ft">
         <div style="display:flex;gap:5px;flex:1;">
-          <button class="btn-pin" id="btn-pin">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10 2L14 6L9 11L5 7L10 2Z"/><path d="M5 7L2 14"/><path d="M7 4L12 9"/>
-            </svg>
-            Screenshot
-          </button>
           <button class="btn-hotspot" id="btn-hotspot">
             <svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor">
               <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/>
@@ -2037,6 +2141,16 @@ function createPanel() {
   panelBody = shadow.getElementById('panel-body') as HTMLElement;
   saveStatusEl = shadow.getElementById('save-status') as HTMLElement;
 
+  // Re-apply the collapsed state now that the shadow DOM (and its .panel
+  // element) actually exists.
+  if (savedGeom?.collapsed) {
+    const panel = shadow.querySelector('.panel');
+    const minBtn = shadow.getElementById('btn-min') as HTMLButtonElement | null;
+    panel?.classList.add('collapsed');
+    host.style.height = 'auto';
+    if (minBtn) minBtn.textContent = '+';
+  }
+
   // ── Minimize / collapse ──────────────────────────────────────────────────────
   shadow.getElementById('btn-min')?.addEventListener('click', () => {
     const panel = shadow.querySelector('.panel')!;
@@ -2052,9 +2166,9 @@ function createPanel() {
       host.style.height = `${savedPanelH}px`;
       if (btn) btn.textContent = '−';
     }
+    savePanelGeometry();
   });
 
-  shadow.getElementById('btn-pin')?.addEventListener('click', handlePinScreenshot);
   shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
     if (!selectedReview) { showToast('Select a review first'); return; }
     if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
@@ -2131,11 +2245,13 @@ function createPanel() {
     if (isDragging) {
       isDragging = false;
       hd.classList.remove('dragging');
+      savePanelGeometry();
     }
     if (isResizing) {
       isResizing = false;
       resizeDir = null;
       document.body.style.userSelect = '';
+      savePanelGeometry();
     }
   });
 }
@@ -2155,34 +2271,30 @@ async function selectReview(reviewId: string) {
     await send({ type: 'SET_REVIEW_STATUS', payload: { reviewId, status: 'in_progress' } });
   }
 
-  const [itemsResp, annResp, scoresResp] = await Promise.all([
+  const [itemsResp, annResp, scoresResp, scoreCommentsResp] = await Promise.all([
     send<RubricItem[]>({ type: 'GET_RUBRIC_ITEMS', payload: { rubricId: review.rubric_id } }),
     send<AnnotationRecord[]>({ type: 'GET_ANNOTATIONS', payload: { reviewId } }),
     send<ReviewScoreRecord[]>({ type: 'GET_SCORES', payload: { reviewId } }),
+    send<ScoreCommentRecord[]>({ type: 'GET_SCORE_COMMENTS', payload: { reviewId } }),
   ]);
 
   rubricItems = itemsResp.data ?? [];
   annotations = annResp.data ?? [];
   scores.clear();
   scoreComments.clear();
-  (scoresResp.data ?? []).forEach(s => {
-    scores.set(s.rubric_item_id, s);
-    if (s.comment) scoreComments.set(s.rubric_item_id, parseScoreComment(s.comment));
+  (scoresResp.data ?? []).forEach(s => scores.set(s.rubric_item_id, s));
+  // One comment per (item, level) surfaced here, same simplification the web app's
+  // RatingBox uses (comments?.[0]) — first by created_at wins if more than one exists.
+  (scoreCommentsResp.data ?? []).forEach(c => {
+    const prev = scoreComments.get(c.rubric_item_id) ?? EMPTY_SCORE_COMMENTS;
+    if (prev[c.score_level].id) return;
+    scoreComments.set(c.rubric_item_id, { ...prev, [c.score_level]: { id: c.id, body: c.body } });
   });
 
   renderContent('review');
   applyHighlights();
+  scheduleHighlightRetries();
   checkPendingAnnotationNavigation();
-}
-
-function parseScoreComment(comment: string | null): ScoreCommentMap {
-  const result: ScoreCommentMap = { does_not_meet: '', exceeds: '' };
-  if (!comment) return result;
-  const dnm = comment.match(/Does Not Meet: ([\s\S]*?)(?:\n\nExceeds:|$)/);
-  const exc = comment.match(/Exceeds: ([\s\S]*?)$/);
-  if (dnm) result.does_not_meet = dnm[1].trim();
-  if (exc) result.exceeds = exc[1].trim();
-  return result;
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -2235,18 +2347,11 @@ async function init() {
   });
 
   // Re-apply all highlights and hotspot markers when Torus navigates (SPA routing).
-  // Torus renders content asynchronously, so we retry at 350ms, 900ms, and 2200ms to
-  // catch slow renders — applyHighlights is idempotent so multiple calls are safe.
-  function scheduleNavHighlights() {
-    setTimeout(applyHighlights, 350);
-    setTimeout(applyHighlights, 900);
-    setTimeout(applyHighlights, 2200);
-  }
   const origPush = history.pushState.bind(history);
   const origReplace = history.replaceState.bind(history);
-  history.pushState = (...args) => { origPush(...args); scheduleNavHighlights(); };
-  history.replaceState = (...args) => { origReplace(...args); scheduleNavHighlights(); };
-  window.addEventListener('popstate', scheduleNavHighlights);
+  history.pushState = (...args) => { origPush(...args); scheduleHighlightRetries(); };
+  history.replaceState = (...args) => { origReplace(...args); scheduleHighlightRetries(); };
+  window.addEventListener('popstate', scheduleHighlightRetries);
 
   // Let the popup query current state
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

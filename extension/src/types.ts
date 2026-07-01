@@ -77,6 +77,14 @@ export interface ReviewScoreRecord {
   comment: string | null;
 }
 
+export interface ScoreCommentRecord {
+  id: string;
+  review_id: string;
+  rubric_item_id: string;
+  score_level: 'does_not_meet' | 'exceeds';
+  body: string;
+}
+
 export interface ReviewAssignment {
   id: string;
   document_id: string;
@@ -105,6 +113,9 @@ export type BackgroundMessageType =
   | 'GET_RUBRIC_ITEMS'
   | 'GET_ANNOTATIONS'
   | 'GET_SCORES'
+  | 'GET_SCORE_COMMENTS'
+  | 'SAVE_SCORE_COMMENT'
+  | 'DELETE_SCORE_COMMENT'
   | 'SET_REVIEW_STATUS'
   | 'UPDATE_DOCUMENT_PAGES'
   | 'LOGIN'

@@ -14,6 +14,10 @@ export interface RubricProgress {
   rubricTitle: string
   ratedCount: number
   totalCount: number
+  // Each rubric has its own independent review row (document_id, rubric_id, reviewer_id) —
+  // there is no single "the" review for a document once more than one rubric is assigned.
+  reviewId: string | null
+  status: string | null
 }
 
 export interface ReviewerCardProps {
@@ -26,15 +30,15 @@ export interface ReviewerCardProps {
   description: string
   claimedAt: string
   rubrics: RubricProgress[]
-  reviewUrl: string
   hasGeneralComment: boolean
   sourceUrl?: string | null
   courseAccessCode?: string | null
-  reviewId?: string | null
+  // Which rubric tab is selected by default (e.g. the one currently in progress)
+  defaultRubricId?: string | null
 }
 
 export function ReviewerCard({
-  id: _id,
+  id,
   title,
   platform,
   authorName,
@@ -43,20 +47,26 @@ export function ReviewerCard({
   description,
   claimedAt,
   rubrics,
-  reviewUrl,
   hasGeneralComment,
   sourceUrl,
   courseAccessCode,
-  reviewId,
+  defaultRubricId,
 }: ReviewerCardProps) {
   const [showTorusModal, setShowTorusModal] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [activeRubricId, setActiveRubricId] = useState(defaultRubricId ?? rubrics[0]?.rubricId ?? null)
   const router = useRouter()
+
+  const activeRubric = rubrics.find(r => r.rubricId === activeRubricId) ?? rubrics[0] ?? null
+  const activeReviewId = activeRubric?.reviewId ?? null
+  const reviewUrl = activeReviewId
+    ? `/review?document=${id}&review=${activeReviewId}`
+    : `/review?document=${id}`
 
   const handleOpenInTorus = async () => {
     setShowTorusModal(false)
     let url = sourceUrl ?? '#'
-    if (url !== '#' && reviewId) {
+    if (url !== '#' && activeReviewId) {
       try {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
@@ -70,7 +80,7 @@ export function ReviewerCard({
           }
           const token = btoa(encodeURIComponent(JSON.stringify(authPayload)))
           const sep = url.includes('?') ? '&' : '?'
-          url = `${url}${sep}oer_review_id=${reviewId}&oer_token=${encodeURIComponent(token)}`
+          url = `${url}${sep}oer_review_id=${activeReviewId}&oer_token=${encodeURIComponent(token)}`
         }
       } catch { /* open without token if anything fails */ }
     }
@@ -78,13 +88,14 @@ export function ReviewerCard({
   }
 
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
-  const anyStarted = rubrics.some(r => pct(r) > 0)
   const isTorus = platform === 'OLI Torus'
 
+  // Status/CTA reflect the currently selected rubric tab, not the whole document.
+  const activeStarted = activeRubric ? pct(activeRubric) > 0 || activeRubric.status === 'in_progress' : false
   const cardStatus: 'not-started' | 'in-progress' =
-    (anyStarted || hasGeneralComment) ? 'in-progress' : 'not-started'
+    (activeStarted || hasGeneralComment) ? 'in-progress' : 'not-started'
 
-  const ctaLabel = anyStarted ? 'Continue review' : 'Start review'
+  const ctaLabel = activeStarted ? 'Continue review' : 'Start review'
 
   const formattedDate = new Date(claimedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -161,15 +172,24 @@ export function ReviewerCard({
     <>
       <Accordion trigger={trigger} rightSlot={ctaButton}>
 
-        {/* Section 1 — Rubric progress rows */}
+        {/* Section 1 — Rubric tabs: each rubric is its own independent review */}
         <div className="-mb-3">
           {rubrics.map(rubric => {
+            const isActive = rubric.rubricId === activeRubric?.rubricId
             return (
-              <div
+              <button
                 key={rubric.rubricId}
-                className="flex items-center justify-between gap-4 py-3 border-t border-border"
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setActiveRubricId(rubric.rubricId) }}
+                className={[
+                  'w-full flex items-center justify-between gap-4 py-3 border-t border-border text-left transition-colors',
+                  isActive ? 'bg-primary/5' : 'hover:bg-surface-elevated',
+                ].join(' ')}
               >
-                <span className="text-body-md text-text-primary font-medium shrink-0">
+                <span className={[
+                  'text-body-md font-medium shrink-0',
+                  isActive ? 'text-primary' : 'text-text-primary',
+                ].join(' ')}>
                   {rubric.rubricTitle}
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
@@ -184,7 +204,7 @@ export function ReviewerCard({
                     {rubric.ratedCount}/{rubric.totalCount} criteria rated
                   </span>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>

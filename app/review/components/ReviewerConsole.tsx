@@ -761,6 +761,8 @@ export function ReviewerConsole({
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
                 onAnnotationViewFull={handleViewFullComment}
+                pulseAnnotationId={pulseAnnotationId}
+                onPulseComplete={() => setPulseAnnotationId(null)}
               />
             ) : document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas

@@ -40,9 +40,18 @@ export async function proxy(request: NextRequest) {
     return redirectResponse
   }
 
-  // Logged-in users hitting auth pages → send to their role-based dashboard
+  // A same-origin relative path carried via ?next= (e.g. the extension's Console
+  // link bouncing an unauthenticated tab through /login) — never trust an
+  // absolute/external URL here.
+  const rawNext = request.nextUrl.searchParams.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
+
+  // Logged-in users hitting auth pages → send to where they were headed, else
+  // their role-based dashboard
   const authPaths = ['/', '/login']
   if (user && authPaths.includes(pathname)) {
+    if (next) return redirectWithCookies(new URL(next, request.url))
+
     const { data: profile } = await supabase
       .from('users')
       .select('roles')
@@ -57,10 +66,12 @@ export async function proxy(request: NextRequest) {
     return redirectWithCookies(new URL(destination, request.url))
   }
 
-  // Unauthenticated users hitting protected pages → send to login
+  // Unauthenticated users hitting protected pages → send to login, preserving
+  // the full path + query string (e.g. ?document=&review=) so login can return
+  // them to the exact review afterward.
   if (!user && pathname.startsWith('/review')) {
     const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('next', pathname)
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
     return redirectWithCookies(loginUrl)
   }
 

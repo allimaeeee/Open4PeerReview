@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import ViewerPanelHeader from './ViewerPanelHeader'
 
 interface BboxAnchor {
@@ -46,6 +46,8 @@ interface TorusAnnotationViewerProps {
   scrollToAnnotationId?: string | null
   onGoToAnnotation?: () => void
   onAnnotationViewFull?: (annotationId: string) => void
+  pulseAnnotationId?: string | null
+  onPulseComplete?: () => void
 }
 
 export function TorusAnnotationViewer({
@@ -57,6 +59,8 @@ export function TorusAnnotationViewer({
   scrollToAnnotationId,
   onGoToAnnotation,
   onAnnotationViewFull,
+  pulseAnnotationId,
+  onPulseComplete,
 }: TorusAnnotationViewerProps) {
   const criterionById = Object.fromEntries(rubricItems.map(r => [r.id, r.label]))
 
@@ -65,43 +69,43 @@ export function TorusAnnotationViewer({
     return anchorType === 'bbox' || anchorType === 'point' || anchorType === 'html-char-offset'
   })
 
-  const [activeIdx, setActiveIdx] = useState(0)
   const total = galleryAnnotations.length
-  const clampedIdx = total > 0 ? Math.min(activeIdx, total - 1) : 0
-  const current = galleryAnnotations[clampedIdx] ?? null
+  const containerRef = useRef<HTMLDivElement>(null)
 
+  // Scroll to a specific screenshot when "View annotation" is clicked in the right-hand panel.
   useEffect(() => {
     if (!scrollToAnnotationId) return
-    const idx = galleryAnnotations.findIndex(a => a.id === scrollToAnnotationId)
-    if (idx !== -1) {
-      setActiveIdx(idx)
-      onGoToAnnotation?.()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const el = containerRef.current?.querySelector(`[data-annotation-id="${scrollToAnnotationId}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    onGoToAnnotation?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToAnnotationId])
 
-  const prev = useCallback(() => setActiveIdx(i => Math.max(0, i - 1)), [])
-  const next = useCallback(() => setActiveIdx(i => Math.min(total - 1, i + 1)), [total])
-
-  const anchor = current ? (current.anchor as unknown as GalleryAnchor) : null
-  const screenshotUrl = anchor?.screenshotUrl
-  const textQuote = anchor
-    ? 'textQuote' in anchor
-      ? (anchor as BboxAnchor).textQuote
-      : 'selector' in anchor
-        ? (anchor as HtmlCharOffsetAnchor).selector?.find(s => s.type === 'TextQuoteSelector')?.exact
-        : undefined
-    : undefined
-  const pageName = anchor?.pageName
-  const pageUrl = anchor?.pageUrl ?? sourceUrl ?? '#'
-  const criterionLabel = current?.rubricItemId ? criterionById[current.rubricItemId] ?? null : null
+  // Pulse-highlight the target screenshot once the scroll above has had time to settle.
+  useEffect(() => {
+    if (!pulseAnnotationId) return
+    let cleanupTimer: ReturnType<typeof setTimeout>
+    const timer = setTimeout(() => {
+      const el = containerRef.current?.querySelector(`[data-annotation-id="${pulseAnnotationId}"]`)
+      if (!el) { onPulseComplete?.(); return }
+      el.classList.add('card-highlight', 'active')
+      cleanupTimer = setTimeout(() => {
+        el.classList.remove('card-highlight', 'active')
+        onPulseComplete?.()
+      }, 1600)
+    }, 400)
+    return () => { clearTimeout(timer); clearTimeout(cleanupTimer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulseAnnotationId])
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
       <ViewerPanelHeader
         onBack={onBack}
         centerSlot={
-          <span className="text-body-sm font-semibold text-text-primary">OLI Torus</span>
+          <span className="text-body-sm font-semibold text-text-primary">
+            OLI Torus{total > 0 ? ` · ${total} screenshot${total === 1 ? '' : 's'}` : ''}
+          </span>
         }
       />
 
@@ -174,154 +178,110 @@ export function TorusAnnotationViewer({
           )}
         </div>
       ) : (
-        <>
-          {/* Gallery navigation bar */}
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-card">
-            <button
-              onClick={prev}
-              disabled={clampedIdx === 0}
-              className="p-1.5 rounded-md text-text-secondary hover:bg-surface-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              aria-label="Previous annotation"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <span className="flex-1 text-center text-body-sm text-text-secondary tabular-nums">
-              {clampedIdx + 1} <span className="text-text-muted">of</span> {total}
-            </span>
-            <button
-              onClick={next}
-              disabled={clampedIdx === total - 1}
-              className="p-1.5 rounded-md text-text-secondary hover:bg-surface-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              aria-label="Next annotation"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+        /* Continuous feed — every screenshot is visible at once, no paging required */
+        <div ref={containerRef} className="flex-1 overflow-y-auto divide-y divide-border">
+          {galleryAnnotations.map(ann => {
+            const anchor = ann.anchor as unknown as GalleryAnchor
+            const screenshotUrl = anchor?.screenshotUrl
+            const textQuote = anchor
+              ? 'textQuote' in anchor
+                ? (anchor as BboxAnchor).textQuote
+                : 'selector' in anchor
+                  ? (anchor as HtmlCharOffsetAnchor).selector?.find(s => s.type === 'TextQuoteSelector')?.exact
+                  : undefined
+              : undefined
+            const pageName = anchor?.pageName
+            const pageUrl = anchor?.pageUrl ?? sourceUrl ?? '#'
+            const criterionLabel = ann.rubricItemId ? criterionById[ann.rubricItemId] ?? null : null
 
-          {/* Active annotation card */}
-          {current && (
-            <div
-              className="flex-1 overflow-y-auto"
-              onClick={() => onAnnotationViewFull?.(current.id)}
-            >
-              {/* Screenshot */}
-              {screenshotUrl ? (
-                <div className="relative">
-                  <img
-                    src={screenshotUrl}
-                    alt="Page screenshot"
-                    className="w-full object-cover object-top"
-                    style={{ maxHeight: '55vh' }}
-                  />
-                  <a
-                    href={pageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-label-sm font-semibold bg-surface-card/90 backdrop-blur-sm text-primary border border-primary/30 hover:bg-primary hover:text-on-primary transition-colors"
-                  >
-                    View annotation
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            return (
+              <div
+                key={ann.id}
+                data-annotation-id={ann.id}
+                onClick={() => onAnnotationViewFull?.(ann.id)}
+                className="cursor-pointer transition-colors hover:bg-surface-elevated/50 rounded-lg"
+              >
+                {/* Screenshot */}
+                {screenshotUrl ? (
+                  <div className="relative">
+                    <img
+                      src={screenshotUrl}
+                      alt="Page screenshot"
+                      className="w-full object-cover object-top"
+                      style={{ maxHeight: '55vh' }}
+                    />
+                    <a
+                      href={pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-label-sm font-semibold bg-surface-card/90 backdrop-blur-sm text-primary border border-primary/30 hover:bg-primary hover:text-on-primary transition-colors"
+                    >
+                      View annotation
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  </div>
+                ) : (
+                  /* No screenshot — hotspot or unscreenshotted annotation */
+                  <div className="flex items-center justify-center h-32 bg-surface-elevated border-b border-border">
+                    <svg className="w-8 h-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
                     </svg>
-                  </a>
-                </div>
-              ) : (
-                /* No screenshot — hotspot or unscreenshotted annotation */
-                <div className="flex items-center justify-center h-32 bg-surface-elevated border-b border-border">
-                  <svg className="w-8 h-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                  </svg>
-                </div>
-              )}
-
-              <div className="p-4 space-y-2.5">
-                {/* Page name */}
-                {pageName && (
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-                    </svg>
-                    <span className="text-label-sm text-text-muted truncate">{pageName}</span>
                   </div>
                 )}
 
-                {/* Criterion */}
-                <p className={[
-                  'text-label-sm font-semibold',
-                  criterionLabel ? 'text-primary' : 'text-text-muted',
-                ].join(' ')}>
-                  {criterionLabel ?? 'General note'}
-                </p>
-
-                {/* Text quote (for text highlights converted on Torus) */}
-                {textQuote && (
-                  <p className="text-body-sm text-text-secondary italic border-l-2 border-border pl-2.5 line-clamp-3">
-                    &ldquo;{textQuote}&rdquo;
-                  </p>
-                )}
-
-                {/* Annotation body */}
-                <p className="text-body-md text-text-primary">{current.body}</p>
-
-                {/* View link when there's no screenshot */}
-                {!screenshotUrl && (
-                  <a
-                    href={pageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="inline-flex items-center gap-1.5 text-label-sm text-primary hover:underline"
-                  >
-                    View annotation
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Thumbnail strip */}
-          <div className="shrink-0 flex gap-1.5 p-2 border-t border-border bg-surface-card overflow-x-auto">
-            {galleryAnnotations.map((ann, idx) => {
-              const annAnchor = ann.anchor as { screenshotUrl?: string; type?: string }
-              const thumb = annAnchor.screenshotUrl
-              const isActive = idx === clampedIdx
-              return (
-                <button
-                  key={ann.id}
-                  onClick={() => setActiveIdx(idx)}
-                  className={[
-                    'shrink-0 w-14 h-9 rounded overflow-hidden border-2 transition-all',
-                    isActive ? 'border-primary shadow-sm' : 'border-transparent opacity-60 hover:opacity-100 hover:border-border',
-                  ].join(' ')}
-                  aria-label={`Annotation ${idx + 1}`}
-                >
-                  {thumb ? (
-                    <img src={thumb} alt="" className="w-full h-full object-cover object-top" />
-                  ) : (
-                    <div className="w-full h-full bg-surface-elevated flex items-center justify-center">
-                      {annAnchor.type === 'point' ? (
-                        <svg className="w-3.5 h-3.5 text-primary" fill="currentColor" viewBox="0 0 28 36">
-                          <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" />
-                        </svg>
-                      ) : (
-                        <span className="text-xs font-semibold text-text-muted">{idx + 1}</span>
-                      )}
+                <div className="p-4 space-y-2.5">
+                  {/* Page name */}
+                  {pageName && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                      </svg>
+                      <span className="text-label-sm text-text-muted truncate">{pageName}</span>
                     </div>
                   )}
-                </button>
-              )
-            })}
-          </div>
-        </>
+
+                  {/* Criterion */}
+                  <p className={[
+                    'text-label-sm font-semibold',
+                    criterionLabel ? 'text-primary' : 'text-text-muted',
+                  ].join(' ')}>
+                    {criterionLabel ?? 'General note'}
+                  </p>
+
+                  {/* Text quote (for text highlights converted on Torus) */}
+                  {textQuote && (
+                    <p className="text-body-sm text-text-secondary italic border-l-2 border-border pl-2.5 line-clamp-3">
+                      &ldquo;{textQuote}&rdquo;
+                    </p>
+                  )}
+
+                  {/* Annotation body */}
+                  <p className="text-body-md text-text-primary">{ann.body}</p>
+
+                  {/* View link when there's no screenshot */}
+                  {!screenshotUrl && (
+                    <a
+                      href={pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="inline-flex items-center gap-1.5 text-label-sm text-primary hover:underline"
+                    >
+                      View annotation
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

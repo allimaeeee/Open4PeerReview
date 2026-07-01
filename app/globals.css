@@ -179,3 +179,15 @@
   background-color: rgba(254, 214, 91, 0.80);
   animation: highlight-pulse 1.6s ease-out;
 }
+
+/* Ring-only pulse for card-shaped targets (e.g. Torus screenshot cards) where a
+   background-color flash would be hidden behind an opaque image. */
+@keyframes card-highlight-pulse {
+  0%   { box-shadow: 0 0 0 3px rgba(115, 92, 0, 0.5); }
+  40%  { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+  100% { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+}
+
+.card-highlight.active {
+  animation: card-highlight-pulse 1.6s ease-out;
+}
