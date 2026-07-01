@@ -301,7 +301,8 @@ export async function acceptDocument(documentId: string) {
 
   if (rubricIds.length === 0) throw new Error('No rubric available for this document')
 
-  // Ignore duplicates — reviewer already has a review for that rubric (e.g., opened the console first)
+  // Upsert on conflict so a pre-created 'assigned' row (from coordinator assignment)
+  // is upgraded to 'in_progress' instead of being silently skipped
   const { error } = await supabase
     .from('reviews')
     .upsert(
@@ -311,7 +312,7 @@ export async function acceptDocument(documentId: string) {
         rubric_id: rubricId,
         status: 'in_progress' as const,
       })),
-      { onConflict: 'document_id,rubric_id,reviewer_id', ignoreDuplicates: true }
+      { onConflict: 'document_id,rubric_id,reviewer_id' }
     )
 
   if (error) throw error
