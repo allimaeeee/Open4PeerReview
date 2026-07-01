@@ -132,7 +132,7 @@ async function handleMessage(msg, sender) {
       return { success: false, error: `Unknown message type` };
   }
 }
-var SUPABASE_REF = "lbmyfqeqkpmohlumlkdg";
+var SUPABASE_REF = "nkcyjfuzmmkuavhmqyvu";
 async function readSessionFromOerhubCookies() {
   try {
     const cookies = await chrome.cookies.getAll({ url: "https://oerhub.vercel.app" });
