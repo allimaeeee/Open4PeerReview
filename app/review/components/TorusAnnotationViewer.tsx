@@ -78,6 +78,19 @@ export function TorusAnnotationViewer({
     }
   }
 
+  // "View annotation" → open the exact Torus page this annotation lives on and ask
+  // the extension (via oer_goto) to scroll to it and expand its criterion.
+  const handleViewAnnotation = (annotationId: string, pageUrl: string) => {
+    if (supabase) {
+      openInTorus(supabase, sourceUrl, reviewId ?? null, { pageUrl, annotationId })
+    } else {
+      const target = pageUrl && pageUrl !== '#' ? pageUrl : sourceUrl
+      if (!target) return
+      const sep = target.includes('?') ? '&' : '?'
+      window.open(`${target}${sep}oer_goto=${encodeURIComponent(annotationId)}`, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const criterionById = Object.fromEntries(rubricItems.map(r => [r.id, r.label]))
 
   const galleryAnnotations = savedAnnotations.filter(ann => {
@@ -223,18 +236,16 @@ export function TorusAnnotationViewer({
                       className="w-full object-cover object-top"
                       style={{ maxHeight: '55vh' }}
                     />
-                    <a
-                      href={pageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); handleViewAnnotation(ann.id, pageUrl) }}
                       className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-label-sm font-semibold bg-surface-card/90 backdrop-blur-sm text-primary border border-primary/30 hover:bg-primary hover:text-on-primary transition-colors"
                     >
                       View annotation
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
-                    </a>
+                    </button>
                   </div>
                 ) : (
                   /* No screenshot — hotspot or unscreenshotted annotation */
@@ -277,18 +288,16 @@ export function TorusAnnotationViewer({
 
                   {/* View link when there's no screenshot */}
                   {!screenshotUrl && (
-                    <a
-                      href={pageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); handleViewAnnotation(ann.id, pageUrl) }}
                       className="inline-flex items-center gap-1.5 text-label-sm text-primary hover:underline"
                     >
                       View annotation
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
