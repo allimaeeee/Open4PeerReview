@@ -330,7 +330,6 @@ export async function acceptDocument(documentId: string) {
   await supabase
     .from('document_acceptances')
     .upsert({ document_id: documentId, reviewer_id: user.id }, { onConflict: 'document_id,reviewer_id' })
-
   revalidatePath('/reviewer')
 }
 
