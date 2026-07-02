@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/allisondayton/Open4PeerReview/.archiver_shadow show 2ea139f -- types/database.types.ts)",
+      "Bash(git -C /Users/allisondayton/Open4PeerReview/.archiver_shadow show d352666 -- types/database.types.ts)",
+      "Bash(cat /Users/allisondayton/Open4PeerReview/.claude/settings.json 2>/dev/null || cat /Users/allisondayton/.claude/settings.json 2>/dev/null | head -40)",
+      "Read(//Users/allisondayton/.claude/**)",
+      "Bash(python3 -m json.tool)",
+      "Bash(grep -v \"^$\")",
+      "Bash(xargs ls -t)",
+      "mcp__claude_ai_Supabase__generate_typescript_types",
+      "Bash(grep -r \"\\\\.role\\\\|\\\\.roles\\\\|user_role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" -n)",
+      "Bash(grep -r \"roles\\\\|role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" ! -path \"*/.git/*\")",
+      "mcp__claude_ai_Supabase__get_logs",
+      "mcp__claude_ai_Supabase__get_publishable_keys"
+    ]
+  }
+}
