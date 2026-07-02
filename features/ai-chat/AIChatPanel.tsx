@@ -1,36 +1,14 @@
 'use client'
 
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useAIChat } from './AIChatContext'
 import { useChatContext } from './useChatContext'
 import { ChatMessages } from './ChatMessages'
 import { ContextBadge } from './ContextBadge'
 import { ShortcutPills } from './ShortcutPills'
-
-// ── Empty state SVG — 3 overlapping thin circles ──────────────────────────────
-
-function EmptyStateArt() {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 px-8 flex-1">
-      <svg
-        viewBox="0 0 80 80"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
-        className="w-20 h-20 text-gray-200"
-        aria-hidden="true"
-      >
-        {/* 3 overlapping circles forming a Venn-like geometric mark */}
-        <circle cx="29" cy="40" r="20" />
-        <circle cx="51" cy="40" r="20" />
-        <circle cx="40" cy="24" r="20" />
-      </svg>
-      <p className="text-sm font-medium text-gray-400 mt-4 text-center">
-        How can I help?
-      </p>
-    </div>
-  )
-}
+import { AIMascot } from './AIMascot'
+import { useAIChatLogger } from './logging/AIChatLoggerContext'
+import { usePanelResize } from './usePanelResize'
 
 // ── Send icon ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +29,24 @@ function SendIcon() {
   )
 }
 
+// ── Close icon ────────────────────────────────────────────────────────────────
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      className="w-4 h-4"
+      aria-hidden="true"
+    >
+      <path d="M3 3l10 10M13 3L3 13" />
+    </svg>
+  )
+}
+
 // ── Panel toggle tab ──────────────────────────────────────────────────────────
 
 function ToggleTab({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) {
@@ -60,15 +56,15 @@ function ToggleTab({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }
       aria-label={isOpen ? 'Close AI panel' : 'Open AI panel'}
       className={[
         'absolute top-1/2 -translate-y-1/2 flex items-center justify-center',
-        'bg-white border border-gray-100 shadow-[0_4px_12px_rgba(0,0,0,0.06)]',
-        'hover:bg-gray-50 transition-colors duration-150',
+        'bg-surface-card border border-border',
+        'shadow-[0px_4px_12px_rgba(28,28,24,0.06)]',
+        'hover:bg-surface-container-low transition-colors duration-[120ms]',
         'rounded-l-lg',
-        isOpen ? '-left-[29px]' : '-left-[29px]',
       ].join(' ')}
-      style={{ width: 28, height: 64 }}
+      style={{ width: 28, height: 64, left: -28 }}
     >
       <span
-        className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase"
+        className="text-[11px] font-semibold text-text-muted tracking-widest uppercase"
         style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
       >
         AI
@@ -80,32 +76,63 @@ function ToggleTab({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }
 // ── AIChatPanel ───────────────────────────────────────────────────────────────
 
 export function AIChatPanel() {
-  const { state, togglePanel, addMessage, addContextSnippet, removeContextSnippet, setLoading, clearChat } = useAIChat()
+  const { state, togglePanel, closePanel, addMessage, removeContextSnippet, setLoading, clearChat } = useAIChat()
   const { shortcuts, reviewData } = useChatContext()
+  const log = useAIChatLogger()
 
   const [draft, setDraft] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { width: panelWidth, isDragging, handleMouseDown: handleResizeMouseDown } = usePanelResize(360)
 
   const hasMessages = state.messages.length > 0
+
+  useEffect(() => {
+    document.body.classList.toggle('ai-panel-open', state.isOpen)
+    return () => { document.body.classList.remove('ai-panel-open') }
+  }, [state.isOpen])
+
+  function handleToggle() {
+    log('panel_toggle', { action: state.isOpen ? 'close' : 'open' })
+    togglePanel()
+  }
+
+  function handleClose() {
+    log('panel_toggle', { action: 'close' })
+    closePanel()
+  }
+
+  function handleRemoveSnippet(id: string) {
+    log('context_removed', { remaining_count: state.contextSnippets.length - 1 })
+    removeContextSnippet(id)
+  }
 
   async function handleSend() {
     const text = draft.trim()
     if (!text || state.isLoading) return
+
+    const hasContext = state.contextSnippets.length > 0
+    const contextCount = state.contextSnippets.length
+
     setDraft('')
     addMessage('user', text)
     setLoading(true)
+    log('message_sent', { has_context: hasContext, context_count: contextCount })
 
+    const startTime = Date.now()
     try {
-      // Build a prompt that includes context snippets if any
-      const contextBlock = state.contextSnippets.length > 0
+      const contextBlock = hasContext
         ? `\n\nContext from the reviewer:\n${state.contextSnippets.map(s => `"${s.text}"`).join('\n')}`
         : ''
       const fullPrompt = text + contextBlock
 
-      // Phase 2: stub — import and call aiService directly
       const { callAI } = await import('./shortcuts/aiService')
       const response = await callAI(fullPrompt)
       addMessage('ai', response)
+      log('response_received', {
+        response_time_ms: Date.now() - startTime,
+        trigger: 'freeform',
+        context_source: hasContext ? 'selection_popup' : 'no_context',
+      })
     } catch {
       addMessage('ai', 'Something went wrong. Please try again.')
     }
@@ -127,97 +154,110 @@ export function AIChatPanel() {
   }
 
   return (
-    <>
-      {/* Inject keyframe for loading dots */}
-      <style>{`
-        @keyframes ai-chat-pulse {
-          0%, 100% { opacity: 0.3; transform: scale(0.85); }
-          50%       { opacity: 1;   transform: scale(1); }
-        }
-      `}</style>
-
+    <div
+      className={[
+        'fixed top-0 right-0 h-screen flex flex-col bg-surface-card',
+        'border-l border-border',
+        'shadow-[0px_8px_24px_rgba(28,28,24,0.08)]',
+        'transition-transform duration-[320ms] [transition-timing-function:cubic-bezier(0.2,0,0,1)]',
+        state.isOpen ? 'translate-x-0' : 'translate-x-full',
+      ].join(' ')}
+      style={{ width: panelWidth, zIndex: 'var(--z-modal)' as string }}
+    >
+      {/* Drag-to-resize handle — invisible hit area on the left edge */}
       <div
+        onMouseDown={handleResizeMouseDown}
         className={[
-          'fixed top-0 right-0 h-screen flex flex-col bg-white',
-          'border-l border-gray-100',
-          'shadow-[0_20px_40px_rgba(0,0,0,0.03)]',
-          'transition-transform duration-300 ease-out',
-          state.isOpen ? 'translate-x-0' : 'translate-x-full',
+          'absolute top-0 left-0 h-full w-[7px] cursor-col-resize z-10',
+          isDragging ? 'border-l border-[rgba(196,198,205,0.4)]' : '',
         ].join(' ')}
-        style={{ width: 360, zIndex: 'var(--z-modal)' as string }}
-      >
-        {/* Toggle tab — always accessible on the left edge */}
-        <ToggleTab isOpen={state.isOpen} onClick={togglePanel} />
+      />
 
-        {/* ── Header ── */}
-        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3.5 border-b border-gray-100">
-          <span className="text-[13px] font-semibold text-gray-800">AI Assistant</span>
+      {/* Toggle tab */}
+      <ToggleTab isOpen={state.isOpen} onClick={handleToggle} />
+
+      {/* ── Header ── */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3.5 border-b border-[rgba(196,198,205,0.3)]">
+        <span className="text-[13px] font-semibold text-text-primary">AI Assistant</span>
+        <div className="flex items-center gap-3">
           {hasMessages && (
             <button
               onClick={clearChat}
-              className="text-[12px] text-gray-400 hover:text-gray-600 transition-colors font-medium"
+              className="text-[12px] text-text-muted hover:text-text-secondary transition-colors duration-[120ms] font-medium"
             >
               New chat
             </button>
           )}
+          <button
+            onClick={handleClose}
+            className="text-text-muted hover:text-text-primary transition-colors duration-[120ms]"
+            aria-label="Close AI panel"
+          >
+            <CloseIcon />
+          </button>
         </div>
+      </div>
 
-        {/* ── Body ── */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {hasMessages
-            ? <ChatMessages messages={state.messages} isLoading={state.isLoading} />
-            : <EmptyStateArt />
-          }
-        </div>
+      {/* ── Body ── */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {hasMessages ? (
+          <ChatMessages messages={state.messages} isLoading={state.isLoading} />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16 px-8 flex-1 h-full">
+            <AIMascot state="idle" className="w-16 h-20" />
+            <p className="text-sm font-medium text-text-muted mt-4 text-center">
+              How can I help?
+            </p>
+          </div>
+        )}
+      </div>
 
-        {/* ── Shortcut pills ── */}
+      {/* ── Shortcut pills + input ── */}
+      <div className="flex-shrink-0">
         <ShortcutPills shortcuts={shortcuts} reviewData={reviewData} />
 
         {/* ── Input area ── */}
-        <div className="flex-shrink-0 px-4 pb-4 pt-1">
-          <div
-            className={[
-              'rounded-2xl border border-gray-200 bg-white px-3.5 py-3 shadow-sm',
-              'focus-within:ring-1 focus-within:ring-gray-200 focus-within:border-gray-300 transition-all duration-150',
-            ].join(' ')}
-          >
-            <ContextBadge snippets={state.contextSnippets} onRemove={removeContextSnippet} />
+        <div className="px-4 pb-4 pt-1">
+        <div
+          className="rounded-xl bg-[#faf9f6] px-3.5 py-4"
+        >
+          <ContextBadge snippets={state.contextSnippets} onRemove={handleRemoveSnippet} />
 
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                value={draft}
-                onChange={handleTextareaInput}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about this review…"
-                disabled={state.isLoading}
-                className={[
-                  'flex-1 resize-none bg-transparent border-none outline-none ring-0',
-                  'text-sm text-gray-800 placeholder-gray-400 leading-relaxed',
-                  'disabled:opacity-60',
-                ].join(' ')}
-                style={{ minHeight: 22, maxHeight: 120 }}
-              />
-              <button
-                onClick={handleSend}
-                disabled={!draft.trim() || state.isLoading}
-                className={[
-                  'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-xl transition-all duration-150',
-                  draft.trim() && !state.isLoading
-                    ? 'bg-gray-900 text-white hover:bg-gray-700'
-                    : 'bg-gray-100 text-gray-300 cursor-not-allowed',
-                ].join(' ')}
-                aria-label="Send message"
-              >
-                <SendIcon />
-              </button>
-            </div>
-
-            <p className="mt-1.5 text-[10px] text-gray-300">⌘↵ to send</p>
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={draft}
+              onChange={handleTextareaInput}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about this review…"
+              disabled={state.isLoading}
+              className={[
+                'flex-1 resize-none bg-transparent border-none outline-none ring-0',
+                'text-sm text-text-primary placeholder:text-text-muted leading-relaxed',
+                'disabled:opacity-60',
+              ].join(' ')}
+              style={{ minHeight: 22, maxHeight: 120 }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!draft.trim() || state.isLoading}
+              className={[
+                'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-md transition-all duration-[120ms]',
+                draft.trim() && !state.isLoading
+                  ? 'bg-secondary-container text-text-primary hover:opacity-90 active:scale-[0.97]'
+                  : 'bg-surface-card text-border cursor-not-allowed',
+              ].join(' ')}
+              aria-label="Send message"
+            >
+              <SendIcon />
+            </button>
           </div>
+
+          <p className="mt-1.5 text-[10px] text-text-muted opacity-60">Cmd+Enter to send</p>
+        </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }

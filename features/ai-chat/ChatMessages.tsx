@@ -1,33 +1,36 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Message } from './AIChatContext'
+import { AIMascot } from './AIMascot'
 
 interface Props {
   messages: Message[]
   isLoading: boolean
 }
 
-function LoadingDots() {
-  return (
-    <div className="flex gap-1 py-1 px-1">
-      {[0, 1, 2].map(i => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-gray-300"
-          style={{ animation: `ai-chat-pulse 1.2s ease-in-out ${i * 0.2}s infinite` }}
-        />
-      ))}
-    </div>
-  )
-}
-
 export function ChatMessages({ messages, isLoading }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [mascotState, setMascotState] = useState<'thinking' | 'success' | null>(null)
+  const hasBeenLoadingRef = useRef(false)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
+
+  useEffect(() => {
+    if (isLoading) {
+      hasBeenLoadingRef.current = true
+      setMascotState('thinking')
+      return
+    }
+    if (hasBeenLoadingRef.current) {
+      hasBeenLoadingRef.current = false
+      setMascotState('success')
+      const timer = setTimeout(() => setMascotState(null), 800)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoading])
 
   if (messages.length === 0 && !isLoading) return null
 
@@ -36,22 +39,22 @@ export function ChatMessages({ messages, isLoading }: Props) {
       {messages.map(msg => (
         <div
           key={msg.id}
-          className={['flex', msg.role === 'user' ? 'justify-end' : 'justify-start'].join(' ')}
+          className={['flex ai-message-enter', msg.role === 'user' ? 'justify-end' : 'justify-start'].join(' ')}
         >
           {msg.role === 'user' ? (
-            <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-gray-900 px-3.5 py-2.5">
-              <p className="text-[13px] leading-relaxed text-white whitespace-pre-wrap">{msg.text}</p>
+            <div className="max-w-[80%] rounded-md rounded-tr-none bg-[rgba(254,214,91,0.2)] px-3.5 py-2.5">
+              <p className="text-[13px] leading-relaxed text-text-primary whitespace-pre-wrap">{msg.text}</p>
             </div>
           ) : (
-            <div className="max-w-[88%]">
-              <p className="text-[13px] leading-relaxed text-gray-700 whitespace-pre-wrap">{msg.text}</p>
+            <div className="max-w-[88%] rounded-md rounded-tl-none bg-surface-container-low px-3.5 py-2.5">
+              <p className="text-[13px] leading-relaxed text-text-primary whitespace-pre-wrap">{msg.text}</p>
             </div>
           )}
         </div>
       ))}
-      {isLoading && (
-        <div className="flex justify-start">
-          <LoadingDots />
+      {mascotState && (
+        <div className="flex justify-start px-1">
+          <AIMascot state={mascotState} className="w-10 h-12" />
         </div>
       )}
       <div ref={bottomRef} />
