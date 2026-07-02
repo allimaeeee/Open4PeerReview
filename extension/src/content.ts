@@ -47,6 +47,10 @@ const SESSION_KEY = 'oer_review_id';
 const PANEL_GEOM_KEY = 'oer_panel_geom';
 const EXPANDED_CRIT_KEY = 'oer_expanded_criteria';
 
+// Torus's student login route. Adjust here if the OLI instance uses a different
+// path (e.g. '/session/new'). Used to build the "Sign in to OLI Torus" redirect.
+const TORUS_LOGIN_PATH = '/users/log_in';
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let currentAuth: StoredAuth | null = null;
@@ -55,6 +59,12 @@ let selectedReview: ReviewAssignment | null = null;
 let rubricItems: RubricItem[] = [];
 let annotations: AnnotationRecord[] = [];
 let scores = new Map<string, ReviewScoreRecord>();
+
+// Torus access gating: which review to reconnect to once the reviewer gains
+// course access, and whether they need to log in vs. enroll.
+let pendingReviewId: string | null = null;
+let torusAccessReason: 'needs-login' | 'needs-enroll' = 'needs-login';
+let accessWatcher: ReturnType<typeof setInterval> | null = null;
 
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
@@ -724,6 +734,97 @@ function resolveAssignmentForCurrentPage(list: ReviewAssignment[]): ReviewAssign
   // No document on this page matched a source_url — fall back to the reviewer's
   // most actionable assignment rather than asking them to pick.
   return list.find(a => a.status === 'in_progress') ?? list[0];
+}
+
+// ── Torus access gating ──────────────────────────────────────────────────────
+// A reviewer can only annotate a course they can actually open in Torus. When
+// they lack access, Torus routes them to its own login or enrollment page rather
+// than the course content. We detect those pages by URL path and, instead of
+// opening the review console, prompt them to sign in / enter the course. Once
+// they regain access the extension reconnects them to the right review.
+
+const TORUS_LOGIN_PATTERNS = [
+  /\/users\/log_in/i,
+  /\/session\/new/i,
+  /\/authoring\/session\/new/i,
+  /\/users\/reset_password/i,
+];
+const TORUS_ENROLL_PATTERNS = [
+  /\/sections\/[^/]+\/enroll/i,
+  /\/sections\/[^/]+\/join/i,
+  /\/sections\/[^/]+\/request_access/i,
+];
+
+function detectTorusAccess(): 'ok' | 'needs-login' | 'needs-enroll' {
+  const path = window.location.pathname;
+  if (TORUS_LOGIN_PATTERNS.some(re => re.test(path))) return 'needs-login';
+  if (TORUS_ENROLL_PATTERNS.some(re => re.test(path))) return 'needs-enroll';
+  return 'ok';
+}
+
+// Sends the reviewer to Torus's login page with a return path back to the course,
+// so after signing in Torus (and this content script) land them on the review.
+function buildTorusLoginUrl(courseUrl: string): string {
+  const login = new URL(TORUS_LOGIN_PATH, window.location.origin);
+  if (courseUrl) {
+    try {
+      const ret = new URL(courseUrl);
+      login.searchParams.set('request_path', ret.pathname + ret.search);
+    } catch { /* ignore malformed course URL */ }
+  }
+  return login.toString();
+}
+
+// While parked on a login/enroll page, watch for the reviewer navigating into the
+// course (SPA transitions that don't reload the content script) and reconnect.
+function startAccessWatcher() {
+  if (accessWatcher !== null) return;
+  let lastHref = window.location.href;
+  accessWatcher = setInterval(() => {
+    if (window.location.href === lastHref) return;
+    lastHref = window.location.href;
+    if (detectTorusAccess() === 'ok') {
+      stopAccessWatcher();
+      void routeToReview();
+    }
+  }, 1000);
+}
+
+function stopAccessWatcher() {
+  if (accessWatcher !== null) { clearInterval(accessWatcher); accessWatcher = null; }
+}
+
+// Resolves which review this page/deep-link/session points at, gates on Torus
+// access, and either opens the console or shows the sign-in prompt.
+async function routeToReview() {
+  if (assignments.length === 0) { renderContent('no-assignments'); return; }
+
+  // Deep link from the dashboard wins, then a review restored from this tab's
+  // session, then a match against the OER open on the current page.
+  const urlReviewId = new URLSearchParams(window.location.search).get('oer_review_id');
+  let target: ReviewAssignment | undefined;
+  if (urlReviewId) target = assignments.find(a => a.id === urlReviewId);
+  if (!target) {
+    const savedId = sessionStorage.getItem(SESSION_KEY);
+    if (savedId) target = assignments.find(a => a.id === savedId);
+  }
+  if (!target) target = resolveAssignmentForCurrentPage(assignments) ?? assignments[0];
+
+  // Persist now so the correct review is restored after any Torus login/enroll
+  // navigation (sessionStorage survives same-origin navigations in this tab).
+  sessionStorage.setItem(SESSION_KEY, target.id);
+
+  const access = detectTorusAccess();
+  if (access !== 'ok') {
+    pendingReviewId = target.id;
+    torusAccessReason = access;
+    renderContent('torus-access');
+    startAccessWatcher();
+    return;
+  }
+
+  stopAccessWatcher();
+  await selectReview(target.id);
 }
 
 async function captureAnnotationScreenshot(): Promise<string | null> {
@@ -1426,7 +1527,7 @@ function escHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'review') {
+function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'torus-access' | 'review') {
   if (!panelBody) return;
 
   switch (state) {
@@ -1472,6 +1573,31 @@ function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'review')
         </div>
       `;
       break;
+
+    case 'torus-access': {
+      const isEnroll = torusAccessReason === 'needs-enroll';
+      const target = pendingReviewId ? assignments.find(a => a.id === pendingReviewId) : null;
+      const docTitle = target?.documents?.title ?? 'this course';
+      const courseUrl = target?.documents?.source_url ?? '';
+      panelBody.innerHTML = `
+        <div class="state-box" style="padding:24px 20px;">
+          <div style="font-size:28px;margin-bottom:8px;">🔐</div>
+          <p class="state-title">${isEnroll ? 'Course access required' : 'Sign in to OLI Torus'}</p>
+          <p class="state-sub" style="margin-bottom:16px;">
+            ${isEnroll
+              ? `You need access to <strong>${escHtml(docTitle)}</strong> in OLI Torus before you can review it. Enter the course, then we'll connect you to your review automatically.`
+              : `Sign in to OLI Torus to open <strong>${escHtml(docTitle)}</strong>. Once you're in the course, we'll connect you to your review automatically.`}
+          </p>
+          <button id="btn-torus-login" class="btn btn-primary btn-full">${isEnroll ? 'Go to course' : 'Sign in to OLI Torus'}</button>
+        </div>
+      `;
+      shadow.getElementById('btn-torus-login')?.addEventListener('click', () => {
+        window.location.href = isEnroll
+          ? (courseUrl || window.location.origin)
+          : buildTorusLoginUrl(courseUrl);
+      });
+      break;
+    }
 
     case 'review':
       renderReviewInterface();
@@ -2324,9 +2450,7 @@ async function handleLogin() {
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });
   assignments = assignResp.data ?? [];
-  if (assignments.length === 0) { renderContent('no-assignments'); return; }
-  const match = resolveAssignmentForCurrentPage(assignments);
-  await selectReview((match ?? assignments[0]).id);
+  await routeToReview();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -2391,24 +2515,7 @@ async function init() {
   if (!assignResp.success) { renderContent('login'); return; }
 
   assignments = assignResp.data ?? [];
-
-  // Auto-select review from URL param (deep link from dashboard)
-  const urlReviewId = new URLSearchParams(window.location.search).get('oer_review_id');
-  if (urlReviewId && assignments.some(a => a.id === urlReviewId)) {
-    await selectReview(urlReviewId);
-    return;
-  }
-
-  // Restore previously selected review from session storage
-  const savedId = sessionStorage.getItem(SESSION_KEY);
-  if (savedId && assignments.some(a => a.id === savedId)) {
-    await selectReview(savedId);
-    return;
-  }
-
-  if (assignments.length === 0) { renderContent('no-assignments'); return; }
-  const match = resolveAssignmentForCurrentPage(assignments);
-  await selectReview((match ?? assignments[0]).id);
+  await routeToReview();
 }
 
 init();

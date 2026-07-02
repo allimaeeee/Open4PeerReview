@@ -301,8 +301,7 @@ export async function acceptDocument(documentId: string) {
 
   if (rubricIds.length === 0) throw new Error('No rubric available for this document')
 
-  // Upsert on conflict so a pre-created 'assigned' row (from coordinator assignment)
-  // is upgraded to 'in_progress' instead of being silently skipped
+  // Ignore duplicates — reviewer already has a review for that rubric (e.g., opened the console first)
   const { error } = await supabase
     .from('reviews')
     .upsert(
@@ -312,10 +311,21 @@ export async function acceptDocument(documentId: string) {
         rubric_id: rubricId,
         status: 'in_progress' as const,
       })),
-      { onConflict: 'document_id,rubric_id,reviewer_id' }
+      { onConflict: 'document_id,rubric_id,reviewer_id', ignoreDuplicates: true }
     )
 
   if (error) throw error
+
+  // Promote coordinator-pre-created 'assigned' rows to 'in_progress' — the upsert above
+  // ignores them, and the dashboard only surfaces in_progress reviews under My Reviews
+  const { error: promoteError } = await supabase
+    .from('reviews')
+    .update({ status: 'in_progress' })
+    .eq('document_id', documentId)
+    .eq('reviewer_id', user.id)
+    .eq('status', 'assigned')
+
+  if (promoteError) throw promoteError
 
   await supabase
     .from('document_acceptances')
