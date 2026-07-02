@@ -1099,10 +1099,31 @@ async function routeToReview() {
   await selectReview(target.id);
 }
 
+// Hide/show the extension's own UI chrome (panel + transient overlays) without
+// touching the on-page annotation marks/hotspot pins, which SHOULD appear in the
+// screenshot. Uses visibility (not display) so nothing reflows.
+function setExtensionChromeVisible(visible: boolean) {
+  const ids = ['oer-review-host', 'oer-ann-popup', 'oer-ann-tooltip', 'oer-hotspot-banner', 'oer-toast'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.style.visibility = visible ? '' : 'hidden';
+  }
+}
+
 async function captureAnnotationScreenshot(): Promise<string | null> {
   if (!selectedReview) return null;
   try {
-    const captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
+    // Clear the extension panel/overlays so captureVisibleTab records only the
+    // page (and its annotation marks). Wait two frames so the hidden state is
+    // actually painted before the tab is captured, then always restore it.
+    setExtensionChromeVisible(false);
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    let captureResp: BackgroundResponse<{ png: string }>;
+    try {
+      captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
+    } finally {
+      setExtensionChromeVisible(true);
+    }
     if (!captureResp.success || !captureResp.data?.png) {
       console.error('[OER] CAPTURE_TAB failed:', captureResp.error);
       return null;
@@ -1114,6 +1135,7 @@ async function captureAnnotationScreenshot(): Promise<string | null> {
     if (!uploadResp.success) console.error('[OER] UPLOAD_SCREENSHOT failed:', uploadResp.error);
     return uploadResp.success ? (uploadResp.data?.url ?? null) : null;
   } catch (err) {
+    setExtensionChromeVisible(true);
     console.error('[OER] captureAnnotationScreenshot threw:', err);
     return null;
   }

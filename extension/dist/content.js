@@ -856,10 +856,24 @@
     stopAccessWatcher();
     await selectReview(target.id);
   }
+  function setExtensionChromeVisible(visible) {
+    const ids = ["oer-review-host", "oer-ann-popup", "oer-ann-tooltip", "oer-hotspot-banner", "oer-toast"];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) el.style.visibility = visible ? "" : "hidden";
+    }
+  }
   async function captureAnnotationScreenshot() {
     if (!selectedReview) return null;
     try {
-      const captureResp = await send({ type: "CAPTURE_TAB" });
+      setExtensionChromeVisible(false);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      let captureResp;
+      try {
+        captureResp = await send({ type: "CAPTURE_TAB" });
+      } finally {
+        setExtensionChromeVisible(true);
+      }
       if (!captureResp.success || !captureResp.data?.png) {
         console.error("[OER] CAPTURE_TAB failed:", captureResp.error);
         return null;
@@ -871,6 +885,7 @@
       if (!uploadResp.success) console.error("[OER] UPLOAD_SCREENSHOT failed:", uploadResp.error);
       return uploadResp.success ? uploadResp.data?.url ?? null : null;
     } catch (err) {
+      setExtensionChromeVisible(true);
       console.error("[OER] captureAnnotationScreenshot threw:", err);
       return null;
     }
