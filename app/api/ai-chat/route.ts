@@ -23,10 +23,15 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'AI service not configured' }, { status: 503 })
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-  const result = await model.generateContent(prompt)
-  const response = result.response.text()
-
-  return NextResponse.json({ response })
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const result = await model.generateContent(prompt)
+    const response = result.response.text()
+    return NextResponse.json({ response })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[ai-chat] Gemini error:', message)
+    return NextResponse.json({ error: `AI request failed: ${message}` }, { status: 502 })
+  }
 }

@@ -39,13 +39,13 @@ export function ContextBadge({ snippets, onRemove }: Props) {
       {snippets.map(snippet => (
         <span
           key={snippet.id}
-          className="inline-flex items-center gap-1.5 bg-gray-50 text-gray-600 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-100 max-w-full"
+          className="ai-badge-enter inline-flex items-center gap-1.5 bg-[rgba(254,214,91,0.18)] text-text-secondary text-xs font-medium px-2.5 py-1.5 rounded-full border border-[rgba(254,214,91,0.4)] max-w-full"
         >
           <span className="truncate">{truncate(snippet.text)}</span>
           <button
             type="button"
             onClick={() => onRemove(snippet.id)}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex-shrink-0 text-text-muted hover:text-text-primary transition-colors duration-[120ms]"
             aria-label="Remove context"
           >
             <XIcon />

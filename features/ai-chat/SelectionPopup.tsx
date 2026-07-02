@@ -1,8 +1,10 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAIChat } from './AIChatContext'
 import { useSelectionDetector } from './useSelectionDetector'
+import { useAIChatLogger } from './logging/AIChatLoggerContext'
 
 function PlusIcon() {
   return (
@@ -21,17 +23,32 @@ function PlusIcon() {
 }
 
 export function SelectionPopup() {
-  const { addContextSnippet, openPanel } = useAIChat()
+  const { addContextSnippet, openPanel, state } = useAIChat()
   const selection = useSelectionDetector()
+  const log = useAIChatLogger()
+  const prevHadSelectionRef = useRef(false)
+
+  // Log when the popup transitions from hidden → visible (null → non-null)
+  useEffect(() => {
+    const hasSelection = selection !== null
+    if (hasSelection && !prevHadSelectionRef.current) {
+      log('selection_popup_shown', { text_length: selection!.text.length })
+    }
+    prevHadSelectionRef.current = hasSelection
+  }, [selection, log])
 
   if (!selection) return null
 
   const { text, rect } = selection
 
-  const top  = rect.top  + window.scrollY - 44
-  const left = rect.left + window.scrollX + rect.width / 2
+  const top  = rect.top  - 44
+  const left = rect.left + rect.width / 2
 
   function handleClick() {
+    log('context_added', {
+      text_length: text.length,
+      snippet_count_after: state.contextSnippets.length + 1,
+    })
     addContextSnippet(text)
     openPanel()
     window.getSelection()?.removeAllRanges()
@@ -39,16 +56,16 @@ export function SelectionPopup() {
 
   return createPortal(
     <button
-      onMouseDown={e => e.preventDefault()} // prevent focus loss killing the selection
+      onMouseDown={e => e.preventDefault()}
       onClick={handleClick}
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top,
         left,
         transform: 'translateX(-50%)',
         zIndex: 9999,
       }}
-      className="inline-flex items-center gap-2 bg-gray-900 text-white text-xs font-medium px-3 py-1.5 rounded-lg shadow-xl cursor-pointer hover:bg-gray-800 transition-all duration-150 select-none"
+      className="ai-popup-enter inline-flex items-center gap-2 bg-[var(--ai-popup-bg)] text-white text-xs font-medium px-3 py-1.5 rounded-md shadow-[0px_4px_16px_rgba(0,0,0,0.18)] cursor-pointer hover:opacity-90 transition-opacity duration-[120ms] select-none"
     >
       <PlusIcon />
       Add to context
