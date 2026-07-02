@@ -4,7 +4,7 @@
   var PANEL_WIDTH = 380;
   var CONTEXT = 32;
   var SCORE_DEBOUNCE_MS = 1500;
-  var OERHUB_URL = "https://oerhub.vercel.app";
+  var OERHUB_URL = "http://localhost:3000";
   var SCORE_LABELS = {
     does_not_meet: "Does Not Meet",
     exemplifies: "Exemplifies",
@@ -23,12 +23,16 @@
   var SESSION_KEY = "oer_review_id";
   var PANEL_GEOM_KEY = "oer_panel_geom";
   var EXPANDED_CRIT_KEY = "oer_expanded_criteria";
+  var TORUS_LOGIN_PATH = "/users/log_in";
   var currentAuth = null;
   var assignments = [];
   var selectedReview = null;
   var rubricItems = [];
   var annotations = [];
   var scores = /* @__PURE__ */ new Map();
+  var pendingReviewId = null;
+  var torusAccessReason = "needs-login";
+  var accessWatcher = null;
   var scoreTimers = /* @__PURE__ */ new Map();
   var EMPTY_SCORE_COMMENTS = { does_not_meet: { id: null, body: "" }, exceeds: { id: null, body: "" } };
   var scoreComments = /* @__PURE__ */ new Map();
@@ -579,6 +583,77 @@
     }).filter((s) => s.score > 0).sort((x, y) => y.score - x.score || (x.a.status === "in_progress" ? -1 : 1));
     if (scored.length > 0) return scored[0].a;
     return list.find((a) => a.status === "in_progress") ?? list[0];
+  }
+  var TORUS_LOGIN_PATTERNS = [
+    /\/users\/log_in/i,
+    /\/session\/new/i,
+    /\/authoring\/session\/new/i,
+    /\/users\/reset_password/i
+  ];
+  var TORUS_ENROLL_PATTERNS = [
+    /\/sections\/[^/]+\/enroll/i,
+    /\/sections\/[^/]+\/join/i,
+    /\/sections\/[^/]+\/request_access/i
+  ];
+  function detectTorusAccess() {
+    const path = window.location.pathname;
+    if (TORUS_LOGIN_PATTERNS.some((re) => re.test(path))) return "needs-login";
+    if (TORUS_ENROLL_PATTERNS.some((re) => re.test(path))) return "needs-enroll";
+    return "ok";
+  }
+  function buildTorusLoginUrl(courseUrl) {
+    const login = new URL(TORUS_LOGIN_PATH, window.location.origin);
+    if (courseUrl) {
+      try {
+        const ret = new URL(courseUrl);
+        login.searchParams.set("request_path", ret.pathname + ret.search);
+      } catch {
+      }
+    }
+    return login.toString();
+  }
+  function startAccessWatcher() {
+    if (accessWatcher !== null) return;
+    let lastHref = window.location.href;
+    accessWatcher = setInterval(() => {
+      if (window.location.href === lastHref) return;
+      lastHref = window.location.href;
+      if (detectTorusAccess() === "ok") {
+        stopAccessWatcher();
+        void routeToReview();
+      }
+    }, 1e3);
+  }
+  function stopAccessWatcher() {
+    if (accessWatcher !== null) {
+      clearInterval(accessWatcher);
+      accessWatcher = null;
+    }
+  }
+  async function routeToReview() {
+    if (assignments.length === 0) {
+      renderContent("no-assignments");
+      return;
+    }
+    const urlReviewId = new URLSearchParams(window.location.search).get("oer_review_id");
+    let target;
+    if (urlReviewId) target = assignments.find((a) => a.id === urlReviewId);
+    if (!target) {
+      const savedId = sessionStorage.getItem(SESSION_KEY);
+      if (savedId) target = assignments.find((a) => a.id === savedId);
+    }
+    if (!target) target = resolveAssignmentForCurrentPage(assignments) ?? assignments[0];
+    sessionStorage.setItem(SESSION_KEY, target.id);
+    const access = detectTorusAccess();
+    if (access !== "ok") {
+      pendingReviewId = target.id;
+      torusAccessReason = access;
+      renderContent("torus-access");
+      startAccessWatcher();
+      return;
+    }
+    stopAccessWatcher();
+    await selectReview(target.id);
   }
   async function captureAnnotationScreenshot() {
     if (!selectedReview) return null;
@@ -1207,6 +1282,26 @@
         </div>
       `;
         break;
+      case "torus-access": {
+        const isEnroll = torusAccessReason === "needs-enroll";
+        const target = pendingReviewId ? assignments.find((a) => a.id === pendingReviewId) : null;
+        const docTitle = target?.documents?.title ?? "this course";
+        const courseUrl = target?.documents?.source_url ?? "";
+        panelBody.innerHTML = `
+        <div class="state-box" style="padding:24px 20px;">
+          <div style="font-size:28px;margin-bottom:8px;">\u{1F510}</div>
+          <p class="state-title">${isEnroll ? "Course access required" : "Sign in to OLI Torus"}</p>
+          <p class="state-sub" style="margin-bottom:16px;">
+            ${isEnroll ? `You need access to <strong>${escHtml(docTitle)}</strong> in OLI Torus before you can review it. Enter the course, then we'll connect you to your review automatically.` : `Sign in to OLI Torus to open <strong>${escHtml(docTitle)}</strong>. Once you're in the course, we'll connect you to your review automatically.`}
+          </p>
+          <button id="btn-torus-login" class="btn btn-primary btn-full">${isEnroll ? "Go to course" : "Sign in to OLI Torus"}</button>
+        </div>
+      `;
+        shadow.getElementById("btn-torus-login")?.addEventListener("click", () => {
+          window.location.href = isEnroll ? courseUrl || window.location.origin : buildTorusLoginUrl(courseUrl);
+        });
+        break;
+      }
       case "review":
         renderReviewInterface();
         break;
@@ -1986,12 +2081,7 @@
     renderContent("loading");
     const assignResp = await send({ type: "GET_ASSIGNMENTS" });
     assignments = assignResp.data ?? [];
-    if (assignments.length === 0) {
-      renderContent("no-assignments");
-      return;
-    }
-    const match = resolveAssignmentForCurrentPage(assignments);
-    await selectReview((match ?? assignments[0]).id);
+    await routeToReview();
   }
   async function init() {
     createPanel();
@@ -2048,22 +2138,7 @@
       return;
     }
     assignments = assignResp.data ?? [];
-    const urlReviewId = new URLSearchParams(window.location.search).get("oer_review_id");
-    if (urlReviewId && assignments.some((a) => a.id === urlReviewId)) {
-      await selectReview(urlReviewId);
-      return;
-    }
-    const savedId = sessionStorage.getItem(SESSION_KEY);
-    if (savedId && assignments.some((a) => a.id === savedId)) {
-      await selectReview(savedId);
-      return;
-    }
-    if (assignments.length === 0) {
-      renderContent("no-assignments");
-      return;
-    }
-    const match = resolveAssignmentForCurrentPage(assignments);
-    await selectReview((match ?? assignments[0]).id);
+    await routeToReview();
   }
   init();
 })();
