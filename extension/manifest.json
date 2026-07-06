@@ -6,7 +6,7 @@
   "permissions": ["activeTab", "tabs", "storage", "scripting", "webNavigation", "cookies"],
   "host_permissions": [
     "https://proton.oli.cmu.edu/*",
-    "https://annotation-platform-seven.vercel.app/*",
+    "https://open4peerreview-olitorus.vercel.app/*",
     "https://*.vercel.app/*",
     "http://localhost:3000/*",
     "<all_urls>"
@@ -22,7 +22,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://annotation-platform-seven.vercel.app/*", "https://*.vercel.app/*", "http://localhost:3000/*"],
+      "matches": ["https://open4peerreview-olitorus.vercel.app/*", "https://*.vercel.app/*", "http://localhost:3000/*"],
       "js": ["dashboard.js"],
       "run_at": "document_idle"
     }
