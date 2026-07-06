@@ -31,6 +31,7 @@ await Promise.all([
   }),
   build({
     ...base,
+    loader: { '.woff2': 'dataurl' },
     define: { __OERHUB_URL__: JSON.stringify(OERHUB_URL) },
     entryPoints: [resolve(SRC, 'content.ts')],
     outfile: resolve(OUT, 'content.js'),
@@ -38,6 +39,7 @@ await Promise.all([
   }),
   build({
     ...base,
+    loader: { '.woff2': 'dataurl' },
     entryPoints: [resolve(SRC, 'popup.ts')],
     outfile: resolve(OUT, 'popup.js'),
     format: 'iife',

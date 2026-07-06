@@ -64,6 +64,7 @@ export function TorusAnnotationViewer({
   savedAnnotations,
   rubricItems,
   onBack,
+  disabled,
   scrollToAnnotationId,
   onGoToAnnotation,
   onAnnotationViewFull,
@@ -141,16 +142,18 @@ export function TorusAnnotationViewer({
         ) : (
           <span className="flex-1 text-body-sm text-text-muted">No course URL</span>
         )}
-        <button
-          type="button"
-          onClick={handleOpenInTorus}
-          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-label-sm font-semibold bg-primary text-on-primary hover:bg-primary-hover transition-colors"
-        >
-          Open in Torus
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-        </button>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={handleOpenInTorus}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-label-sm font-semibold bg-primary text-on-primary hover:bg-primary-hover transition-colors"
+          >
+            Open in Torus
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Access code banner */}
@@ -177,7 +180,7 @@ export function TorusAnnotationViewer({
           <p className="text-body-sm text-text-muted mt-1 max-w-xs">
             Use the OER Review Chrome extension on the OLI Torus page to capture screenshots and annotations.
           </p>
-          {sourceUrl && (
+          {!disabled && sourceUrl && (
             <button
               type="button"
               onClick={handleOpenInTorus}

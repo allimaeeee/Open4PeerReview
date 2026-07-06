@@ -16,6 +16,8 @@ export interface TextQuoteSelector {
 
 export type AnchorSelector = TextPositionSelector | TextQuoteSelector;
 
+export type PageType = 'nav' | 'content' | 'checkpoint';
+
 export interface HtmlCharOffsetAnchor {
   type: 'html-char-offset';
   pageIndex: number;
@@ -23,6 +25,7 @@ export interface HtmlCharOffsetAnchor {
   screenshotUrl?: string;
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
 }
 
 export interface BboxAnchor {
@@ -34,6 +37,7 @@ export interface BboxAnchor {
   screenshotUrl?: string;
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
   textQuote?: string;
 }
 
@@ -45,6 +49,7 @@ export interface PointAnchor {
   relY: number;
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
   screenshotUrl?: string;
 }
 
