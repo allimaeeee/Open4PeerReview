@@ -13,6 +13,7 @@ import type {
   BboxAnchor,
   PointAnchor,
   AnchorSelector,
+  RangeSelector,
 } from './types';
 import { tokens } from '../../lib/design-system/token-values';
 import latoRegular from './fonts/Lato-Regular.woff2';
@@ -34,8 +35,16 @@ let platformUrl = OERHUB_URL;
 
 
 const SESSION_KEY = 'oer_review_id';
+const PENDING_DEEP_LINK_KEY = 'oer_pending_review';
+// How long a captured deep link stays valid — long enough to survive a Torus
+// login/enroll round-trip, short enough that a later manual visit isn't hijacked.
+const DEEP_LINK_TTL_MS = 5 * 60 * 1000;
 const PANEL_GEOM_KEY = 'oer_panel_geom';
 const EXPANDED_CRIT_KEY = 'oer_expanded_criteria';
+
+// Torus's student login route. Adjust here if the OLI instance uses a different
+// path (e.g. '/session/new'). Used to build the "Sign in to OLI Torus" redirect.
+const TORUS_LOGIN_PATH = '/users/log_in';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +54,17 @@ let selectedReview: ReviewAssignment | null = null;
 let rubricItems: RubricItem[] = [];
 let annotations: AnnotationRecord[] = [];
 let scores = new Map<string, ReviewScoreRecord>();
+
+// Deep-link intent (?oer_review_id=) recovered from chrome.storage — the
+// background captures it before any Torus login redirect can strip the URL params,
+// so routeToReview can honor it even when window.location no longer carries it.
+let deepLinkReviewId: string | null = null;
+
+// Torus access gating: which review to reconnect to once the reviewer gains
+// course access, and whether they need to log in vs. enroll.
+let pendingReviewId: string | null = null;
+let torusAccessReason: 'needs-login' | 'needs-enroll' = 'needs-login';
+let accessWatcher: ReturnType<typeof setInterval> | null = null;
 
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
@@ -81,6 +101,11 @@ let annotationPopup: HTMLElement;
 let annotationTooltip: HTMLElement | null = null;
 let hotspotMode = false;
 
+// Watches the page for content changes so highlights/hotspots re-apply no matter
+// when Torus finishes painting (reload, session return, or navigating back).
+let highlightObserver: MutationObserver | null = null;
+let reapplyTimer: ReturnType<typeof setTimeout> | null = null;
+
 // ── Messaging ─────────────────────────────────────────────────────────────────
 
 function send<T = unknown>(msg: BackgroundMessage): Promise<BackgroundResponse<T>> {
@@ -102,6 +127,113 @@ function send<T = unknown>(msg: BackgroundMessage): Promise<BackgroundResponse<T
 }
 
 // ── Anchoring (ported from lib/anchoring/html.ts) ─────────────────────────────
+
+// ── XPath helpers (element-scoped anchoring, markup.io / hypothes.is style) ────
+
+// Build an XPath from document.body to `el`, using tag + positional index at each
+// step (e.g. "/DIV[1]/P[3]"). Element-scoped anchors survive edits elsewhere on the
+// page far better than whole-document character offsets.
+function xpathForElement(el: Element): string {
+  if (el === document.body) return '';
+  const segments: string[] = [];
+  let node: Element | null = el;
+  while (node && node !== document.body && node.nodeType === Node.ELEMENT_NODE) {
+    const tag = node.tagName;
+    let index = 1;
+    let sib = node.previousElementSibling;
+    while (sib) {
+      if (sib.tagName === tag) index++;
+      sib = sib.previousElementSibling;
+    }
+    segments.unshift(`${tag}[${index}]`);
+    node = node.parentElement;
+  }
+  return '/' + segments.join('/');
+}
+
+// Resolve an XPath produced by xpathForElement() back to its element.
+function elementForXpath(xpath: string): Element | null {
+  if (!xpath || xpath === '') return document.body;
+  let node: Element = document.body;
+  for (const seg of xpath.split('/').filter(Boolean)) {
+    const m = /^([A-Za-z0-9]+)\[(\d+)\]$/.exec(seg);
+    if (!m) return null;
+    const [, tag, idxStr] = m;
+    const idx = parseInt(idxStr, 10);
+    let count = 0;
+    let found: Element | null = null;
+    for (const child of Array.from(node.children)) {
+      if (child.tagName === tag.toUpperCase()) {
+        count++;
+        if (count === idx) { found = child; break; }
+      }
+    }
+    if (!found) return null;
+    node = found;
+  }
+  return node;
+}
+
+// For a boundary (container node + offset from a DOM Range), find the nearest
+// enclosing element and the character offset of the boundary within that element's
+// text content. This lets us store an element XPath + local offset (RangeSelector).
+function boundaryToElementOffset(node: Node, offset: number): { element: Element; offset: number } | null {
+  let element: Element;
+  let charBefore = 0;
+  if (node.nodeType === Node.TEXT_NODE) {
+    element = node.parentElement as Element;
+    if (!element) return null;
+    // Count text before this text node within the element's subtree.
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const t = walker.currentNode as Text;
+      if (t === node) { charBefore += offset; break; }
+      charBefore += t.length;
+    }
+  } else {
+    element = node as Element;
+    // offset counts child nodes; sum text length of preceding children.
+    for (let i = 0; i < offset && i < element.childNodes.length; i++) {
+      charBefore += (element.childNodes[i].textContent ?? '').length;
+    }
+  }
+  return { element, offset: charBefore };
+}
+
+// Resolve a RangeSelector (element XPath + local char offset) back into a DOM Range.
+function resolveRangeSelector(sel: RangeSelector): Range | null {
+  const startEl = elementForXpath(sel.startContainer);
+  const endEl = elementForXpath(sel.endContainer);
+  if (!startEl || !endEl) return null;
+
+  const locate = (el: Element, localOffset: number): { node: Text; offset: number } | null => {
+    let count = 0;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let last: Text | null = null;
+    while (walker.nextNode()) {
+      const t = walker.currentNode as Text;
+      last = t;
+      if (localOffset <= count + t.length) {
+        return { node: t, offset: Math.max(0, localOffset - count) };
+      }
+      count += t.length;
+    }
+    return last ? { node: last, offset: last.length } : null;
+  };
+
+  const start = locate(startEl, sel.startOffset);
+  const end = locate(endEl, sel.endOffset);
+  if (!start || !end) return null;
+  try {
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    if (range.collapsed && start.node !== end.node) return null;
+    return range;
+  } catch {
+    return null;
+  }
+}
 
 function getCharOffset(root: Node, targetNode: Node, targetOffset: number): number {
   let count = 0;
@@ -150,13 +282,29 @@ function selectionToAnchor(): HtmlCharOffsetAnchor | null {
   const exact  = fullText.slice(start, end);
   const prefix = fullText.slice(Math.max(0, start - CONTEXT), start);
   const suffix = fullText.slice(end, end + CONTEXT);
+
+  const selectors: AnchorSelector[] = [
+    { type: 'TextPositionSelector', start, end },
+    { type: 'TextQuoteSelector', exact, prefix, suffix },
+  ];
+
+  // Element-scoped RangeSelector — the most specific anchor, tried first on resolve.
+  const startBoundary = boundaryToElementOffset(range.startContainer, range.startOffset);
+  const endBoundary   = boundaryToElementOffset(range.endContainer, range.endOffset);
+  if (startBoundary && endBoundary) {
+    selectors.unshift({
+      type: 'RangeSelector',
+      startContainer: xpathForElement(startBoundary.element),
+      startOffset: startBoundary.offset,
+      endContainer: xpathForElement(endBoundary.element),
+      endOffset: endBoundary.offset,
+    });
+  }
+
   return {
     type: 'html-char-offset',
     pageIndex: 0,
-    selector: [
-      { type: 'TextPositionSelector', start, end },
-      { type: 'TextQuoteSelector', exact, prefix, suffix },
-    ],
+    selector: selectors,
   };
 }
 
@@ -164,10 +312,20 @@ function resolveAnchor(anchor: HtmlCharOffsetAnchor): Range | null {
   const body = document.body;
   const fullText = body.textContent ?? '';
   const selectors = anchor.selector as AnchorSelector[];
+  const rangeSel = selectors.find((s): s is RangeSelector => s.type === 'RangeSelector');
   const pos   = selectors.find((s): s is { type: 'TextPositionSelector'; start: number; end: number } =>
     s.type === 'TextPositionSelector');
   const quote = selectors.find((s): s is { type: 'TextQuoteSelector'; exact: string; prefix: string; suffix: string } =>
     s.type === 'TextQuoteSelector');
+
+  // Most specific first: element-scoped RangeSelector. Only trust it when the
+  // resolved text matches the recorded quote (guards against DOM having shifted).
+  if (rangeSel) {
+    const range = resolveRangeSelector(rangeSel);
+    if (range) {
+      if (!quote || range.toString() === quote.exact) return range;
+    }
+  }
 
   if (pos && quote) {
     if (fullText.slice(pos.start, pos.end) === quote.exact) {
@@ -288,6 +446,10 @@ function applyPendingHighlight(range: Range) {
 }
 
 function applyHighlights() {
+  // Pause the content observer while WE mutate the DOM (adding/removing marks and
+  // hotspot markers), otherwise our own writes would retrigger a re-apply loop.
+  highlightObserver?.disconnect();
+
   // Remove saved marks only — pending mark is managed separately
   document.querySelectorAll('mark[data-annotation-id]:not([data-annotation-id="pending"])').forEach(m => {
     const parent = m.parentNode;
@@ -325,20 +487,102 @@ function applyHighlights() {
   }
 
   applyHotspotMarkers();
+
+  // Resume watching. takeRecords() drops the mutations WE just made so they don't
+  // queue a redundant re-apply the instant the observer reconnects.
+  reconnectHighlightObserver();
+}
+
+// A DOM change big enough to matter (Torus painting/replacing content) schedules a
+// debounced re-apply. Guarded so it only runs once a review + annotations are loaded.
+function scheduleReapplyHighlights() {
+  if (!selectedReview || annotations.length === 0) return;
+  if (reapplyTimer) clearTimeout(reapplyTimer);
+  reapplyTimer = setTimeout(() => applyHighlights(), 250);
+}
+
+function reconnectHighlightObserver() {
+  if (!highlightObserver) return;
+  highlightObserver.takeRecords();
+  highlightObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function startHighlightObserver() {
+  if (highlightObserver) return;
+  highlightObserver = new MutationObserver((records) => {
+    // Ignore mutations that only touch our own overlay elements (marks, markers,
+    // panel host, popup, tooltip) — those are our writes, not page content changes.
+    const meaningful = records.some(rec => {
+      const nodes = [...Array.from(rec.addedNodes), ...Array.from(rec.removedNodes)];
+      return nodes.some(n => {
+        if (n.nodeType !== Node.ELEMENT_NODE) return true; // text node = real content
+        const el = n as Element;
+        if (el.tagName === 'MARK' && (el as HTMLElement).dataset.annotationId) return false;
+        if (el.id === 'oer-review-host' || el.id === 'oer-ann-popup' || el.id === 'oer-ann-tooltip' || el.id === 'oer-toast' || el.id === 'oer-hotspot-banner') return false;
+        if (el.classList?.contains('oer-hotspot-marker')) return false;
+        return true;
+      });
+    });
+    if (meaningful) scheduleReapplyHighlights();
+  });
+  highlightObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 // ── Hotspot markers ───────────────────────────────────────────────────────────
 
+// Capture an element-scoped anchor for a hotspot click: the XPath to the element
+// under the cursor plus where inside its box the click landed (as 0..1 ratios).
+// Ignores our own UI so a click never anchors to the panel/popup/marker.
+function buildPointElementAnchor(
+  target: HTMLElement,
+  clientX: number,
+  clientY: number,
+): Pick<PointAnchor, 'targetSelector' | 'offsetXRatio' | 'offsetYRatio' | 'targetText'> {
+  if (
+    target.id === 'oer-review-host' || target.closest('#oer-review-host') ||
+    target.closest('#oer-ann-popup') || target.closest('.oer-hotspot-marker')
+  ) {
+    return {};
+  }
+  const rect = target.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return {};
+  return {
+    targetSelector: xpathForElement(target),
+    offsetXRatio: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+    offsetYRatio: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height)),
+    targetText: (target.textContent ?? '').trim().slice(0, 80) || undefined,
+  };
+}
+
+// Resolve a point anchor's on-page coordinates. Prefer the element-scoped anchor
+// (survives reflow); fall back to the stored absolute pageX/pageY.
+function resolvePointPosition(anchor: PointAnchor): { pageX: number; pageY: number } {
+  if (anchor.targetSelector) {
+    const el = elementForXpath(anchor.targetSelector);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) {
+        return {
+          pageX: rect.left + window.scrollX + rect.width * (anchor.offsetXRatio ?? 0.5),
+          pageY: rect.top + window.scrollY + rect.height * (anchor.offsetYRatio ?? 0.5),
+        };
+      }
+    }
+  }
+  return { pageX: anchor.pageX, pageY: anchor.pageY };
+}
+
 function placeHotspotMarker(ann: AnnotationRecord, index: number) {
   const anchor = ann.anchor as PointAnchor;
+  const { pageX, pageY } = resolvePointPosition(anchor);
   const el = document.createElement('div');
   el.id = `hotspot-marker-${ann.id}`;
   el.dataset.annotationId = ann.id;
   el.className = 'oer-hotspot-marker';
   el.style.cssText = `
     position: absolute;
-    left: ${anchor.pageX}px;
-    top: ${anchor.pageY}px;
+    left: ${pageX}px;
+    top: ${pageY}px;
     transform: translate(-50%, -100%);
     width: 28px;
     height: 36px;
@@ -348,12 +592,14 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
     pointer-events: auto;
     transition: filter 0.15s, transform 0.15s;
   `;
+  // Tint the pin by its tag so Action Item / Quick Fix hotspots are distinguishable at a glance.
+  const pinColor = ann.tag === 'action_item' ? '#c2410c' : ann.tag === 'quick_fix' ? '#1d4ed8' : '#3D6FA9';
   el.innerHTML = `
     <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;top:0;left:0;">
-      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${tokens.color.primary}"/>
+      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${pinColor}"/>
       <circle cx="14" cy="14" r="7" fill="white" fill-opacity="0.9"/>
     </svg>
-    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${tokens.color.primary};font-family:${tokens.font.body};line-height:1;">${index}</div>
+    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${pinColor};font-family:${tokens.font.body};line-height:1;">${index}</div>
   `;
   el.addEventListener('mouseenter', (ev) => {
     el.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.45))';
@@ -446,7 +692,8 @@ const GOTO_ANN_KEY = 'oer_goto_annotation_id';
 function scrollToAnchorOnPage(anchor: AnnotationRecord['anchor'], annId: string) {
   if (anchor.type === 'point') {
     const pa = anchor as PointAnchor;
-    window.scrollTo({ top: Math.max(0, pa.pageY - window.innerHeight / 2), behavior: 'smooth' });
+    const { pageY } = resolvePointPosition(pa);
+    window.scrollTo({ top: Math.max(0, pageY - window.innerHeight / 2), behavior: 'smooth' });
     // Flash the hotspot marker
     setTimeout(() => {
       const marker = document.getElementById(`hotspot-marker-${annId}`);
@@ -793,8 +1040,9 @@ function getTorusPageInfo(): TorusPageInfo {
   return { pageName, pageType: isCheckpoint ? 'checkpoint' : 'content' };
 }
 
-// Picks the assignment that corresponds to the OER currently open in the tab,
-// so the reviewer lands straight in their console instead of choosing from a list.
+// Picks the assignment whose OER source_url matches the page open in this tab.
+// Returns null when the page is NOT a recognized assigned OER — the caller decides
+// the fallback, so a stale session can't be mistaken for a real page match.
 function resolveAssignmentForCurrentPage(list: ReviewAssignment[]): ReviewAssignment | null {
   if (list.length === 0) return null;
 
@@ -817,17 +1065,163 @@ function resolveAssignmentForCurrentPage(list: ReviewAssignment[]): ReviewAssign
     .filter(s => s.score > 0)
     .sort((x, y) => y.score - x.score || (x.a.status === 'in_progress' ? -1 : 1));
 
-  if (scored.length > 0) return scored[0].a;
+  return scored.length > 0 ? scored[0].a : null;
+}
 
-  // No document on this page matched a source_url — fall back to the reviewer's
-  // most actionable assignment rather than asking them to pick.
-  return list.find(a => a.status === 'in_progress') ?? list[0];
+// ── Torus access gating ──────────────────────────────────────────────────────
+// A reviewer can only annotate a course they can actually open in Torus. When
+// they lack access, Torus routes them to its own login or enrollment page rather
+// than the course content. We detect those pages by URL path and, instead of
+// opening the review console, prompt them to sign in / enter the course. Once
+// they regain access the extension reconnects them to the right review.
+
+const TORUS_LOGIN_PATTERNS = [
+  /\/users\/log_in/i,
+  /\/session\/new/i,
+  /\/authoring\/session\/new/i,
+  /\/users\/reset_password/i,
+];
+const TORUS_ENROLL_PATTERNS = [
+  /\/sections\/[^/]+\/enroll/i,
+  /\/sections\/[^/]+\/join/i,
+  /\/sections\/[^/]+\/request_access/i,
+];
+
+function detectTorusAccess(): 'ok' | 'needs-login' | 'needs-enroll' {
+  const path = window.location.pathname;
+  if (TORUS_LOGIN_PATTERNS.some(re => re.test(path))) return 'needs-login';
+  if (TORUS_ENROLL_PATTERNS.some(re => re.test(path))) return 'needs-enroll';
+  return 'ok';
+}
+
+// Sends the reviewer to Torus's login page with a return path back to the course,
+// so after signing in Torus (and this content script) land them on the review.
+function buildTorusLoginUrl(courseUrl: string): string {
+  const login = new URL(TORUS_LOGIN_PATH, window.location.origin);
+  if (courseUrl) {
+    try {
+      const ret = new URL(courseUrl);
+      login.searchParams.set('request_path', ret.pathname + ret.search);
+    } catch { /* ignore malformed course URL */ }
+  }
+  return login.toString();
+}
+
+// While parked on a login/enroll page, watch for the reviewer navigating into the
+// course (SPA transitions that don't reload the content script) and reconnect.
+function startAccessWatcher() {
+  if (accessWatcher !== null) return;
+  let lastHref = window.location.href;
+  accessWatcher = setInterval(() => {
+    if (window.location.href === lastHref) return;
+    lastHref = window.location.href;
+    if (detectTorusAccess() === 'ok') {
+      stopAccessWatcher();
+      void routeToReview();
+    }
+  }, 1000);
+}
+
+function stopAccessWatcher() {
+  if (accessWatcher !== null) { clearInterval(accessWatcher); accessWatcher = null; }
+}
+
+// Reads (and clears) the deep-link intent the background captured from the URL
+// before Torus could redirect. Populates deepLinkReviewId and, if present, the
+// pending "scroll to annotation" id. Consumed once so it can't hijack later visits.
+async function recoverDeepLinkFromStorage() {
+  try {
+    const data = await chrome.storage.local.get(PENDING_DEEP_LINK_KEY) as Record<string, unknown>;
+    const pending = data[PENDING_DEEP_LINK_KEY] as
+      { reviewId?: string | null; annotationId?: string | null; ts?: number } | undefined;
+    if (!pending) return;
+    // Consume it regardless of freshness so a stale record can't linger.
+    await chrome.storage.local.remove(PENDING_DEEP_LINK_KEY);
+    if (typeof pending.ts !== 'number' || Date.now() - pending.ts > DEEP_LINK_TTL_MS) return;
+    if (pending.reviewId) deepLinkReviewId = pending.reviewId;
+    if (pending.annotationId) {
+      try { sessionStorage.setItem(GOTO_ANN_KEY, pending.annotationId); } catch { /* storage unavailable */ }
+    }
+  } catch { /* storage unavailable — fall back to URL/session routing */ }
+}
+
+// Resolves which review this page/deep-link/session points at, gates on Torus
+// access, and either opens the console or shows the sign-in prompt.
+async function routeToReview() {
+  if (assignments.length === 0) { renderContent('no-assignments'); return; }
+
+  // Resolution priority:
+  //   1. Explicit deep link (?oer_review_id=) — the reviewer clicked into a
+  //      specific review from the dashboard/console.
+  //   2. The OER actually open in this tab (source_url match). If the reviewer
+  //      previously picked a specific rubric tab for THAT SAME document, honor it;
+  //      otherwise open the page's matched review.
+  //   3. Fallback to the last review used in this tab, then most actionable.
+  //
+  // The page match must outrank a stale session: without this, reviewing OER A and
+  // then opening OER B in the same tab would reopen A's rubric (wrong OER entirely).
+  // The URL param is authoritative when still present; otherwise fall back to the
+  // deep link the background captured before any redirect stripped the params.
+  const urlReviewId = new URLSearchParams(window.location.search).get('oer_review_id') || deepLinkReviewId;
+  const savedId = sessionStorage.getItem(SESSION_KEY);
+  const saved = savedId ? assignments.find(a => a.id === savedId) : undefined;
+  const pageMatch = resolveAssignmentForCurrentPage(assignments);
+
+  let target: ReviewAssignment | undefined;
+  if (urlReviewId) target = assignments.find(a => a.id === urlReviewId);
+  if (!target) {
+    if (pageMatch) {
+      // Keep the reviewer's chosen rubric only when it belongs to this OER.
+      target = saved && saved.document_id === pageMatch.document_id ? saved : pageMatch;
+    } else {
+      // Page isn't a recognized assigned OER — restore the session, else pick the
+      // reviewer's most actionable assignment rather than asking them to choose.
+      target = saved ?? assignments.find(a => a.status === 'in_progress') ?? assignments[0];
+    }
+  }
+
+  // Persist now so the correct review is restored after any Torus login/enroll
+  // navigation (sessionStorage survives same-origin navigations in this tab).
+  sessionStorage.setItem(SESSION_KEY, target.id);
+
+  const access = detectTorusAccess();
+  if (access !== 'ok') {
+    pendingReviewId = target.id;
+    torusAccessReason = access;
+    renderContent('torus-access');
+    startAccessWatcher();
+    return;
+  }
+
+  stopAccessWatcher();
+  await selectReview(target.id);
+}
+
+// Hide/show the extension's own UI chrome (panel + transient overlays) without
+// touching the on-page annotation marks/hotspot pins, which SHOULD appear in the
+// screenshot. Uses visibility (not display) so nothing reflows.
+function setExtensionChromeVisible(visible: boolean) {
+  const ids = ['oer-review-host', 'oer-ann-popup', 'oer-ann-tooltip', 'oer-hotspot-banner', 'oer-toast'];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.style.visibility = visible ? '' : 'hidden';
+  }
 }
 
 async function captureAnnotationScreenshot(): Promise<string | null> {
   if (!selectedReview) return null;
   try {
-    const captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
+    // Clear the extension panel/overlays so captureVisibleTab records only the
+    // page (and its annotation marks). Wait two frames so the hidden state is
+    // actually painted before the tab is captured, then always restore it.
+    setExtensionChromeVisible(false);
+    await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    let captureResp: BackgroundResponse<{ png: string }>;
+    try {
+      captureResp = await send<{ png: string }>({ type: 'CAPTURE_TAB' });
+    } finally {
+      setExtensionChromeVisible(true);
+    }
     if (!captureResp.success || !captureResp.data?.png) {
       console.error('[OER] CAPTURE_TAB failed:', captureResp.error);
       return null;
@@ -839,6 +1233,7 @@ async function captureAnnotationScreenshot(): Promise<string | null> {
     if (!uploadResp.success) console.error('[OER] UPLOAD_SCREENSHOT failed:', uploadResp.error);
     return uploadResp.success ? (uploadResp.data?.url ?? null) : null;
   } catch (err) {
+    setExtensionChromeVisible(true);
     console.error('[OER] captureAnnotationScreenshot threw:', err);
     return null;
   }
@@ -894,7 +1289,7 @@ async function saveAnnotation(
   annotations.push(resp.data);
   setSaveStatus('saved');
   applyHighlights();
-  refreshAnnotationList(rubricItemId ?? '__free__');
+  refreshAnnotationList(listKeyForAnnotation(resp.data));
   return resp.data;
 }
 
@@ -914,7 +1309,7 @@ async function attachScreenshotToAnnotations(savedAnns: AnnotationRecord[]) {
       const idx = annotations.findIndex(a => a.id === ann.id);
       if (idx !== -1) {
         annotations[idx] = { ...annotations[idx], anchor: updatedAnchor as unknown as HtmlCharOffsetAnchor | BboxAnchor | PointAnchor };
-        refreshAnnotationList(ann.rubric_item_id ?? '__free__');
+        refreshAnnotationList(listKeyForAnnotation(annotations[idx]));
       }
     }
   }
@@ -939,22 +1334,36 @@ async function deleteAnnotation(annotationId: string) {
     parent.removeChild(m);
     parent.normalize();
   });
-  renderRubricCriteria(); // Full re-render to update counts
+  renderRubricCriteria(); // Full re-render to update criterion counts
+  // The Unlinked / General Notes lists live outside the criterion accordion, so
+  // refresh them explicitly (renderRubricCriteria only rebuilds criterion cards).
+  refreshAnnotationList(UNLINKED_LIST_KEY);
+  refreshAnnotationList(FREE_LIST_KEY);
+}
+
+// Free notes are page-agnostic text notes (the "+ Add Note" / "+ Add Comment"
+// flows), stored as a zero-size bbox anchor. Anything else with no criterion is a
+// real page anchor that simply hasn't been linked yet → an "unlinked annotation".
+const FREE_LIST_KEY = '__free__';
+const UNLINKED_LIST_KEY = '__unlinked__';
+
+function isFreeNoteAnchor(anchor: AnnotationRecord['anchor']): boolean {
+  if (anchor.type !== 'bbox') return false;
+  const b = anchor as BboxAnchor;
+  return b.x === 0 && b.y === 0 && b.width === 0 && b.height === 0 && !b.screenshotUrl;
+}
+
+// Which panel list an annotation belongs in: its criterion, General Notes, or Unlinked.
+function listKeyForAnnotation(ann: AnnotationRecord): string {
+  if (ann.rubric_item_id) return ann.rubric_item_id;
+  return isFreeNoteAnchor(ann.anchor) ? FREE_LIST_KEY : UNLINKED_LIST_KEY;
 }
 
 
 function refreshAnnotationList(rubricItemId: string) {
   if (!selectedReview) return;
-  const key = rubricItemId === '__free__' ? null : rubricItemId;
-  let relevant = annotations.filter(a => a.rubric_item_id === key);
-  if (rubricItemId === '__free__') {
-    relevant = relevant.filter(a => (a.anchor as unknown as { type?: string }).type !== 'general_comment');
-    const badge = shadow.getElementById('unlinked-count-badge');
-    if (badge) {
-      badge.textContent = String(relevant.length);
-      badge.className = relevant.length > 0 ? 'unlinked-count-badge has-items' : 'unlinked-count-badge';
-    }
-  } else {
+  const relevant = annotations.filter(a => listKeyForAnnotation(a) === rubricItemId);
+  if (rubricItemId !== UNLINKED_LIST_KEY) {
     const count = relevant.length;
     const evBadge = shadow.getElementById(`evidence-badge-${rubricItemId}`) as HTMLElement | null;
     if (evBadge) {
@@ -966,12 +1375,8 @@ function refreshAnnotationList(rubricItemId: string) {
     if (evLabel) evLabel.textContent = `Evidence (${count})`;
   }
   const container = shadow.getElementById(`ann-list-${rubricItemId}`);
-  if (!container) return;
-  if (relevant.length === 0 && rubricItemId === '__free__') {
-    container.innerHTML = '<p class="ann-empty">All annotations have been linked to a criterion</p>';
-  } else {
-    container.innerHTML = relevant.map(ann => renderAnnotationItem(ann)).join('');
-  }
+  if (!container) { updateUnlinkedCount(); return; }
+  container.innerHTML = relevant.map(ann => renderAnnotationItem(ann)).join('');
   container.querySelectorAll<HTMLButtonElement>('.ann-delete').forEach(btn => {
     btn.addEventListener('click', () => deleteAnnotation(btn.dataset.id!));
   });
@@ -1015,6 +1420,37 @@ function refreshAnnotationList(rubricItemId: string) {
       btn.textContent = isExpanded ? '(see full text)' : '(collapse)';
     });
   });
+  container.querySelectorAll<HTMLSelectElement>('.ann-link').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const annId = sel.dataset.id!;
+      const criterionId = sel.value;
+      if (criterionId) linkAnnotationToCriterion(annId, criterionId);
+    });
+  });
+  updateUnlinkedCount();
+}
+
+// Keep the "Unlinked" section header count and empty-state in sync.
+function updateUnlinkedCount() {
+  const count = annotations.filter(a => listKeyForAnnotation(a) === UNLINKED_LIST_KEY).length;
+  const badge = shadow.getElementById('unlinked-count');
+  if (badge) badge.textContent = String(count);
+  const empty = shadow.getElementById('unlinked-empty');
+  if (empty) empty.style.display = count === 0 ? 'block' : 'none';
+}
+
+// Move an unlinked annotation into a rubric criterion (console parity).
+async function linkAnnotationToCriterion(annotationId: string, criterionId: string) {
+  const ann = annotations.find(a => a.id === annotationId);
+  if (!ann) return;
+  setSaveStatus('saving');
+  const resp = await send({ type: 'UPDATE_ANNOTATION', payload: { id: annotationId, rubric_item_id: criterionId } });
+  if (!resp.success) { setSaveStatus('error'); return; }
+  ann.rubric_item_id = criterionId;
+  setSaveStatus('saved');
+  // Refresh both the source (unlinked) list and the destination criterion, plus counts.
+  refreshAnnotationList(UNLINKED_LIST_KEY);
+  renderRubricCriteria();
 }
 
 const SVG_PAGE_NAV = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`;
@@ -1086,6 +1522,16 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
        <span class="ann-tag">${ann.tag === 'action_item' ? SVG_TAG_ACTION + ' Action Item' : SVG_TAG_QUICK + ' Quick Fix'}</span>`
     : '';
 
+  // Unlinked annotations (real page anchor, no criterion) get a "link to criterion"
+  // control so the reviewer can categorize them — mirrors the in-platform console.
+  const isUnlinked = !ann.rubric_item_id && !isFreeNoteAnchor(ann.anchor);
+  const linkHtml = isUnlinked && rubricItems.length > 0
+    ? `<select class="ann-link" data-id="${ann.id}" title="Link to a rubric criterion">
+        <option value="">Link to criterion…</option>
+        ${rubricItems.map(item => `<option value="${item.id}">${escHtml(item.label.split(' · ')[0] ?? item.label)}</option>`).join('')}
+      </select>`
+    : '';
+
   return `
     <div class="ann-item" id="ann-${ann.id}">
       <div class="ann-icon-btns">
@@ -1100,6 +1546,7 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
         ${ann.body.trim() ? clampField(ann.body.trim(), ann.id, 'body', 'ann-body') : '<div class="ann-no-quote">No comment written</div>'}
         ${tagHtml}
       </div>
+      ${linkHtml}
     </div>
   `;
 }
@@ -1158,7 +1605,7 @@ function editAnnotation(annotationId: string) {
   });
 
   editableEl.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
-    refreshAnnotationList(ann.rubric_item_id ?? '__free__');
+    refreshAnnotationList(listKeyForAnnotation(ann));
   });
 
   editableEl.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
@@ -1166,7 +1613,7 @@ function editAnnotation(annotationId: string) {
     const newBody = textarea.value.trim();
     const selectEl = editableEl.querySelector<HTMLSelectElement>('.ann-criterion-sel')!;
     const newCriterionId = selectEl.value || null;
-    const oldKey = ann.rubric_item_id ?? '__free__';
+    const oldKey = listKeyForAnnotation(ann);
     setSaveStatus('saving');
     const resp = await send({
       type: 'UPDATE_ANNOTATION',
@@ -1180,7 +1627,7 @@ function editAnnotation(annotationId: string) {
     } else {
       setSaveStatus('error');
     }
-    const newKey = newCriterionId ?? '__free__';
+    const newKey = listKeyForAnnotation(ann);
     refreshAnnotationList(oldKey);
     if (newKey !== oldKey) refreshAnnotationList(newKey);
   });
@@ -1362,7 +1809,7 @@ function openAnnotationPopup(config: PopupConfig) {
 
     } else {
       const editAnn = config.annotation;
-      const oldKey = editAnn.rubric_item_id ?? '__free__';
+      const oldKey = listKeyForAnnotation(editAnn);
       setSaveStatus('saving');
       const resp = await send({
         type: 'UPDATE_ANNOTATION',
@@ -1377,7 +1824,7 @@ function openAnnotationPopup(config: PopupConfig) {
         setSaveStatus('error');
       }
       hideAnnotationPopup();
-      const newKey = selectedCriterionId ?? '__free__';
+      const newKey = listKeyForAnnotation(editAnn);
       refreshAnnotationList(oldKey);
       if (newKey !== oldKey) refreshAnnotationList(newKey);
     }
@@ -1716,6 +2163,7 @@ function handleMouseUp(e: MouseEvent) {
       relX: e.pageX / document.documentElement.scrollWidth,
       relY: e.pageY / document.documentElement.scrollHeight,
       pageUrl: window.location.href,
+      ...buildPointElementAnchor(target, e.clientX, e.clientY),
     };
     showHotspotPopup(anchor, e.clientX, e.clientY);
     return;
@@ -1767,7 +2215,7 @@ function escHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'review') {
+function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'torus-access' | 'review') {
   if (!panelBody) return;
 
   // Footer lives outside panel-body in the outer shell — hide it for all
@@ -1824,6 +2272,31 @@ function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'review')
       `;
       break;
 
+    case 'torus-access': {
+      const isEnroll = torusAccessReason === 'needs-enroll';
+      const target = pendingReviewId ? assignments.find(a => a.id === pendingReviewId) : null;
+      const docTitle = target?.documents?.title ?? 'this course';
+      const courseUrl = target?.documents?.source_url ?? '';
+      panelBody.innerHTML = `
+        <div class="state-box" style="padding:24px 20px;">
+          <div style="font-size:28px;margin-bottom:8px;">🔐</div>
+          <p class="state-title">${isEnroll ? 'Course access required' : 'Sign in to OLI Torus'}</p>
+          <p class="state-sub" style="margin-bottom:16px;">
+            ${isEnroll
+              ? `You need access to <strong>${escHtml(docTitle)}</strong> in OLI Torus before you can review it. Enter the course, then we'll connect you to your review automatically.`
+              : `Sign in to OLI Torus to open <strong>${escHtml(docTitle)}</strong>. Once you're in the course, we'll connect you to your review automatically.`}
+          </p>
+          <button id="btn-torus-login" class="btn btn-primary btn-full">${isEnroll ? 'Go to course' : 'Sign in to OLI Torus'}</button>
+        </div>
+      `;
+      shadow.getElementById('btn-torus-login')?.addEventListener('click', () => {
+        window.location.href = isEnroll
+          ? (courseUrl || window.location.origin)
+          : buildTorusLoginUrl(courseUrl);
+      });
+      break;
+    }
+
     case 'review':
       renderReviewInterface();
       break;
@@ -1872,16 +2345,17 @@ function renderReviewInterface() {
           <textarea class="gc-textarea" id="general-comment-ta" placeholder="Add comments not tied to a specific criterion…"></textarea>
         </div>
       </div>
-      <div class="side-card">
-        <div class="side-card-hd" id="side-card-ua-hd">
-          <div class="side-card-title-group">
-            <span class="side-card-title-text">Unlinked Annotations</span>
-            <span class="unlinked-count-badge" id="unlinked-count-badge">0</span>
+      <div class=”side-card”>
+        <div class=”side-card-hd” id=”side-card-ua-hd”>
+          <div class=”side-card-title-group”>
+            <span class=”side-card-title-text”>Unlinked Annotations</span>
+            <span class=”unlinked-count-badge” id=”unlinked-count”>0</span>
           </div>
-          <span class="expand-icon" id="expand-ua"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+          <span class=”expand-icon” id=”expand-ua”><svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><polyline points=”6 9 12 15 18 9”/></svg></span>
         </div>
-        <div class="side-card-bd" id="side-card-ua-bd">
-          <div class="ann-list" id="ann-list-__free__"></div>
+        <div class=”side-card-bd” id=”side-card-ua-bd”>
+          <p class=”ann-empty” id=”unlinked-empty” style=”display:none”>All annotations have been linked to a criterion</p>
+          <div class=”ann-list” id=”ann-list-__unlinked__”></div>
         </div>
       </div>
     </div>
@@ -1940,7 +2414,8 @@ function renderReviewInterface() {
 
   renderRubricCriteria();
   updateCompletion();
-  refreshAnnotationList('__free__');
+  refreshAnnotationList(UNLINKED_LIST_KEY);
+  refreshAnnotationList(FREE_LIST_KEY);
 }
 
 function renderRubricCriteria() {
@@ -2550,6 +3025,9 @@ function createPanel() {
       .ann-edit:hover { color: ${tokens.color.primary}; }
       .ann-delete { background: none; border: none; cursor: pointer; color: ${tokens.color.textMuted}; padding: 3px; border-radius: 3px; display: flex; align-items: center; line-height: 1; font-family: inherit; }
       .ann-delete:hover { color: ${tokens.color.error}; }
+      .ann-link { display: block; margin-top: 6px; width: 100%; padding: 4px 6px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.textSecondary}; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; }
+      .ann-link:hover { border-color: ${tokens.color.borderStrong}; }
+      .ann-link:focus { border-color: ${tokens.color.secondary}; box-shadow: 0 0 0 2px ${tokens.color.secondaryContainer}66; }
 
       .ann-edit-input { width: 100%; padding: 6px 0; border: none; border-bottom: 2px solid ${tokens.color.border}; background: transparent; font-size: 12px; resize: vertical; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; transition: border-color 0.15s; }
       .ann-edit-input:focus { border-bottom-color: ${tokens.color.primary}; }
@@ -2791,9 +3269,7 @@ async function handleLogin() {
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });
   assignments = assignResp.data ?? [];
-  if (assignments.length === 0) { renderContent('no-assignments'); return; }
-  const match = resolveAssignmentForCurrentPage(assignments);
-  await selectReview((match ?? assignments[0]).id);
+  await routeToReview();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -2830,6 +3306,14 @@ async function init() {
   history.replaceState = (...args) => { origReplace(...args); scheduleHighlightRetries(); };
   window.addEventListener('popstate', scheduleHighlightRetries);
 
+  // Watch for late/async content paint so highlights survive reload, session
+  // return, and back-navigation regardless of when Torus renders the page.
+  startHighlightObserver();
+
+  // Re-anchor when the viewport reflows — element-scoped hotspots depend on live
+  // element geometry, which changes on resize/orientation change.
+  window.addEventListener('resize', () => { if (selectedReview) applyHotspotMarkers(); });
+
   // Let the popup query current state
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'GET_CURRENT_REVIEW') {
@@ -2865,6 +3349,24 @@ async function init() {
     } catch { /* malformed token — fall through to normal auth */ }
   }
 
+  // ── Deep link to a specific annotation (from the in-platform console) ─────────
+  // ?oer_goto=<annotationId> asks us to scroll to that annotation once its review
+  // loads and expand its criterion. Stash it for checkPendingAnnotationNavigation()
+  // (invoked at the end of selectReview) and strip it from the URL.
+  const gotoAnnId = urlParams.get('oer_goto');
+  if (gotoAnnId) {
+    try { sessionStorage.setItem(GOTO_ANN_KEY, gotoAnnId); } catch { /* storage unavailable */ }
+    urlParams.delete('oer_goto');
+    const clean = window.location.pathname
+      + (urlParams.toString() ? '?' + urlParams.toString() : '')
+      + window.location.hash;
+    window.history.replaceState({}, '', clean);
+  }
+
+  // Recover the deep-link intent captured pre-redirect (survives Torus login),
+  // in case window.location no longer carries oer_review_id / oer_goto.
+  await recoverDeepLinkFromStorage();
+
   const authResp = await send<StoredAuth>({ type: 'GET_AUTH' });
   if (!authResp.success || !authResp.data) {
     renderContent('login');
@@ -2880,24 +3382,7 @@ async function init() {
   if (!assignResp.success) { renderContent('login'); return; }
 
   assignments = assignResp.data ?? [];
-
-  // Auto-select review from URL param (deep link from dashboard)
-  const urlReviewId = new URLSearchParams(window.location.search).get('oer_review_id');
-  if (urlReviewId && assignments.some(a => a.id === urlReviewId)) {
-    await selectReview(urlReviewId);
-    return;
-  }
-
-  // Restore previously selected review from session storage
-  const savedId = sessionStorage.getItem(SESSION_KEY);
-  if (savedId && assignments.some(a => a.id === savedId)) {
-    await selectReview(savedId);
-    return;
-  }
-
-  if (assignments.length === 0) { renderContent('no-assignments'); return; }
-  const match = resolveAssignmentForCurrentPage(assignments);
-  await selectReview((match ?? assignments[0]).id);
+  await routeToReview();
 }
 
 init();
