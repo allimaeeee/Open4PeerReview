@@ -75,14 +75,21 @@
   var OERHUB_URL = "https://annotation-platform-seven.vercel.app";
   var platformUrl = OERHUB_URL;
   var SESSION_KEY = "oer_review_id";
+  var PENDING_DEEP_LINK_KEY = "oer_pending_review";
+  var DEEP_LINK_TTL_MS = 5 * 60 * 1e3;
   var PANEL_GEOM_KEY = "oer_panel_geom";
   var EXPANDED_CRIT_KEY = "oer_expanded_criteria";
+  var TORUS_LOGIN_PATH = "/users/log_in";
   var currentAuth = null;
   var assignments = [];
   var selectedReview = null;
   var rubricItems = [];
   var annotations = [];
   var scores = /* @__PURE__ */ new Map();
+  var deepLinkReviewId = null;
+  var pendingReviewId = null;
+  var torusAccessReason = "needs-login";
+  var accessWatcher = null;
   var scoreTimers = /* @__PURE__ */ new Map();
   var criterionResizeObservers = /* @__PURE__ */ new Map();
   var gcTimer = null;
@@ -104,6 +111,8 @@
   var annotationPopup;
   var annotationTooltip = null;
   var hotspotMode = false;
+  var highlightObserver = null;
+  var reapplyTimer = null;
   function send(msg) {
     try {
       return chrome.runtime.sendMessage(msg).catch((err) => {
@@ -118,6 +127,101 @@
         showToast("Extension reloaded \u2014 please refresh this page to reconnect.");
       }
       return Promise.resolve({ success: false, error: errMsg });
+    }
+  }
+  function xpathForElement(el) {
+    if (el === document.body) return "";
+    const segments = [];
+    let node = el;
+    while (node && node !== document.body && node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName;
+      let index = 1;
+      let sib = node.previousElementSibling;
+      while (sib) {
+        if (sib.tagName === tag) index++;
+        sib = sib.previousElementSibling;
+      }
+      segments.unshift(`${tag}[${index}]`);
+      node = node.parentElement;
+    }
+    return "/" + segments.join("/");
+  }
+  function elementForXpath(xpath) {
+    if (!xpath || xpath === "") return document.body;
+    let node = document.body;
+    for (const seg of xpath.split("/").filter(Boolean)) {
+      const m = /^([A-Za-z0-9]+)\[(\d+)\]$/.exec(seg);
+      if (!m) return null;
+      const [, tag, idxStr] = m;
+      const idx = parseInt(idxStr, 10);
+      let count = 0;
+      let found = null;
+      for (const child of Array.from(node.children)) {
+        if (child.tagName === tag.toUpperCase()) {
+          count++;
+          if (count === idx) {
+            found = child;
+            break;
+          }
+        }
+      }
+      if (!found) return null;
+      node = found;
+    }
+    return node;
+  }
+  function boundaryToElementOffset(node, offset) {
+    let element;
+    let charBefore = 0;
+    if (node.nodeType === Node.TEXT_NODE) {
+      element = node.parentElement;
+      if (!element) return null;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const t = walker.currentNode;
+        if (t === node) {
+          charBefore += offset;
+          break;
+        }
+        charBefore += t.length;
+      }
+    } else {
+      element = node;
+      for (let i = 0; i < offset && i < element.childNodes.length; i++) {
+        charBefore += (element.childNodes[i].textContent ?? "").length;
+      }
+    }
+    return { element, offset: charBefore };
+  }
+  function resolveRangeSelector(sel) {
+    const startEl = elementForXpath(sel.startContainer);
+    const endEl = elementForXpath(sel.endContainer);
+    if (!startEl || !endEl) return null;
+    const locate = (el, localOffset) => {
+      let count = 0;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let last = null;
+      while (walker.nextNode()) {
+        const t = walker.currentNode;
+        last = t;
+        if (localOffset <= count + t.length) {
+          return { node: t, offset: Math.max(0, localOffset - count) };
+        }
+        count += t.length;
+      }
+      return last ? { node: last, offset: last.length } : null;
+    };
+    const start = locate(startEl, sel.startOffset);
+    const end = locate(endEl, sel.endOffset);
+    if (!start || !end) return null;
+    try {
+      const range = document.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      if (range.collapsed && start.node !== end.node) return null;
+      return range;
+    } catch {
+      return null;
     }
   }
   function getCharOffset(root, targetNode, targetOffset) {
@@ -163,21 +267,40 @@
     const exact = fullText.slice(start, end);
     const prefix = fullText.slice(Math.max(0, start - CONTEXT), start);
     const suffix = fullText.slice(end, end + CONTEXT);
+    const selectors = [
+      { type: "TextPositionSelector", start, end },
+      { type: "TextQuoteSelector", exact, prefix, suffix }
+    ];
+    const startBoundary = boundaryToElementOffset(range.startContainer, range.startOffset);
+    const endBoundary = boundaryToElementOffset(range.endContainer, range.endOffset);
+    if (startBoundary && endBoundary) {
+      selectors.unshift({
+        type: "RangeSelector",
+        startContainer: xpathForElement(startBoundary.element),
+        startOffset: startBoundary.offset,
+        endContainer: xpathForElement(endBoundary.element),
+        endOffset: endBoundary.offset
+      });
+    }
     return {
       type: "html-char-offset",
       pageIndex: 0,
-      selector: [
-        { type: "TextPositionSelector", start, end },
-        { type: "TextQuoteSelector", exact, prefix, suffix }
-      ]
+      selector: selectors
     };
   }
   function resolveAnchor(anchor) {
     const body = document.body;
     const fullText = body.textContent ?? "";
     const selectors = anchor.selector;
+    const rangeSel = selectors.find((s) => s.type === "RangeSelector");
     const pos = selectors.find((s) => s.type === "TextPositionSelector");
     const quote = selectors.find((s) => s.type === "TextQuoteSelector");
+    if (rangeSel) {
+      const range = resolveRangeSelector(rangeSel);
+      if (range) {
+        if (!quote || range.toString() === quote.exact) return range;
+      }
+    }
     if (pos && quote) {
       if (fullText.slice(pos.start, pos.end) === quote.exact) {
         return resolveCharOffset(body, pos.start, pos.end);
@@ -285,6 +408,7 @@
     }
   }
   function applyHighlights() {
+    highlightObserver?.disconnect();
     document.querySelectorAll('mark[data-annotation-id]:not([data-annotation-id="pending"])').forEach((m) => {
       const parent = m.parentNode;
       if (!parent) return;
@@ -317,17 +441,75 @@
       markRange(range, ann.id, tokens.color.annotation, () => scrollToAnnotationInPanel(ann.id));
     }
     applyHotspotMarkers();
+    reconnectHighlightObserver();
+  }
+  function scheduleReapplyHighlights() {
+    if (!selectedReview || annotations.length === 0) return;
+    if (reapplyTimer) clearTimeout(reapplyTimer);
+    reapplyTimer = setTimeout(() => applyHighlights(), 250);
+  }
+  function reconnectHighlightObserver() {
+    if (!highlightObserver) return;
+    highlightObserver.takeRecords();
+    highlightObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  function startHighlightObserver() {
+    if (highlightObserver) return;
+    highlightObserver = new MutationObserver((records) => {
+      const meaningful = records.some((rec) => {
+        const nodes = [...Array.from(rec.addedNodes), ...Array.from(rec.removedNodes)];
+        return nodes.some((n) => {
+          if (n.nodeType !== Node.ELEMENT_NODE) return true;
+          const el = n;
+          if (el.tagName === "MARK" && el.dataset.annotationId) return false;
+          if (el.id === "oer-review-host" || el.id === "oer-ann-popup" || el.id === "oer-ann-tooltip" || el.id === "oer-toast" || el.id === "oer-hotspot-banner") return false;
+          if (el.classList?.contains("oer-hotspot-marker")) return false;
+          return true;
+        });
+      });
+      if (meaningful) scheduleReapplyHighlights();
+    });
+    highlightObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  function buildPointElementAnchor(target, clientX, clientY) {
+    if (target.id === "oer-review-host" || target.closest("#oer-review-host") || target.closest("#oer-ann-popup") || target.closest(".oer-hotspot-marker")) {
+      return {};
+    }
+    const rect = target.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return {};
+    return {
+      targetSelector: xpathForElement(target),
+      offsetXRatio: Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)),
+      offsetYRatio: Math.min(1, Math.max(0, (clientY - rect.top) / rect.height)),
+      targetText: (target.textContent ?? "").trim().slice(0, 80) || void 0
+    };
+  }
+  function resolvePointPosition(anchor) {
+    if (anchor.targetSelector) {
+      const el = elementForXpath(anchor.targetSelector);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) {
+          return {
+            pageX: rect.left + window.scrollX + rect.width * (anchor.offsetXRatio ?? 0.5),
+            pageY: rect.top + window.scrollY + rect.height * (anchor.offsetYRatio ?? 0.5)
+          };
+        }
+      }
+    }
+    return { pageX: anchor.pageX, pageY: anchor.pageY };
   }
   function placeHotspotMarker(ann, index) {
     const anchor = ann.anchor;
+    const { pageX, pageY } = resolvePointPosition(anchor);
     const el = document.createElement("div");
     el.id = `hotspot-marker-${ann.id}`;
     el.dataset.annotationId = ann.id;
     el.className = "oer-hotspot-marker";
     el.style.cssText = `
     position: absolute;
-    left: ${anchor.pageX}px;
-    top: ${anchor.pageY}px;
+    left: ${pageX}px;
+    top: ${pageY}px;
     transform: translate(-50%, -100%);
     width: 28px;
     height: 36px;
@@ -337,12 +519,13 @@
     pointer-events: auto;
     transition: filter 0.15s, transform 0.15s;
   `;
+    const pinColor = ann.tag === "action_item" ? "#c2410c" : ann.tag === "quick_fix" ? "#1d4ed8" : "#3D6FA9";
     el.innerHTML = `
     <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;top:0;left:0;">
-      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${tokens.color.primary}"/>
+      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${pinColor}"/>
       <circle cx="14" cy="14" r="7" fill="white" fill-opacity="0.9"/>
     </svg>
-    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${tokens.color.primary};font-family:${tokens.font.body};line-height:1;">${index}</div>
+    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${pinColor};font-family:${tokens.font.body};line-height:1;">${index}</div>
   `;
     el.addEventListener("mouseenter", (ev) => {
       el.style.filter = "drop-shadow(0 4px 8px rgba(0,0,0,0.45))";
@@ -416,7 +599,8 @@
   function scrollToAnchorOnPage(anchor, annId) {
     if (anchor.type === "point") {
       const pa = anchor;
-      window.scrollTo({ top: Math.max(0, pa.pageY - window.innerHeight / 2), behavior: "smooth" });
+      const { pageY } = resolvePointPosition(pa);
+      window.scrollTo({ top: Math.max(0, pageY - window.innerHeight / 2), behavior: "smooth" });
       setTimeout(() => {
         const marker = document.getElementById(`hotspot-marker-${annId}`);
         if (marker) {
@@ -704,13 +888,119 @@
         return { a, score: 0 };
       }
     }).filter((s) => s.score > 0).sort((x, y) => y.score - x.score || (x.a.status === "in_progress" ? -1 : 1));
-    if (scored.length > 0) return scored[0].a;
-    return list.find((a) => a.status === "in_progress") ?? list[0];
+    return scored.length > 0 ? scored[0].a : null;
+  }
+  var TORUS_LOGIN_PATTERNS = [
+    /\/users\/log_in/i,
+    /\/session\/new/i,
+    /\/authoring\/session\/new/i,
+    /\/users\/reset_password/i
+  ];
+  var TORUS_ENROLL_PATTERNS = [
+    /\/sections\/[^/]+\/enroll/i,
+    /\/sections\/[^/]+\/join/i,
+    /\/sections\/[^/]+\/request_access/i
+  ];
+  function detectTorusAccess() {
+    const path = window.location.pathname;
+    if (TORUS_LOGIN_PATTERNS.some((re) => re.test(path))) return "needs-login";
+    if (TORUS_ENROLL_PATTERNS.some((re) => re.test(path))) return "needs-enroll";
+    return "ok";
+  }
+  function buildTorusLoginUrl(courseUrl) {
+    const login = new URL(TORUS_LOGIN_PATH, window.location.origin);
+    if (courseUrl) {
+      try {
+        const ret = new URL(courseUrl);
+        login.searchParams.set("request_path", ret.pathname + ret.search);
+      } catch {
+      }
+    }
+    return login.toString();
+  }
+  function startAccessWatcher() {
+    if (accessWatcher !== null) return;
+    let lastHref = window.location.href;
+    accessWatcher = setInterval(() => {
+      if (window.location.href === lastHref) return;
+      lastHref = window.location.href;
+      if (detectTorusAccess() === "ok") {
+        stopAccessWatcher();
+        void routeToReview();
+      }
+    }, 1e3);
+  }
+  function stopAccessWatcher() {
+    if (accessWatcher !== null) {
+      clearInterval(accessWatcher);
+      accessWatcher = null;
+    }
+  }
+  async function recoverDeepLinkFromStorage() {
+    try {
+      const data = await chrome.storage.local.get(PENDING_DEEP_LINK_KEY);
+      const pending = data[PENDING_DEEP_LINK_KEY];
+      if (!pending) return;
+      await chrome.storage.local.remove(PENDING_DEEP_LINK_KEY);
+      if (typeof pending.ts !== "number" || Date.now() - pending.ts > DEEP_LINK_TTL_MS) return;
+      if (pending.reviewId) deepLinkReviewId = pending.reviewId;
+      if (pending.annotationId) {
+        try {
+          sessionStorage.setItem(GOTO_ANN_KEY, pending.annotationId);
+        } catch {
+        }
+      }
+    } catch {
+    }
+  }
+  async function routeToReview() {
+    if (assignments.length === 0) {
+      renderContent("no-assignments");
+      return;
+    }
+    const urlReviewId = new URLSearchParams(window.location.search).get("oer_review_id") || deepLinkReviewId;
+    const savedId = sessionStorage.getItem(SESSION_KEY);
+    const saved = savedId ? assignments.find((a) => a.id === savedId) : void 0;
+    const pageMatch = resolveAssignmentForCurrentPage(assignments);
+    let target;
+    if (urlReviewId) target = assignments.find((a) => a.id === urlReviewId);
+    if (!target) {
+      if (pageMatch) {
+        target = saved && saved.document_id === pageMatch.document_id ? saved : pageMatch;
+      } else {
+        target = saved ?? assignments.find((a) => a.status === "in_progress") ?? assignments[0];
+      }
+    }
+    sessionStorage.setItem(SESSION_KEY, target.id);
+    const access = detectTorusAccess();
+    if (access !== "ok") {
+      pendingReviewId = target.id;
+      torusAccessReason = access;
+      renderContent("torus-access");
+      startAccessWatcher();
+      return;
+    }
+    stopAccessWatcher();
+    await selectReview(target.id);
+  }
+  function setExtensionChromeVisible(visible) {
+    const ids = ["oer-review-host", "oer-ann-popup", "oer-ann-tooltip", "oer-hotspot-banner", "oer-toast"];
+    for (const id of ids) {
+      const el = document.getElementById(id);
+      if (el) el.style.visibility = visible ? "" : "hidden";
+    }
   }
   async function captureAnnotationScreenshot() {
     if (!selectedReview) return null;
     try {
-      const captureResp = await send({ type: "CAPTURE_TAB" });
+      setExtensionChromeVisible(false);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      let captureResp;
+      try {
+        captureResp = await send({ type: "CAPTURE_TAB" });
+      } finally {
+        setExtensionChromeVisible(true);
+      }
       if (!captureResp.success || !captureResp.data?.png) {
         console.error("[OER] CAPTURE_TAB failed:", captureResp.error);
         return null;
@@ -722,6 +1012,7 @@
       if (!uploadResp.success) console.error("[OER] UPLOAD_SCREENSHOT failed:", uploadResp.error);
       return uploadResp.success ? uploadResp.data?.url ?? null : null;
     } catch (err) {
+      setExtensionChromeVisible(true);
       console.error("[OER] captureAnnotationScreenshot threw:", err);
       return null;
     }
@@ -768,7 +1059,7 @@
     annotations.push(resp.data);
     setSaveStatus("saved");
     applyHighlights();
-    refreshAnnotationList(rubricItemId ?? "__free__");
+    refreshAnnotationList(listKeyForAnnotation(resp.data));
     return resp.data;
   }
   async function attachScreenshotToAnnotations(savedAnns) {
@@ -785,7 +1076,7 @@
         const idx = annotations.findIndex((a) => a.id === ann.id);
         if (idx !== -1) {
           annotations[idx] = { ...annotations[idx], anchor: updatedAnchor };
-          refreshAnnotationList(ann.rubric_item_id ?? "__free__");
+          refreshAnnotationList(listKeyForAnnotation(annotations[idx]));
         }
       }
     }
@@ -811,19 +1102,24 @@
       parent.normalize();
     });
     renderRubricCriteria();
+    refreshAnnotationList(UNLINKED_LIST_KEY);
+    refreshAnnotationList(FREE_LIST_KEY);
+  }
+  var FREE_LIST_KEY = "__free__";
+  var UNLINKED_LIST_KEY = "__unlinked__";
+  function isFreeNoteAnchor(anchor) {
+    if (anchor.type !== "bbox") return false;
+    const b = anchor;
+    return b.x === 0 && b.y === 0 && b.width === 0 && b.height === 0 && !b.screenshotUrl;
+  }
+  function listKeyForAnnotation(ann) {
+    if (ann.rubric_item_id) return ann.rubric_item_id;
+    return isFreeNoteAnchor(ann.anchor) ? FREE_LIST_KEY : UNLINKED_LIST_KEY;
   }
   function refreshAnnotationList(rubricItemId) {
     if (!selectedReview) return;
-    const key = rubricItemId === "__free__" ? null : rubricItemId;
-    let relevant = annotations.filter((a) => a.rubric_item_id === key);
-    if (rubricItemId === "__free__") {
-      relevant = relevant.filter((a) => a.anchor.type !== "general_comment");
-      const badge = shadow.getElementById("unlinked-count-badge");
-      if (badge) {
-        badge.textContent = String(relevant.length);
-        badge.className = relevant.length > 0 ? "unlinked-count-badge has-items" : "unlinked-count-badge";
-      }
-    } else {
+    const relevant = annotations.filter((a) => listKeyForAnnotation(a) === rubricItemId);
+    if (rubricItemId !== UNLINKED_LIST_KEY) {
       const count = relevant.length;
       const evBadge = shadow.getElementById(`evidence-badge-${rubricItemId}`);
       if (evBadge) {
@@ -835,12 +1131,11 @@
       if (evLabel) evLabel.textContent = `Evidence (${count})`;
     }
     const container = shadow.getElementById(`ann-list-${rubricItemId}`);
-    if (!container) return;
-    if (relevant.length === 0 && rubricItemId === "__free__") {
-      container.innerHTML = '<p class="ann-empty">All annotations have been linked to a criterion</p>';
-    } else {
-      container.innerHTML = relevant.map((ann) => renderAnnotationItem(ann)).join("");
+    if (!container) {
+      updateUnlinkedCount();
+      return;
     }
+    container.innerHTML = relevant.map((ann) => renderAnnotationItem(ann)).join("");
     container.querySelectorAll(".ann-delete").forEach((btn) => {
       btn.addEventListener("click", () => deleteAnnotation(btn.dataset.id));
     });
@@ -888,6 +1183,35 @@
         btn.textContent = isExpanded ? "(see full text)" : "(collapse)";
       });
     });
+    container.querySelectorAll(".ann-link").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const annId = sel.dataset.id;
+        const criterionId = sel.value;
+        if (criterionId) linkAnnotationToCriterion(annId, criterionId);
+      });
+    });
+    updateUnlinkedCount();
+  }
+  function updateUnlinkedCount() {
+    const count = annotations.filter((a) => listKeyForAnnotation(a) === UNLINKED_LIST_KEY).length;
+    const badge = shadow.getElementById("unlinked-count");
+    if (badge) badge.textContent = String(count);
+    const empty = shadow.getElementById("unlinked-empty");
+    if (empty) empty.style.display = count === 0 ? "block" : "none";
+  }
+  async function linkAnnotationToCriterion(annotationId, criterionId) {
+    const ann = annotations.find((a) => a.id === annotationId);
+    if (!ann) return;
+    setSaveStatus("saving");
+    const resp = await send({ type: "UPDATE_ANNOTATION", payload: { id: annotationId, rubric_item_id: criterionId } });
+    if (!resp.success) {
+      setSaveStatus("error");
+      return;
+    }
+    ann.rubric_item_id = criterionId;
+    setSaveStatus("saved");
+    refreshAnnotationList(UNLINKED_LIST_KEY);
+    renderRubricCriteria();
   }
   var SVG_PAGE_NAV = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`;
   var SVG_PAGE_CHECKPOINT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`;
@@ -938,6 +1262,11 @@
     }
     const tagHtml = ann.tag ? `<div class="ann-sh">Tags</div>
        <span class="ann-tag">${ann.tag === "action_item" ? SVG_TAG_ACTION + " Action Item" : SVG_TAG_QUICK + " Quick Fix"}</span>` : "";
+    const isUnlinked = !ann.rubric_item_id && !isFreeNoteAnchor(ann.anchor);
+    const linkHtml = isUnlinked && rubricItems.length > 0 ? `<select class="ann-link" data-id="${ann.id}" title="Link to a rubric criterion">
+        <option value="">Link to criterion\u2026</option>
+        ${rubricItems.map((item) => `<option value="${item.id}">${escHtml(item.label.split(" \xB7 ")[0] ?? item.label)}</option>`).join("")}
+      </select>` : "";
     return `
     <div class="ann-item" id="ann-${ann.id}">
       <div class="ann-icon-btns">
@@ -952,6 +1281,7 @@
         ${ann.body.trim() ? clampField(ann.body.trim(), ann.id, "body", "ann-body") : '<div class="ann-no-quote">No comment written</div>'}
         ${tagHtml}
       </div>
+      ${linkHtml}
     </div>
   `;
   }
@@ -986,14 +1316,14 @@
       });
     });
     editableEl.querySelector(".ann-edit-cancel")?.addEventListener("click", () => {
-      refreshAnnotationList(ann.rubric_item_id ?? "__free__");
+      refreshAnnotationList(listKeyForAnnotation(ann));
     });
     editableEl.querySelector(".ann-edit-confirm")?.addEventListener("click", async () => {
       const textarea = editableEl.querySelector(".ann-edit-input");
       const newBody = textarea.value.trim();
       const selectEl = editableEl.querySelector(".ann-criterion-sel");
       const newCriterionId = selectEl.value || null;
-      const oldKey = ann.rubric_item_id ?? "__free__";
+      const oldKey = listKeyForAnnotation(ann);
       setSaveStatus("saving");
       const resp = await send({
         type: "UPDATE_ANNOTATION",
@@ -1007,7 +1337,7 @@
       } else {
         setSaveStatus("error");
       }
-      const newKey = newCriterionId ?? "__free__";
+      const newKey = listKeyForAnnotation(ann);
       refreshAnnotationList(oldKey);
       if (newKey !== oldKey) refreshAnnotationList(newKey);
     });
@@ -1135,7 +1465,7 @@
         setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
       } else {
         const editAnn = config.annotation;
-        const oldKey = editAnn.rubric_item_id ?? "__free__";
+        const oldKey = listKeyForAnnotation(editAnn);
         setSaveStatus("saving");
         const resp = await send({
           type: "UPDATE_ANNOTATION",
@@ -1150,7 +1480,7 @@
           setSaveStatus("error");
         }
         hideAnnotationPopup();
-        const newKey = selectedCriterionId ?? "__free__";
+        const newKey = listKeyForAnnotation(editAnn);
         refreshAnnotationList(oldKey);
         if (newKey !== oldKey) refreshAnnotationList(newKey);
       }
@@ -1431,7 +1761,8 @@
         pageY: e.pageY,
         relX: e.pageX / document.documentElement.scrollWidth,
         relY: e.pageY / document.documentElement.scrollHeight,
-        pageUrl: window.location.href
+        pageUrl: window.location.href,
+        ...buildPointElementAnchor(target, e.clientX, e.clientY)
       };
       showHotspotPopup(anchor, e.clientX, e.clientY);
       return;
@@ -1523,6 +1854,26 @@
         </div>
       `;
         break;
+      case "torus-access": {
+        const isEnroll = torusAccessReason === "needs-enroll";
+        const target = pendingReviewId ? assignments.find((a) => a.id === pendingReviewId) : null;
+        const docTitle = target?.documents?.title ?? "this course";
+        const courseUrl = target?.documents?.source_url ?? "";
+        panelBody.innerHTML = `
+        <div class="state-box" style="padding:24px 20px;">
+          <div style="font-size:28px;margin-bottom:8px;">\u{1F510}</div>
+          <p class="state-title">${isEnroll ? "Course access required" : "Sign in to OLI Torus"}</p>
+          <p class="state-sub" style="margin-bottom:16px;">
+            ${isEnroll ? `You need access to <strong>${escHtml(docTitle)}</strong> in OLI Torus before you can review it. Enter the course, then we'll connect you to your review automatically.` : `Sign in to OLI Torus to open <strong>${escHtml(docTitle)}</strong>. Once you're in the course, we'll connect you to your review automatically.`}
+          </p>
+          <button id="btn-torus-login" class="btn btn-primary btn-full">${isEnroll ? "Go to course" : "Sign in to OLI Torus"}</button>
+        </div>
+      `;
+        shadow.getElementById("btn-torus-login")?.addEventListener("click", () => {
+          window.location.href = isEnroll ? courseUrl || window.location.origin : buildTorusLoginUrl(courseUrl);
+        });
+        break;
+      }
       case "review":
         renderReviewInterface();
         break;
@@ -1561,16 +1912,17 @@
           <textarea class="gc-textarea" id="general-comment-ta" placeholder="Add comments not tied to a specific criterion\u2026"></textarea>
         </div>
       </div>
-      <div class="side-card">
-        <div class="side-card-hd" id="side-card-ua-hd">
-          <div class="side-card-title-group">
-            <span class="side-card-title-text">Unlinked Annotations</span>
-            <span class="unlinked-count-badge" id="unlinked-count-badge">0</span>
+      <div class=\u201Dside-card\u201D>
+        <div class=\u201Dside-card-hd\u201D id=\u201Dside-card-ua-hd\u201D>
+          <div class=\u201Dside-card-title-group\u201D>
+            <span class=\u201Dside-card-title-text\u201D>Unlinked Annotations</span>
+            <span class=\u201Dunlinked-count-badge\u201D id=\u201Dunlinked-count\u201D>0</span>
           </div>
-          <span class="expand-icon" id="expand-ua"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+          <span class=\u201Dexpand-icon\u201D id=\u201Dexpand-ua\u201D><svg width=\u201D16\u201D height=\u201D16\u201D viewBox=\u201D0 0 24 24\u201D fill=\u201Dnone\u201D stroke=\u201DcurrentColor\u201D stroke-width=\u201D2\u201D stroke-linecap=\u201Dround\u201D stroke-linejoin=\u201Dround\u201D><polyline points=\u201D6 9 12 15 18 9\u201D/></svg></span>
         </div>
-        <div class="side-card-bd" id="side-card-ua-bd">
-          <div class="ann-list" id="ann-list-__free__"></div>
+        <div class=\u201Dside-card-bd\u201D id=\u201Dside-card-ua-bd\u201D>
+          <p class=\u201Dann-empty\u201D id=\u201Dunlinked-empty\u201D style=\u201Ddisplay:none\u201D>All annotations have been linked to a criterion</p>
+          <div class=\u201Dann-list\u201D id=\u201Dann-list-__unlinked__\u201D></div>
         </div>
       </div>
     </div>
@@ -1628,7 +1980,8 @@
     }
     renderRubricCriteria();
     updateCompletion();
-    refreshAnnotationList("__free__");
+    refreshAnnotationList(UNLINKED_LIST_KEY);
+    refreshAnnotationList(FREE_LIST_KEY);
   }
   function renderRubricCriteria() {
     const list = shadow.getElementById("criterion-list");
@@ -2205,6 +2558,9 @@
       .ann-edit:hover { color: ${tokens.color.primary}; }
       .ann-delete { background: none; border: none; cursor: pointer; color: ${tokens.color.textMuted}; padding: 3px; border-radius: 3px; display: flex; align-items: center; line-height: 1; font-family: inherit; }
       .ann-delete:hover { color: ${tokens.color.error}; }
+      .ann-link { display: block; margin-top: 6px; width: 100%; padding: 4px 6px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.textSecondary}; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; }
+      .ann-link:hover { border-color: ${tokens.color.borderStrong}; }
+      .ann-link:focus { border-color: ${tokens.color.secondary}; box-shadow: 0 0 0 2px ${tokens.color.secondaryContainer}66; }
 
       .ann-edit-input { width: 100%; padding: 6px 0; border: none; border-bottom: 2px solid ${tokens.color.border}; background: transparent; font-size: 12px; resize: vertical; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; transition: border-color 0.15s; }
       .ann-edit-input:focus { border-bottom-color: ${tokens.color.primary}; }
@@ -2410,12 +2766,7 @@
     renderContent("loading");
     const assignResp = await send({ type: "GET_ASSIGNMENTS" });
     assignments = assignResp.data ?? [];
-    if (assignments.length === 0) {
-      renderContent("no-assignments");
-      return;
-    }
-    const match = resolveAssignmentForCurrentPage(assignments);
-    await selectReview((match ?? assignments[0]).id);
+    await routeToReview();
   }
   var ALLOWED_CONSOLE_HOSTNAMES = ["annotation-platform-seven.vercel.app", "localhost"];
   var PREVIEW_CONSOLE_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
@@ -2449,6 +2800,10 @@
       scheduleHighlightRetries();
     };
     window.addEventListener("popstate", scheduleHighlightRetries);
+    startHighlightObserver();
+    window.addEventListener("resize", () => {
+      if (selectedReview) applyHotspotMarkers();
+    });
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === "GET_CURRENT_REVIEW") {
         sendResponse({ success: true, data: selectedReview });
@@ -2473,6 +2828,17 @@
       } catch {
       }
     }
+    const gotoAnnId = urlParams.get("oer_goto");
+    if (gotoAnnId) {
+      try {
+        sessionStorage.setItem(GOTO_ANN_KEY, gotoAnnId);
+      } catch {
+      }
+      urlParams.delete("oer_goto");
+      const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
+      window.history.replaceState({}, "", clean);
+    }
+    await recoverDeepLinkFromStorage();
     const authResp = await send({ type: "GET_AUTH" });
     if (!authResp.success || !authResp.data) {
       renderContent("login");
@@ -2489,22 +2855,7 @@
       return;
     }
     assignments = assignResp.data ?? [];
-    const urlReviewId = new URLSearchParams(window.location.search).get("oer_review_id");
-    if (urlReviewId && assignments.some((a) => a.id === urlReviewId)) {
-      await selectReview(urlReviewId);
-      return;
-    }
-    const savedId = sessionStorage.getItem(SESSION_KEY);
-    if (savedId && assignments.some((a) => a.id === savedId)) {
-      await selectReview(savedId);
-      return;
-    }
-    if (assignments.length === 0) {
-      renderContent("no-assignments");
-      return;
-    }
-    const match = resolveAssignmentForCurrentPage(assignments);
-    await selectReview((match ?? assignments[0]).id);
+    await routeToReview();
   }
   init();
 })();

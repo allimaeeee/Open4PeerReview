@@ -14,7 +14,19 @@ export interface TextQuoteSelector {
   suffix: string;
 }
 
-export type AnchorSelector = TextPositionSelector | TextQuoteSelector;
+// W3C Web Annotation RangeSelector (the model hypothes.is / markup.io use to pin
+// a selection to specific DOM elements rather than a whole-document char offset).
+// startContainer/endContainer are XPaths relative to document.body; the offsets
+// are character offsets into the concatenated text of that container's subtree.
+export interface RangeSelector {
+  type: 'RangeSelector';
+  startContainer: string;
+  startOffset: number;
+  endContainer: string;
+  endOffset: number;
+}
+
+export type AnchorSelector = TextPositionSelector | TextQuoteSelector | RangeSelector;
 
 export type PageType = 'nav' | 'content' | 'checkpoint';
 
@@ -47,6 +59,13 @@ export interface PointAnchor {
   pageY: number;
   relX: number;
   relY: number;
+  // Element-scoped anchoring (markup.io style): pin the hotspot to a specific
+  // element plus a fractional offset within it, so the marker survives layout
+  // reflow / responsive changes far better than absolute pageX/pageY alone.
+  targetSelector?: string;   // XPath to the element under the click
+  offsetXRatio?: number;     // 0..1 within the target element's box
+  offsetYRatio?: number;     // 0..1 within the target element's box
+  targetText?: string;       // short text sample of the target element (disambiguation)
   pageUrl?: string;
   pageName?: string;
   pageType?: PageType;
