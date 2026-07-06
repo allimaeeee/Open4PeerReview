@@ -49,8 +49,7 @@ let scores = new Map<string, ReviewScoreRecord>();
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
 const criterionResizeObservers = new Map<string, ResizeObserver>();
-let generalCommentAnnId: string | null = null;
-let generalCommentTimer: ReturnType<typeof setTimeout> | null = null;
+let gcTimer: ReturnType<typeof setTimeout> | null = null;
 type ScoreCommentEntry = { id: string | null; body: string };
 type ScoreCommentMap = { does_not_meet: ScoreCommentEntry; exceeds: ScoreCommentEntry };
 const EMPTY_SCORE_COMMENTS: ScoreCommentMap = { does_not_meet: { id: null, body: '' }, exceeds: { id: null, body: '' } };
@@ -949,7 +948,7 @@ function refreshAnnotationList(rubricItemId: string) {
   const key = rubricItemId === '__free__' ? null : rubricItemId;
   let relevant = annotations.filter(a => a.rubric_item_id === key);
   if (rubricItemId === '__free__') {
-    relevant = relevant.filter(a => a.id !== generalCommentAnnId);
+    relevant = relevant.filter(a => (a.anchor as unknown as { type?: string }).type !== 'general_comment');
     const badge = shadow.getElementById('unlinked-count-badge');
     if (badge) {
       badge.textContent = String(relevant.length);
@@ -1919,55 +1918,29 @@ function renderReviewInterface() {
     if (icon) icon.classList.toggle('expanded', isOpen);
   });
 
-  // General Comments autosave
+  // General Comments autosave — writes to reviews.notes (same field the platform reads)
   const gcTa = shadow.getElementById('general-comment-ta') as HTMLTextAreaElement;
   if (gcTa) {
+    gcTa.value = selectedReview?.notes ?? '';
     gcTa.addEventListener('input', () => {
-      if (generalCommentTimer) clearTimeout(generalCommentTimer);
+      if (gcTimer) clearTimeout(gcTimer);
       setGCSaveStatus('saving');
-      generalCommentTimer = setTimeout(async () => {
+      gcTimer = setTimeout(async () => {
         if (!selectedReview) return;
-        const payload: Record<string, unknown> = {
-          review_id: selectedReview.id,
-          rubric_item_id: null,
-          anchor: { type: 'general_comment' },
-          body: gcTa.value,
-        };
-        if (generalCommentAnnId) payload.id = generalCommentAnnId;
-        const resp = await send<AnnotationRecord>({ type: 'SAVE_ANNOTATION', payload });
-        if (resp.success && resp.data) {
-          if (!generalCommentAnnId) {
-            generalCommentAnnId = resp.data.id;
-            annotations.push(resp.data);
-          } else {
-            const idx = annotations.findIndex(a => a.id === generalCommentAnnId);
-            if (idx >= 0) annotations[idx] = resp.data;
-          }
+        const resp = await send({ type: 'UPDATE_REVIEW_NOTES', payload: { reviewId: selectedReview.id, notes: gcTa.value } });
+        if (resp.success) {
+          selectedReview.notes = gcTa.value;
           setGCSaveStatus('saved');
         } else {
           setGCSaveStatus('error');
         }
-      }, 800);
+      }, SCORE_DEBOUNCE_MS);
     });
   }
 
-  initGeneralComment();
   renderRubricCriteria();
   updateCompletion();
   refreshAnnotationList('__free__');
-}
-
-function initGeneralComment() {
-  generalCommentAnnId = null;
-  const existing = annotations.find(a =>
-    a.rubric_item_id === null &&
-    (a.anchor as unknown as { type: string }).type === 'general_comment'
-  );
-  if (existing) {
-    generalCommentAnnId = existing.id;
-    const ta = shadow.getElementById('general-comment-ta') as HTMLTextAreaElement;
-    if (ta) ta.value = existing.body;
-  }
 }
 
 function renderRubricCriteria() {
@@ -2881,7 +2854,6 @@ async function init() {
           chrome.storage.local.get('auth', r => resolve((r as { auth?: StoredAuth }).auth))
         );
         const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
-        console.log('[OER-DEBUG] oer_token write: preserving platformUrl=' + (authToStore.platformUrl ?? '(none)'));
         await new Promise<void>(resolve => chrome.storage.local.set({ auth: authToStore }, resolve));
         // Remove the token from browser history so it isn't exposed in the URL bar
         urlParams.delete('oer_token');
@@ -2894,7 +2866,6 @@ async function init() {
   }
 
   const authResp = await send<StoredAuth>({ type: 'GET_AUTH' });
-  console.log('[OER-DEBUG] content.ts GET_AUTH ts=' + Date.now() + ' success=' + authResp.success + ' platformUrl=' + (authResp.data?.platformUrl ?? '(none)') + ' user_id=' + (authResp.data?.user_id ?? '(none)'));
   if (!authResp.success || !authResp.data) {
     renderContent('login');
     return;
@@ -2903,7 +2874,6 @@ async function init() {
   if (authResp.data.platformUrl && isAllowedPlatformOrigin(authResp.data.platformUrl)) {
     platformUrl = authResp.data.platformUrl;
   }
-  console.log('[OER-DEBUG] content.ts effective platformUrl=' + platformUrl + ' isAllowedOrigin=' + (authResp.data.platformUrl ? isAllowedPlatformOrigin(authResp.data.platformUrl) : false));
   renderContent('loading');
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });

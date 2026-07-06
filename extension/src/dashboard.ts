@@ -53,17 +53,10 @@ function findSessionInSessionStorage(): SupabaseLocalSession | null {
 // of whether a fresh session can be extracted from localStorage/cookies.
 function stampPlatformUrl() {
   const origin = window.location.origin;
-  const hostname = window.location.hostname;
-  const guardPassed = ALLOWED_PLATFORM_HOSTNAMES.includes(hostname) || PREVIEW_PLATFORM_RE.test(hostname);
-  console.log('[OER-DEBUG] stampPlatformUrl ENTRY ts=' + Date.now() + ' origin=' + origin + ' hostname=' + hostname + ' guard=' + guardPassed);
   chrome.storage.local.get('auth', (result) => {
     const existing = (result as { auth?: StoredAuth }).auth;
-    console.log('[OER-DEBUG] stampPlatformUrl storage read: hasAuth=' + (!!existing?.access_token) + ' existingPlatformUrl=' + (existing?.platformUrl ?? '(none)') + ' user_id=' + (existing?.user_id ?? '(none)'));
     if (existing?.access_token) {
-      const toWrite = { ...existing, platformUrl: origin };
-      chrome.storage.local.set({ auth: toWrite }, () => {
-        console.log('[OER-DEBUG] stampPlatformUrl SET COMPLETE ts=' + Date.now() + ' wrote platformUrl=' + toWrite.platformUrl + ' user_id=' + toWrite.user_id);
-      });
+      chrome.storage.local.set({ auth: { ...existing, platformUrl: origin } });
     }
   });
 }
@@ -76,34 +69,22 @@ function saveSessionToBackground(session: SupabaseLocalSession) {
     email: session.user!.email ?? '',
     expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
   };
-  const platformUrl = window.location.origin;
-  console.log('[OER-DEBUG] saveSessionToBackground ts=' + Date.now() + ' writing auth with platformUrl=' + platformUrl + ' user_id=' + auth.user_id);
   // Save directly in the content script's context (no background round-trip needed)
-  chrome.storage.local.set({ auth: { ...auth, platformUrl } });
+  chrome.storage.local.set({ auth: { ...auth, platformUrl: window.location.origin } });
   // Also notify background — background uses sender.origin to stamp platformUrl independently
   chrome.runtime.sendMessage({ type: 'SYNC_AUTH', payload: session });
 }
 
 function syncAuth() {
-  console.log('[OER-DEBUG] syncAuth ENTRY ts=' + Date.now());
   // Strategy 1: localStorage
   const lsSession = findSessionInLocalStorage();
-  if (lsSession) {
-    console.log('[OER-DEBUG] syncAuth: found session in localStorage');
-    saveSessionToBackground(lsSession);
-    return;
-  }
+  if (lsSession) { saveSessionToBackground(lsSession); return; }
 
   // Strategy 2: sessionStorage
   const ssSession = findSessionInSessionStorage();
-  if (ssSession) {
-    console.log('[OER-DEBUG] syncAuth: found session in sessionStorage');
-    saveSessionToBackground(ssSession);
-    return;
-  }
+  if (ssSession) { saveSessionToBackground(ssSession); return; }
 
   // Strategy 3: ask background to read HttpOnly cookies
-  console.log('[OER-DEBUG] syncAuth: no local session found, sending SYNC_AUTH_FROM_COOKIES');
   chrome.runtime.sendMessage({ type: 'SYNC_AUTH_FROM_COOKIES' });
 }
 
@@ -113,7 +94,6 @@ const ALLOWED_PLATFORM_HOSTNAMES = ['annotation-platform-seven.vercel.app', 'loc
 const PREVIEW_PLATFORM_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
 const hn = window.location.hostname;
 const isAllowedPlatform = ALLOWED_PLATFORM_HOSTNAMES.includes(hn) || PREVIEW_PLATFORM_RE.test(hn);
-console.log('[OER-DEBUG] dashboard.ts module load: isAllowedPlatform=' + isAllowedPlatform + ' hostname=' + hn + ' ts=' + Date.now());
 if (isAllowedPlatform) {
   // Always stamp the current origin onto stored auth — captures platformUrl even
   // when syncAuth can't read the session from this page (e.g. HttpOnly cookie sessions).
@@ -121,10 +101,7 @@ if (isAllowedPlatform) {
 
   // Attempt full session sync (extracts token from localStorage/cookies).
   syncAuth();
-  setTimeout(() => {
-    console.log('[OER-DEBUG] 2s retry syncAuth ts=' + Date.now());
-    syncAuth();
-  }, 2000);
+  setTimeout(syncAuth, 2000);
 
   // Re-sync on localStorage changes (e.g. after token refresh).
   window.addEventListener('storage', syncAuth);

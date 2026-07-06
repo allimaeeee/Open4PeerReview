@@ -36,17 +36,6 @@ chrome.webNavigation.onBeforeNavigate.addListener(
   { url: [{ hostContains: 'proton.oli.cmu.edu' }] },
 );
 
-// ── Storage change tracer (temporary diagnostic) ─────────────────────────────
-// Catches every write to auth from any code path, in any context.
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'local' || !changes.auth) return;
-  const oldUrl = (changes.auth.oldValue as StoredAuth | undefined)?.platformUrl;
-  const newUrl = (changes.auth.newValue as StoredAuth | undefined)?.platformUrl;
-  if (oldUrl !== newUrl) {
-    console.log('[OER-DEBUG] storage.auth CHANGED: platformUrl ' + (oldUrl ?? '(none)') + ' -> ' + (newUrl ?? '(none)') + ' ts=' + Date.now());
-  }
-});
-
 // ── Message handler ───────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener(
@@ -165,6 +154,12 @@ async function handleMessage(
       return patch(`reviews?id=eq.${reviewId}`, { status }, auth.access_token);
     }
 
+    case 'UPDATE_REVIEW_NOTES': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { reviewId, notes } = msg.payload as { reviewId: string; notes: string };
+      return patch(`reviews?id=eq.${reviewId}`, { notes }, auth.access_token);
+    }
+
     case 'UPDATE_DOCUMENT_PAGES': {
       if (!auth) return { success: false, error: 'Not authenticated' };
       const { documentId, storagePath, pageEntry } = msg.payload as {
@@ -206,7 +201,6 @@ async function handleMessage(
     case 'SYNC_AUTH_FROM_COOKIES': {
       // Read Supabase session cookies from the actual platform page that sent this message.
       const senderOriginCookies = getSenderOrigin(sender);
-      console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: senderOrigin=' + (senderOriginCookies ?? '(null)') + ' ts=' + Date.now());
       if (!senderOriginCookies) return { success: false, error: 'Could not determine platform origin' };
       const cookieAuth = await readSessionFromCookies(senderOriginCookies);
       if (cookieAuth) {
@@ -215,11 +209,9 @@ async function handleMessage(
         // fall back to senderOriginCookies only if nothing is stored yet.
         const existingForCookies = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
         const platformUrl = existingForCookies?.platformUrl ?? senderOriginCookies;
-        console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: cookieAuth found, existingPlatformUrl=' + (existingForCookies?.platformUrl ?? '(none)') + ' -> writing platformUrl=' + platformUrl);
         await chrome.storage.local.set({ auth: { ...cookieAuth, platformUrl } });
         return { success: true };
       }
-      console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: no cookies found for origin=' + senderOriginCookies);
       return { success: false, error: 'No session found in cookies' };
     }
 
@@ -510,7 +502,7 @@ async function upsertScore(payload: SaveScorePayload, token: string): Promise<Ba
 
 async function getAssignments(auth: StoredAuth): Promise<BackgroundResponse> {
   return get(
-    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,documents(title,source_url),rubrics(title)`,
+    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
     auth.access_token,
   );
 }
