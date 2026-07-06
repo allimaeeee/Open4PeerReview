@@ -1,13 +1,16 @@
-// Runs on oerhub.vercel.app. Syncs the reviewer's Supabase session into
-// chrome.storage.local so the extension on OLI Torus can auto-login.
+// Runs on the OER platform (production, preview, or localhost). Syncs the
+// reviewer's Supabase session into chrome.storage.local so the extension on
+// OLI Torus can auto-login.
 //
-// Three strategies are tried in order:
-// 1. Scan localStorage for any sb-*-auth-token key (works when supabase-js
-//    browser client stores session there, which is the default).
-// 2. Send SYNC_AUTH_FROM_COOKIES to background — background reads oerhub
-//    cookies via chrome.cookies API, which can access HttpOnly tokens set
-//    by Next.js middleware.
-// 3. Retry after 2s in case the session is set asynchronously by the app.
+// On every page load (stampPlatformUrl): stamps the current platform origin onto
+// whatever auth is already in storage — captures platformUrl even for sessions
+// that were stored via oer_token or a previous login (which carry no origin).
+//
+// syncAuth() additionally tries to refresh the full session using:
+// 1. Scan localStorage for any sb-*-auth-token key.
+// 2. Scan sessionStorage for the same.
+// 3. Ask background to read HttpOnly cookies via chrome.cookies API.
+// 4. Retry after 2 s in case the session is set asynchronously.
 
 import type { StoredAuth } from './types';
 
@@ -45,6 +48,26 @@ function findSessionInSessionStorage(): SupabaseLocalSession | null {
   return null;
 }
 
+// Stamps the current platform origin onto whatever auth is already in storage.
+// Runs on every platform page load so platformUrl is always current, regardless
+// of whether a fresh session can be extracted from localStorage/cookies.
+function stampPlatformUrl() {
+  const origin = window.location.origin;
+  const hostname = window.location.hostname;
+  const guardPassed = ALLOWED_PLATFORM_HOSTNAMES.includes(hostname) || PREVIEW_PLATFORM_RE.test(hostname);
+  console.log('[OER-DEBUG] stampPlatformUrl ENTRY ts=' + Date.now() + ' origin=' + origin + ' hostname=' + hostname + ' guard=' + guardPassed);
+  chrome.storage.local.get('auth', (result) => {
+    const existing = (result as { auth?: StoredAuth }).auth;
+    console.log('[OER-DEBUG] stampPlatformUrl storage read: hasAuth=' + (!!existing?.access_token) + ' existingPlatformUrl=' + (existing?.platformUrl ?? '(none)') + ' user_id=' + (existing?.user_id ?? '(none)'));
+    if (existing?.access_token) {
+      const toWrite = { ...existing, platformUrl: origin };
+      chrome.storage.local.set({ auth: toWrite }, () => {
+        console.log('[OER-DEBUG] stampPlatformUrl SET COMPLETE ts=' + Date.now() + ' wrote platformUrl=' + toWrite.platformUrl + ' user_id=' + toWrite.user_id);
+      });
+    }
+  });
+}
+
 function saveSessionToBackground(session: SupabaseLocalSession) {
   const auth: StoredAuth = {
     access_token: session.access_token!,
@@ -53,16 +76,20 @@ function saveSessionToBackground(session: SupabaseLocalSession) {
     email: session.user!.email ?? '',
     expires_at: session.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
   };
+  const platformUrl = window.location.origin;
+  console.log('[OER-DEBUG] saveSessionToBackground ts=' + Date.now() + ' writing auth with platformUrl=' + platformUrl + ' user_id=' + auth.user_id);
   // Save directly in the content script's context (no background round-trip needed)
-  chrome.storage.local.set({ auth });
-  // Also notify background so it has the value cached
+  chrome.storage.local.set({ auth: { ...auth, platformUrl } });
+  // Also notify background — background uses sender.origin to stamp platformUrl independently
   chrome.runtime.sendMessage({ type: 'SYNC_AUTH', payload: session });
 }
 
 function syncAuth() {
+  console.log('[OER-DEBUG] syncAuth ENTRY ts=' + Date.now());
   // Strategy 1: localStorage
   const lsSession = findSessionInLocalStorage();
   if (lsSession) {
+    console.log('[OER-DEBUG] syncAuth: found session in localStorage');
     saveSessionToBackground(lsSession);
     return;
   }
@@ -70,17 +97,35 @@ function syncAuth() {
   // Strategy 2: sessionStorage
   const ssSession = findSessionInSessionStorage();
   if (ssSession) {
+    console.log('[OER-DEBUG] syncAuth: found session in sessionStorage');
     saveSessionToBackground(ssSession);
     return;
   }
 
   // Strategy 3: ask background to read HttpOnly cookies
+  console.log('[OER-DEBUG] syncAuth: no local session found, sending SYNC_AUTH_FROM_COOKIES');
   chrome.runtime.sendMessage({ type: 'SYNC_AUTH_FROM_COOKIES' });
 }
 
-// Run immediately, then retry once after 2s (for async session initialization)
-syncAuth();
-setTimeout(syncAuth, 2000);
+// Runtime guard: *.vercel.app is necessarily broad in the manifest, so narrow it
+// here. Only sync auth if we're actually on a known OER platform origin.
+const ALLOWED_PLATFORM_HOSTNAMES = ['annotation-platform-seven.vercel.app', 'localhost'];
+const PREVIEW_PLATFORM_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
+const hn = window.location.hostname;
+const isAllowedPlatform = ALLOWED_PLATFORM_HOSTNAMES.includes(hn) || PREVIEW_PLATFORM_RE.test(hn);
+console.log('[OER-DEBUG] dashboard.ts module load: isAllowedPlatform=' + isAllowedPlatform + ' hostname=' + hn + ' ts=' + Date.now());
+if (isAllowedPlatform) {
+  // Always stamp the current origin onto stored auth — captures platformUrl even
+  // when syncAuth can't read the session from this page (e.g. HttpOnly cookie sessions).
+  stampPlatformUrl();
 
-// Re-sync on localStorage changes (e.g. after token refresh)
-window.addEventListener('storage', syncAuth);
+  // Attempt full session sync (extracts token from localStorage/cookies).
+  syncAuth();
+  setTimeout(() => {
+    console.log('[OER-DEBUG] 2s retry syncAuth ts=' + Date.now());
+    syncAuth();
+  }, 2000);
+
+  // Re-sync on localStorage changes (e.g. after token refresh).
+  window.addEventListener('storage', syncAuth);
+}
