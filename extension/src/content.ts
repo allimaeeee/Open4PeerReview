@@ -30,12 +30,6 @@ declare const __OERHUB_URL__: string;
 const OERHUB_URL = __OERHUB_URL__;
 
 
-const TAG_COLORS: Record<string, string> = {
-  action_item: 'rgba(249,115,22,0.35)',
-  quick_fix:   'rgba(59,130,246,0.35)',
-};
-
-const DEFAULT_HIGHLIGHT = 'rgba(254,214,91,0.45)';
 const SESSION_KEY = 'oer_review_id';
 const PANEL_GEOM_KEY = 'oer_panel_geom';
 const EXPANDED_CRIT_KEY = 'oer_expanded_criteria';
@@ -83,8 +77,6 @@ const MIN_PANEL_H = 300;
 
 let annotationPopup: HTMLElement;
 let annotationTooltip: HTMLElement | null = null;
-let pendingAnchor: HtmlCharOffsetAnchor | null = null;
-let pendingHotspotAnchor: PointAnchor | null = null;
 let hotspotMode = false;
 
 // ── Messaging ─────────────────────────────────────────────────────────────────
@@ -288,7 +280,7 @@ function applyPendingHighlight(range: Range) {
     r.setEnd(textNode, e);
     const mark = document.createElement('mark');
     mark.dataset.annotationId = 'pending';
-    mark.style.cssText = 'background:rgba(254,214,91,0.6);border-radius:2px;padding:0;';
+    mark.style.cssText = 'background:' + tokens.color.annotationActive + ';border-radius:2px;padding:0;';
     try { r.surroundContents(mark); } catch { /* skip partial overlaps */ }
   }
 }
@@ -327,8 +319,7 @@ function applyHighlights() {
   for (const ann of textAnnotations) {
     const range = resolveAnchor(ann.anchor as HtmlCharOffsetAnchor);
     if (!range) continue;
-    const color = ann.tag ? (TAG_COLORS[ann.tag] ?? DEFAULT_HIGHLIGHT) : DEFAULT_HIGHLIGHT;
-    markRange(range, ann.id, color, () => scrollToAnnotationInPanel(ann.id));
+    markRange(range, ann.id, tokens.color.annotation, () => scrollToAnnotationInPanel(ann.id));
   }
 
   applyHotspotMarkers();
@@ -357,10 +348,10 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
   `;
   el.innerHTML = `
     <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;top:0;left:0;">
-      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="#3D6FA9"/>
+      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${tokens.color.primary}"/>
       <circle cx="14" cy="14" r="7" fill="white" fill-opacity="0.9"/>
     </svg>
-    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:#3D6FA9;font-family:Inter,-apple-system,sans-serif;line-height:1;">${index}</div>
+    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${tokens.color.primary};font-family:${tokens.font.body};line-height:1;">${index}</div>
   `;
   el.addEventListener('mouseenter', (ev) => {
     el.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.45))';
@@ -439,8 +430,11 @@ function scrollToAnnotationInPanel(annotationId: string) {
 
   const el = shadow.getElementById(`ann-${annotationId}`);
   el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  el?.classList.add('highlighted');
-  setTimeout(() => el?.classList.remove('highlighted'), 1200);
+  el?.classList.remove('card-highlight', 'active');
+  requestAnimationFrame(() => {
+    el?.classList.add('card-highlight', 'active');
+    setTimeout(() => el?.classList.remove('card-highlight', 'active'), 1600);
+  });
 }
 
 // ── "View annotation" — navigate to page + scroll to location ─────────────────
@@ -1099,117 +1093,346 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
       ${annPageLabelHtml(ann.anchor)}
       ${screenshotHtml}
       ${primarySectionHtml}
-      <div class="ann-sh">Comment</div>
-      ${clampField(ann.body, ann.id, 'body', 'ann-body')}
-      ${tagHtml}
+      <div class="ann-editable" id="ann-editable-${ann.id}">
+        <div class="ann-sh">Comment</div>
+        ${ann.body.trim() ? clampField(ann.body.trim(), ann.id, 'body', 'ann-body') : '<div class="ann-no-quote">No comment written</div>'}
+        ${tagHtml}
+      </div>
     </div>
   `;
 }
 
 function editAnnotation(annotationId: string) {
-  const item = shadow.getElementById(`ann-${annotationId}`);
   const ann = annotations.find(a => a.id === annotationId);
-  if (!item || !ann) return;
+  if (!ann) return;
 
-  const isHotspot = ann.anchor.type === 'point';
-  const quote = ann.anchor.type === 'html-char-offset'
-    ? (() => {
-        const sel = (ann.anchor as HtmlCharOffsetAnchor).selector
-          .find(s => s.type === 'TextQuoteSelector') as { exact?: string } | undefined;
-        return sel?.exact ?? '';
-      })()
-    : '';
+  const item = shadow?.querySelector<HTMLElement>('#ann-' + annotationId);
+  if (!item) return;
+  const editableEl = item.querySelector<HTMLElement>('#ann-editable-' + annotationId);
+  if (!editableEl) return;
 
-  const screenshotUrl = (ann.anchor as { screenshotUrl?: string }).screenshotUrl ?? null;
-  const screenshotHtml = screenshotUrl
-    ? `<div class="ann-screenshot-row">
-        <img class="screenshot-thumb" src="${escHtml(screenshotUrl)}" data-url="${escHtml(screenshotUrl)}" alt="Screenshot" />
-        <button class="ann-view-screenshot" data-url="${escHtml(screenshotUrl)}">View full screenshot ↗</button>
-      </div>`
-    : '';
+  let currentTag: HighlightTag | null = ann.tag;
+  const existingBody = ann.body.trim();
 
-  const criterionOptions = [
-    `<option value="">Unlinked (general note)</option>`,
-    ...rubricItems.map((ri, idx) => {
-      const labelParts = ri.label.split(' · ');
-      const code = labelParts.length > 1 ? labelParts[0] : `C${idx + 1}`;
-      const rawName = labelParts.length > 1 ? labelParts.slice(1).join(' · ') : ri.label;
-      const name = rawName.replace(/^[A-Za-z]?\d+\s+/, '');
-      const sel = ann.rubric_item_id === ri.id ? 'selected' : '';
-      return `<option value="${escHtml(ri.id)}" ${sel}>${escHtml(code)} — ${escHtml(name)}</option>`;
-    }),
-  ].join('');
+  const criterionOptions = '<option value="">— No criterion —</option>' +
+    rubricItems.map(ri =>
+      '<option value="' + escHtml(ri.id) + '"' + (ann.rubric_item_id === ri.id ? ' selected' : '') + '>' + escHtml(ri.label) + '</option>'
+    ).join('');
 
-  const primaryStaticHtml = isHotspot
-    ? `<div class="ann-sh">${SVG_PIN_INLINE} Hotspot</div>`
-    : `<div class="ann-sh">Annotated Text</div>
-       ${quote ? `<div class="ann-quote">"${escHtml(quote)}"</div>` : `<div class="ann-no-quote">No annotated text</div>`}`;
+  const startDisabled = existingBody === '';
 
-  item.innerHTML = `
-    ${annPageLabelHtml(ann.anchor)}
-    ${screenshotHtml}
-    ${primaryStaticHtml}
-    <div class="ann-sh">Comment</div>
-    <textarea class="ann-edit-input" rows="3">${escHtml(ann.body)}</textarea>
-    <div class="ann-sh">Tags</div>
-    <div class="ann-tag-toggles">
-      <button class="ann-tag-btn${ann.tag === 'action_item' ? ' active' : ''}" data-tag="action_item">${SVG_TAG_ACTION} Action Item</button>
-      <button class="ann-tag-btn${ann.tag === 'quick_fix' ? ' active' : ''}" data-tag="quick_fix">${SVG_TAG_QUICK} Quick Fix</button>
-    </div>
-    <div class="ann-sh">Criterion</div>
-    <select class="ann-criterion-sel">${criterionOptions}</select>
-    <div class="ann-edit-actions">
-      <button class="ann-edit-cancel">Cancel</button>
-      <button class="ann-edit-confirm">Save</button>
-    </div>
-  `;
+  editableEl.innerHTML =
+    '<div class="ann-sh">Comment</div>' +
+    '<textarea class="ann-edit-input" rows="3" placeholder="Add a comment...">' + escHtml(existingBody) + '</textarea>' +
+    '<div class="ann-sh" style="margin-top:8px;">Tags</div>' +
+    '<div class="ann-tag-toggles">' +
+      '<button class="ann-tag-btn' + (currentTag === 'action_item' ? ' active' : '') + '" data-tag="action_item">Action Item</button>' +
+      '<button class="ann-tag-btn' + (currentTag === 'quick_fix' ? ' active' : '') + '" data-tag="quick_fix">Quick Fix</button>' +
+    '</div>' +
+    '<div class="ann-sh" style="margin-top:8px;">Link to Criteria</div>' +
+    '<select class="ann-criterion-sel">' + criterionOptions + '</select>' +
+    '<div class="ann-edit-actions">' +
+      '<span class="ann-edit-hint"' + (startDisabled ? '' : ' style="display:none;"') + '>Add a comment to save</span>' +
+      '<button class="ann-edit-cancel">Cancel</button>' +
+      '<button class="ann-edit-confirm"' + (startDisabled ? ' disabled' : '') + '>Save</button>' +
+    '</div>';
 
-  let selectedTag: HighlightTag | null = ann.tag;
+  const confirmBtn = editableEl.querySelector<HTMLButtonElement>('.ann-edit-confirm')!;
+  const editHintEl = editableEl.querySelector<HTMLElement>('.ann-edit-hint')!;
+  const editTextarea = editableEl.querySelector<HTMLTextAreaElement>('.ann-edit-input')!;
+  editTextarea.addEventListener('input', () => {
+    const disabled = editTextarea.value.trim() === '';
+    confirmBtn.disabled = disabled;
+    editHintEl.style.display = disabled ? '' : 'none';
+  });
 
-  item.querySelectorAll<HTMLButtonElement>('.ann-tag-btn').forEach(btn => {
+  editableEl.querySelectorAll<HTMLButtonElement>('.ann-tag-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tag = btn.dataset.tag as HighlightTag;
-      selectedTag = selectedTag === tag ? null : tag;
-      item.querySelectorAll<HTMLButtonElement>('.ann-tag-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tag === selectedTag);
-      });
+      currentTag = currentTag === tag ? null : tag;
+      editableEl.querySelectorAll('.ann-tag-btn').forEach(b => b.classList.remove('active'));
+      if (currentTag) editableEl.querySelector<HTMLButtonElement>('.ann-tag-btn[data-tag="' + currentTag + '"]')?.classList.add('active');
     });
   });
 
-  item.querySelector<HTMLButtonElement>('.ann-view-screenshot')?.addEventListener('click', () => {
-    const url = (item.querySelector<HTMLButtonElement>('.ann-view-screenshot'))?.dataset.url;
-    if (url) openScreenshotModal(url);
+  editableEl.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
+    refreshAnnotationList(ann.rubric_item_id ?? '__free__');
   });
 
-  const oldCriterionKey = ann.rubric_item_id ?? '__free__';
-
-  item.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
-    refreshAnnotationList(oldCriterionKey);
-  });
-
-  item.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
-    const newBody = (item.querySelector('.ann-edit-input') as HTMLTextAreaElement).value.trim();
-    if (!newBody) return;
-    const newCriterionId = (item.querySelector('.ann-criterion-sel') as HTMLSelectElement).value || null;
+  editableEl.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
+    const textarea = editableEl.querySelector<HTMLTextAreaElement>('.ann-edit-input')!;
+    const newBody = textarea.value.trim();
+    const selectEl = editableEl.querySelector<HTMLSelectElement>('.ann-criterion-sel')!;
+    const newCriterionId = selectEl.value || null;
+    const oldKey = ann.rubric_item_id ?? '__free__';
     setSaveStatus('saving');
     const resp = await send({
       type: 'UPDATE_ANNOTATION',
-      payload: { id: annotationId, body: newBody, tag: selectedTag, rubric_item_id: newCriterionId },
+      payload: { id: annotationId, body: newBody, tag: currentTag, rubric_item_id: newCriterionId },
     });
     if (resp.success) {
       ann.body = newBody;
-      ann.tag = selectedTag;
+      ann.tag = currentTag;
       ann.rubric_item_id = newCriterionId;
       setSaveStatus('saved');
     } else {
       setSaveStatus('error');
     }
-    const newCriterionKey = newCriterionId ?? '__free__';
-    refreshAnnotationList(oldCriterionKey);
-    if (newCriterionKey !== oldCriterionKey) refreshAnnotationList(newCriterionKey);
+    const newKey = newCriterionId ?? '__free__';
+    refreshAnnotationList(oldKey);
+    if (newKey !== oldKey) refreshAnnotationList(newKey);
+  });
+}
+
+// ── Unified annotation popup (create text / create hotspot / edit) ────────────
+
+type PopupConfig =
+  | { mode: 'create-text'; anchor: HtmlCharOffsetAnchor }
+  | { mode: 'create-hotspot'; anchor: PointAnchor; clientX: number; clientY: number }
+  | { mode: 'edit'; annotation: AnnotationRecord };
+
+function openAnnotationPopup(config: PopupConfig) {
+  const C = tokens.color;
+  const F = tokens.font;
+  const isEdit = config.mode === 'edit';
+  const ann = isEdit ? config.annotation : null;
+  const existingTag: HighlightTag | null = ann?.tag ?? null;
+  const existingBody = (ann?.body ?? '').trim();
+  const existingCriterionId = ann?.rubric_item_id ?? null;
+  const headerTitle = isEdit ? 'EDIT ANNOTATION' : 'ADD ANNOTATION';
+  const placeholder = config.mode === 'create-hotspot'
+    ? 'Describe this hotspot...'
+    : 'Describe what this evidence shows...';
+
+  const criterionOptions =
+    '<option value="">(save to unlinked annotations)</option>' +
+    rubricItems.map((ri, idx) => {
+      const parts = ri.label.split(' · ');
+      const code = parts.length > 1 ? parts[0] : 'C' + (idx + 1);
+      const raw = parts.length > 1 ? parts.slice(1).join(' · ') : ri.label;
+      const name = raw.replace(/^[A-Za-z]?\d+\s+/, '');
+      const sel = existingCriterionId === ri.id ? ' selected' : '';
+      return '<option value="' + escHtml(ri.id) + '"' + sel + '>' + escHtml(code) + ' — ' + escHtml(name) + '</option>';
+    }).join('');
+
+  const sB = C.border + '40';
+  const lbl = 'font-size:10px;font-weight:700;font-family:' + F.body + ';color:' + C.textSecondary + ';text-transform:uppercase;letter-spacing:0.06em;';
+  const tagBase = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;cursor:pointer;font-size:10px;font-weight:600;font-family:' + F.body + ';transition:all 0.12s;';
+  const tagActInit = existingTag === 'action_item';
+  const tagQfxInit = existingTag === 'quick_fix';
+
+  annotationPopup.innerHTML =
+    '<div id="oer-pop-header" style="display:flex;align-items:center;justify-content:space-between;background:' + C.surface + ';padding:10px 14px;border-bottom:1px solid ' + sB + ';cursor:grab;user-select:none;">' +
+      '<span style="' + lbl + '">' + headerTitle + '</span>' +
+      '<button id="oer-pop-close" style="background:none;border:none;cursor:pointer;color:' + C.textMuted + ';padding:0;display:flex;align-items:center;font-family:inherit;" aria-label="Close">' +
+        '<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">' +
+          '<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>' +
+        '</svg>' +
+      '</button>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';">' +
+      '<div style="' + lbl + 'margin-bottom:8px;">COMMENT</div>' +
+      '<textarea id="oer-pop-body" rows="3" placeholder="' + placeholder + '" style="display:block;width:100%;padding:4px 0;border:none;border-bottom:2px solid ' + C.border + ';background:transparent;font-size:12px;font-family:' + F.body + ';color:' + C.textPrimary + ';resize:none;outline:none;box-shadow:none;box-sizing:border-box;">' + escHtml(existingBody) + '</textarea>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';display:flex;align-items:center;gap:10px;">' +
+      '<span style="' + lbl + 'flex-shrink:0;">TAGS:</span>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<button class="oer-tag-btn" data-tag="action_item" style="' + tagBase + 'border:1px solid ' + (tagActInit ? C.secondary + '66' : C.border) + ';background:' + (tagActInit ? C.secondaryContainer + '99' : 'transparent') + ';color:' + (tagActInit ? C.secondary : C.textSecondary) + ';">' + SVG_TAG_ACTION + ' Action Item</button>' +
+        '<button class="oer-tag-btn" data-tag="quick_fix" style="' + tagBase + 'border:1px solid ' + (tagQfxInit ? C.secondary + '66' : C.border) + ';background:' + (tagQfxInit ? C.secondaryContainer + '99' : 'transparent') + ';color:' + (tagQfxInit ? C.secondary : C.textSecondary) + ';">' + SVG_TAG_QUICK + ' Quick Fix</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';">' +
+      '<div style="' + lbl + 'margin-bottom:8px;">LINK TO CRITERIA <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:normal;color:' + C.textMuted + ';">(optional)</span></div>' +
+      '<div style="position:relative;">' +
+        '<select id="oer-pop-criterion" style="width:100%;padding:4px 20px 4px 0;border:none;border-bottom:2px solid ' + C.border + ';background:transparent;font-size:12px;font-family:' + F.body + ';color:' + C.textPrimary + ';outline:none;cursor:pointer;box-sizing:border-box;appearance:none;-webkit-appearance:none;">' + criterionOptions + '</select>' +
+        '<span id="oer-crit-chevron" style="position:absolute;right:0;top:50%;transform:translateY(-50%);pointer-events:none;color:' + C.textMuted + ';display:flex;align-items:center;transition:transform 150ms ease;">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+        '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:10px 14px;display:flex;align-items:center;gap:8px;">' +
+      '<span id="oer-pop-hint" style="font-size:10px;color:' + C.textMuted + ';font-style:italic;flex:1;">Add a comment to save</span>' +
+      '<button id="oer-pop-cancel" style="padding:5px 12px;border-radius:0;border:1px solid ' + C.border + ';background:' + C.surfaceCard + ';font-size:11px;font-weight:500;font-family:' + F.body + ';color:' + C.textSecondary + ';cursor:pointer;">Cancel</button>' +
+      '<button id="oer-pop-save" style="padding:5px 12px;border-radius:0;border:none;background:' + C.primary + ';color:' + C.onPrimary + ';font-size:11px;font-weight:600;font-family:' + F.body + ';cursor:pointer;">Save Evidence</button>' +
+    '</div>';
+
+  // Tag toggle
+  let selectedTag: HighlightTag | null = existingTag;
+  const updateTagStyles = () => {
+    annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
+      const active = btn.dataset.tag === selectedTag;
+      btn.style.background = active ? C.secondaryContainer + '99' : 'transparent';
+      btn.style.color = active ? C.secondary : C.textSecondary;
+      btn.style.borderColor = active ? C.secondary + '66' : C.border;
+    });
+  };
+  annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedTag = selectedTag === (btn.dataset.tag as HighlightTag) ? null : (btn.dataset.tag as HighlightTag);
+      updateTagStyles();
+    });
   });
 
-  (item.querySelector('.ann-edit-input') as HTMLTextAreaElement)?.focus();
+  // Close / Cancel
+  const doCancel = () => {
+    hideAnnotationPopup();
+    if (config.mode === 'create-hotspot') exitHotspotMode();
+  };
+  annotationPopup.querySelector('#oer-pop-close')?.addEventListener('click', doCancel);
+  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', doCancel);
+
+  // Drag header
+  const hdrEl = annotationPopup.querySelector<HTMLElement>('#oer-pop-header');
+  if (hdrEl) {
+    hdrEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('#oer-pop-close')) return;
+      e.preventDefault();
+      const sMouseX = e.clientX;
+      const sMouseY = e.clientY;
+      const sLeft = parseInt(annotationPopup.style.left, 10) || 0;
+      const sTop  = parseInt(annotationPopup.style.top,  10) || 0;
+      hdrEl.style.cursor = 'grabbing';
+      const onMove = (ev: PointerEvent) => {
+        const nl = Math.max(0, Math.min(sLeft + ev.clientX - sMouseX, window.innerWidth - annotationPopup.offsetWidth));
+        const nt = Math.max(0, Math.min(sTop  + ev.clientY - sMouseY, window.innerHeight - annotationPopup.offsetHeight));
+        annotationPopup.style.left = nl + 'px';
+        annotationPopup.style.top  = nt + 'px';
+      };
+      const onUp = () => {
+        hdrEl.style.cursor = 'grab';
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  }
+
+  // Save
+  const bodyEl = annotationPopup.querySelector<HTMLTextAreaElement>('#oer-pop-body')!;
+  const criterionEl = annotationPopup.querySelector<HTMLSelectElement>('#oer-pop-criterion')!;
+  const chevronEl = annotationPopup.querySelector<HTMLElement>('#oer-crit-chevron');
+  const saveBtn = annotationPopup.querySelector<HTMLButtonElement>('#oer-pop-save')!;
+  const hintEl = annotationPopup.querySelector<HTMLElement>('#oer-pop-hint')!;
+
+  const updateSaveState = (disabled: boolean) => {
+    saveBtn.disabled = disabled;
+    saveBtn.style.background = disabled ? C.surfaceContainerHigh : C.primary;
+    saveBtn.style.color = disabled ? C.textMuted : C.onPrimary;
+    saveBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    hintEl.style.display = disabled ? '' : 'none';
+  };
+  updateSaveState(existingBody === '');
+
+  bodyEl.addEventListener('input', () => {
+    bodyEl.style.borderBottomColor = C.border;
+    updateSaveState(bodyEl.value.trim() === '');
+  });
+  bodyEl.addEventListener('focus', () => { bodyEl.style.borderBottomColor = C.primary; });
+  bodyEl.addEventListener('blur',  () => { bodyEl.style.borderBottomColor = C.border; });
+  criterionEl.addEventListener('focus', () => { if (chevronEl) chevronEl.style.transform = 'translateY(-50%) rotate(180deg)'; });
+  criterionEl.addEventListener('blur',  () => { if (chevronEl) chevronEl.style.transform = 'translateY(-50%)'; });
+
+  saveBtn.addEventListener('click', async () => {
+    const body = bodyEl.value.trim();
+    const selectedCriterionId = criterionEl.value || null;
+
+    if (config.mode === 'create-text') {
+      const rawAnchor = config.anchor;
+      hideAnnotationPopup();
+      const { pageName: pgName, pageType: pgType } = getTorusPageInfo();
+      const finalAnchor = { ...rawAnchor, pageUrl: window.location.href, pageName: pgName, pageType: pgType } as HtmlCharOffsetAnchor;
+      const savedAnns: AnnotationRecord[] = [];
+      const a = await saveAnnotation(selectedCriterionId, body, selectedTag, finalAnchor);
+      if (a) savedAnns.push(a);
+      setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
+
+    } else if (config.mode === 'create-hotspot') {
+      const rawAnchor = config.anchor;
+      const { pageName: pgName, pageType: pgType } = getTorusPageInfo();
+      const savedAnchor: PointAnchor = { ...rawAnchor, pageUrl: window.location.href, pageName: pgName, pageType: pgType };
+      hideAnnotationPopup();
+      exitHotspotMode();
+      const savedAnns: AnnotationRecord[] = [];
+      const a = await saveAnnotation(selectedCriterionId, body, selectedTag, savedAnchor);
+      if (a) savedAnns.push(a);
+      setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
+
+    } else {
+      const editAnn = config.annotation;
+      const oldKey = editAnn.rubric_item_id ?? '__free__';
+      setSaveStatus('saving');
+      const resp = await send({
+        type: 'UPDATE_ANNOTATION',
+        payload: { id: editAnn.id, body, tag: selectedTag, rubric_item_id: selectedCriterionId },
+      });
+      if (resp.success) {
+        editAnn.body = body;
+        editAnn.tag = selectedTag;
+        editAnn.rubric_item_id = selectedCriterionId;
+        setSaveStatus('saved');
+      } else {
+        setSaveStatus('error');
+      }
+      hideAnnotationPopup();
+      const newKey = selectedCriterionId ?? '__free__';
+      refreshAnnotationList(oldKey);
+      if (newKey !== oldKey) refreshAnnotationList(newKey);
+    }
+  });
+
+  // Position and show
+  hideAnnotationTooltip();
+  annotationPopup.style.display = 'block';
+  const popW = annotationPopup.offsetWidth || 300;
+  const popH = annotationPopup.offsetHeight || 280;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let popLeft = vw / 2 - popW / 2;
+  let popTop  = vh / 3;
+
+  if (config.mode === 'create-text') {
+    const sel = window.getSelection();
+    const selRange = sel && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
+    const rect = selRange?.getBoundingClientRect();
+    if (rect) {
+      popTop  = rect.top - popH - 8;
+      if (popTop < 8) popTop = rect.bottom + 8;
+      popLeft = rect.left;
+    }
+    if (selRange) { applyPendingHighlight(selRange); sel?.removeAllRanges(); }
+
+  } else if (config.mode === 'create-hotspot') {
+    const { clientX, clientY } = config;
+    popLeft = clientX + 12;
+    popTop  = clientY - popH / 2;
+    if (popLeft + popW > vw - PANEL_WIDTH - 8) popLeft = clientX - popW - 12;
+
+  } else {
+    const editAnn = config.annotation;
+    if (editAnn.anchor.type === 'html-char-offset') {
+      const mark = document.querySelector<HTMLElement>('mark[data-annotation-id="' + editAnn.id + '"]');
+      if (mark) {
+        const rect = mark.getBoundingClientRect();
+        popTop  = rect.top - popH - 8;
+        if (popTop < 8) popTop = rect.bottom + 8;
+        popLeft = rect.left;
+      }
+    } else if (editAnn.anchor.type === 'point') {
+      const pin = document.querySelector<HTMLElement>('.oer-hotspot-marker[data-annotation-id="' + editAnn.id + '"]');
+      if (pin) {
+        const rect = pin.getBoundingClientRect();
+        popLeft = rect.right + 12;
+        popTop  = rect.top - popH / 2;
+      }
+    }
+  }
+
+  popLeft = Math.max(8, Math.min(popLeft, vw - popW - 8));
+  popTop  = Math.max(8, Math.min(popTop,  vh - popH - 8));
+  annotationPopup.style.left = popLeft + 'px';
+  annotationPopup.style.top  = popTop  + 'px';
+  setTimeout(() => bodyEl.focus(), 0);
 }
 
 // ── Text selection popup ──────────────────────────────────────────────────────
@@ -1242,28 +1465,28 @@ function openScreenshotModal(url: string) {
 function createAnnotationPopupEl() {
   annotationPopup = document.createElement('div');
   annotationPopup.id = 'oer-ann-popup';
-  annotationPopup.style.cssText = `
-    position: absolute;
-    z-index: 2147483646;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
-    padding: 14px;
-    width: 300px;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13px;
-    color: #1a202c;
-    display: none;
-  `;
+  annotationPopup.style.cssText = [
+    'position:fixed',
+    'z-index:2147483646',
+    'background:' + tokens.color.surfaceCard,
+    'border:1px solid ' + tokens.color.border,
+    'border-radius:0',
+    'box-shadow:0 8px 32px rgba(4,22,39,0.14),0 2px 8px rgba(4,22,39,0.06)',
+    'width:300px',
+    'font-family:' + tokens.font.body,
+    'font-size:12px',
+    'color:' + tokens.color.textPrimary,
+    'display:none',
+    'overflow:hidden',
+  ].join(';');
   document.body.appendChild(annotationPopup);
 
-  // Prevent clicks inside popup from clearing the text selection, but allow
-  // textarea and input clicks through so focus can be placed after interacting
-  // with criteria checkboxes.
+  // Prevent clicks inside popup from propagating in ways that clear selection,
+  // but allow interactive elements (textarea, select, button) through so they
+  // receive native browser handling (dropdown open, focus, click).
   annotationPopup.addEventListener('mousedown', e => {
     const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return;
     e.preventDefault();
   });
 }
@@ -1289,18 +1512,18 @@ function createAnnotationTooltip() {
   annotationTooltip.style.cssText = [
     'position:fixed',
     'z-index:2147483647',
-    'background:#1a202c',
-    'color:#e2e8f0',
-    'border-radius:8px',
-    'padding:8px 12px',
-    'font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif',
+    'min-width:220px',
+    'max-width:300px',
+    'background:' + tokens.color.surfaceCard,
+    'border:1px solid ' + tokens.color.border,
+    'border-radius:0',
+    'box-shadow:0 12px 40px rgba(28,28,24,0.06)',
+    'font-family:' + tokens.font.body,
     'font-size:12px',
-    'line-height:1.5',
-    'max-width:260px',
-    'box-shadow:0 4px 16px rgba(0,0,0,0.3)',
+    'color:' + tokens.color.textPrimary,
     'pointer-events:auto',
     'display:none',
-    'word-break:break-word',
+    'overflow:hidden',
   ].join(';');
   annotationTooltip.addEventListener('mouseenter', cancelHideTooltip);
   annotationTooltip.addEventListener('mouseleave', scheduleHideTooltip);
@@ -1312,55 +1535,105 @@ function showAnnotationTooltipFor(annId: string, clientX: number, clientY: numbe
   cancelHideTooltip();
   const ann = annotations.find(a => a.id === annId);
   if (!ann) return;
+  if (annotationPopup.style.display !== 'none') return;
 
-  const criterionLabel = ann.rubric_item_id
-    ? rubricItems.find(r => r.id === ann.rubric_item_id)?.label ?? null
-    : null;
+  const C = tokens.color;
 
-  const actionBtnStyle = 'cursor:pointer;background:rgba(255,255,255,0.12);border:none;color:#e2e8f0;' +
-    'font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;';
+  const ri = ann.rubric_item_id ? rubricItems.find(r => r.id === ann.rubric_item_id) : null;
+  const criterionIdx = ri ? rubricItems.indexOf(ri) + 1 : null;
+  const labelAlreadyHasPrefix = ri ? /^C\d+\s/.test(ri.label) : false;
+  const criterionLabel = ri ? (labelAlreadyHasPrefix ? ri.label : 'C' + criterionIdx + ' ' + ri.label) : null;
 
-  let html = '';
-  if (criterionLabel) {
-    const code = criterionLabel.split(' · ')[0] ?? criterionLabel;
-    html += `<div style="font-size:10px;font-weight:700;color:#90cdf4;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;">${escHtml(code)}</div>`;
-  }
-  html += `<div>${escHtml(ann.body.slice(0, 140))}${ann.body.length > 140 ? '…' : ''}</div>`;
-  html += `
-    <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.12);">
-      <button class="tt-open" style="${actionBtnStyle}">↗ Open</button>
-      <button class="tt-edit" style="${actionBtnStyle}">✎ Edit</button>
-      <button class="tt-delete" style="cursor:pointer;background:rgba(229,62,62,0.25);border:none;color:#feb2b2;font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;">🗑 Delete</button>
-    </div>
-  `;
+  const bodyText = ann.body.trim();
+  const bodyDisplay = bodyText
+    ? escHtml(bodyText.slice(0, 80)) + (bodyText.length > 80 ? '…' : '')
+    : '<em style="color:' + C.textMuted + ';">No comment written</em>';
+
+  const iconBtnBase = 'background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;line-height:1;font-family:inherit;transition:opacity 0.1s;opacity:0.7;';
+  const tagStyle = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px;letter-spacing:0.04em;' +
+    'background:' + C.secondaryContainer + '99;color:' + C.secondary + ';border:1px solid ' + C.secondary + '66;';
+  const arrowUpRight = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>';
+
+  const html =
+    // ── Header ──
+    '<div style="padding:12px 16px;border-bottom:1px solid ' + C.border + ';display:flex;align-items:flex-start;gap:8px;background:' + C.surface + ';">' +
+      '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;' +
+        (criterionLabel ? 'color:' + C.textSecondary + ';' : 'color:' + C.textMuted + ';font-style:italic;') + '">' +
+        (criterionLabel ? escHtml(criterionLabel) : 'No criterion linked') +
+      '</span>' +
+      '<div style="display:flex;gap:4px;flex-shrink:0;">' +
+        '<button class="tt-edit" style="' + iconBtnBase + 'color:' + C.textMuted + ';">' + SVG_EDIT_ICON + '</button>' +
+        '<button class="tt-delete" style="' + iconBtnBase + 'color:' + C.error + ';">' + SVG_DELETE_ICON + '</button>' +
+      '</div>' +
+    '</div>' +
+    // ── Comment ──
+    '<div style="padding:12px 16px 4px;font-size:12px;color:' + C.textSecondary + ';line-height:1.5;word-break:break-word;">' +
+      bodyDisplay +
+    '</div>' +
+    // ── View full comment (only when truncated) ──
+    (bodyText.length > 80
+      ? '<div style="padding:0 16px 8px;">' +
+          '<button class="tt-view-full" style="background:none;border:none;cursor:pointer;font-size:12px;color:' + C.secondary + ';opacity:0.7;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;line-height:1.5;transition:opacity 0.1s;">' +
+            'View full comment ' + arrowUpRight +
+          '</button>' +
+        '</div>'
+      : '') +
+    // ── Tag pill ──
+    (ann.tag
+      ? '<div style="padding:0 16px 12px;">' +
+          '<span style="' + tagStyle + '">' +
+            (ann.tag === 'action_item' ? SVG_TAG_ACTION + ' Action Item' : SVG_TAG_QUICK + ' Quick Fix') +
+          '</span>' +
+        '</div>'
+      : (!bodyText && !ann.tag ? '' : (bodyText.length <= 80 ? '<div style="padding-bottom:12px;"></div>' : '')));
 
   annotationTooltip.innerHTML = html;
   annotationTooltip.style.display = 'block';
 
-  annotationTooltip.querySelector('.tt-open')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    scrollToAnnotationInPanel(annId);
-  });
-  annotationTooltip.querySelector('.tt-edit')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    scrollToAnnotationInPanel(annId);
-    editAnnotation(annId);
-  });
-  annotationTooltip.querySelector('.tt-delete')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    deleteAnnotation(annId);
-  });
+  // Edit icon — opacity hover, opens overlay popup
+  const editBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-edit');
+  if (editBtn) {
+    editBtn.addEventListener('mouseenter', () => { editBtn.style.opacity = '1'; });
+    editBtn.addEventListener('mouseleave', () => { editBtn.style.opacity = '0.7'; });
+    editBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      const annToEdit = annotations.find(a => a.id === annId);
+      if (annToEdit) openAnnotationPopup({ mode: 'edit', annotation: annToEdit });
+    });
+  }
 
-  const tipW = 260;
+  // Delete icon — opacity hover, deletes annotation
+  const deleteBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1'; });
+    deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0.7'; });
+    deleteBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      deleteAnnotation(annId);
+    });
+  }
+
+  // View full comment — opacity hover, scrolls to evidence card in panel
+  const viewFullBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-view-full');
+  if (viewFullBtn) {
+    viewFullBtn.addEventListener('mouseenter', () => { viewFullBtn.style.opacity = '1'; });
+    viewFullBtn.addEventListener('mouseleave', () => { viewFullBtn.style.opacity = '0.7'; });
+    viewFullBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      scrollToAnnotationInPanel(annId);
+    });
+  }
+
+  const tipW = 300;
   let left = clientX - tipW / 2;
-  let top = clientY - (annotationTooltip.offsetHeight || 56) - 12;
+  let top = clientY - (annotationTooltip.offsetHeight || 80) - 12;
   left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
   if (top < 8) top = clientY + 20;
-  annotationTooltip.style.left = `${left}px`;
-  annotationTooltip.style.top = `${top}px`;
+  annotationTooltip.style.left = left + 'px';
+  annotationTooltip.style.top = top + 'px';
 }
 
 function hideAnnotationTooltip() {
@@ -1369,132 +1642,12 @@ function hideAnnotationTooltip() {
 }
 
 function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
-  pendingAnchor = anchor;
-  annotationPopup.style.position = 'absolute';
-  const quote = (anchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact ?? '';
-  const sel = window.getSelection();
-  const selRange = sel && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
-  const rect = selRange?.getBoundingClientRect();
-
-  const criteriaCheckboxes = rubricItems.map(item => {
-    const code = item.label.split(' · ')[0] ?? item.label;
-    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
-      <input type="radio" name="oer-crit" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
-    </label>`;
-  }).join('');
-
-  annotationPopup.innerHTML = `
-    <div style="font-size:11px;color:#718096;margin-bottom:8px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-      "${quote.slice(0, 60)}${quote.length > 60 ? '…' : ''}"
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criterion</label>
-      <div style="max-height:110px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
-        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
-      </div>
-      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave unselected to save as a general note</div>
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Tag</label>
-      <div style="display:flex;gap:6px;">
-        <button class="oer-tag-btn" data-tag="action_item" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Action Item</button>
-        <button class="oer-tag-btn" data-tag="quick_fix" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Quick Fix</button>
-      </div>
-    </div>
-
-    <div style="margin-bottom:10px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
-      <textarea id="oer-pop-body" rows="3" placeholder="Add a note…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;color:#1a202c;box-sizing:border-box;outline:none;"></textarea>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <button id="oer-pop-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
-      <button id="oer-pop-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Annotate</button>
-    </div>
-  `;
-
-  // Tag toggle state
-  let selectedTag: HighlightTag | null = null;
-  annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag as HighlightTag;
-      selectedTag = selectedTag === tag ? null : tag;
-      annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(b => {
-        const isActive = b.dataset.tag === selectedTag;
-        const color = b.dataset.tag === 'action_item' ? '#c2410c' : '#1d4ed8';
-        const bg = b.dataset.tag === 'action_item' ? '#fed7aa' : '#bfdbfe';
-        const border = b.dataset.tag === 'action_item' ? '#fb923c' : '#93c5fd';
-        b.style.background = isActive ? bg : '#f7fafc';
-        b.style.color = isActive ? color : '#718096';
-        b.style.borderColor = isActive ? border : '#e2e8f0';
-      });
-    });
-  });
-
-  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', hideAnnotationPopup);
-
-  annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
-    if (!pendingAnchor) return;
-    const selectedCriterion = annotationPopup.querySelector<HTMLInputElement>('.oer-crit-check:checked')?.value ?? null;
-    const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
-    if (!body) {
-      (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)
-        .style.borderColor = '#fc8181';
-      return;
-    }
-    const rawAnchor = pendingAnchor;
-    hideAnnotationPopup();
-
-    // Always keep the text-position anchor so applyHighlights() can mark the text in the DOM.
-    // Record pageUrl (for the "View" button) and pageName (shown on Torus multi-page courses).
-    // Screenshot is taken AFTER save so the highlight mark appears in the image.
-    const { pageName: extractedPageName, pageType: extractedPageType } = getTorusPageInfo();
-    const finalAnchor = {
-      ...rawAnchor,
-      pageUrl: window.location.href,
-      pageName: extractedPageName,
-      pageType: extractedPageType,
-    } as HtmlCharOffsetAnchor;
-
-    const savedAnns: AnnotationRecord[] = [];
-    const a = await saveAnnotation(selectedCriterion, body, selectedTag, finalAnchor);
-    if (a) savedAnns.push(a);
-
-    // Capture screenshot after highlight marks are in the DOM (~200 ms for paint).
-    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
-  });
-
-  // Position popup near selection
-  if (rect) {
-    const top = rect.top + window.scrollY - annotationPopup.offsetHeight - 8;
-    const left = Math.min(
-      rect.left + window.scrollX,
-      window.innerWidth - 316
-    );
-    annotationPopup.style.top = `${Math.max(window.scrollY + 4, top)}px`;
-    annotationPopup.style.left = `${Math.max(4, left)}px`;
-  }
-
-  // Apply persistent pending highlight and clear native browser selection.
-  // This keeps the selected text visually highlighted while the popup is open.
-  if (selRange) {
-    applyPendingHighlight(selRange);
-    sel?.removeAllRanges();
-  }
-
-  annotationPopup.style.display = 'block';
-  setTimeout(() => {
-    (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
-  }, 0);
+  openAnnotationPopup({ mode: 'create-text', anchor });
 }
 
 function hideAnnotationPopup() {
   clearPendingHighlight();
   annotationPopup.style.display = 'none';
-  pendingAnchor = null;
-  pendingHotspotAnchor = null;
 }
 
 // ── Hotspot mode ──────────────────────────────────────────────────────────────
@@ -1511,11 +1664,11 @@ function enterHotspotMode() {
     top: 12px;
     left: calc(50% - ${PANEL_WIDTH / 2}px);
     transform: translateX(-50%);
-    background: #3D6FA9;
-    color: white;
+    background: ${tokens.color.secondaryContainer};
+    color: ${tokens.color.onSecondaryContainer};
     padding: 8px 16px;
     border-radius: 20px;
-    font-family: Inter, -apple-system, sans-serif;
+    font-family: ${tokens.font.body};
     font-size: 12px;
     font-weight: 500;
     z-index: 2147483646;
@@ -1526,7 +1679,7 @@ function enterHotspotMode() {
     pointer-events: none;
     white-space: nowrap;
   `;
-  banner.innerHTML = `📍 Click anywhere to place a hotspot &nbsp;<span style="background:rgba(255,255,255,0.2);padding:2px 7px;border-radius:10px;font-size:11px;">Esc to cancel</span>`;
+  banner.innerHTML = `📍 Click anywhere to place a hotspot &nbsp;<span style="background:rgba(0,0,0,0.1);padding:2px 7px;border-radius:10px;font-size:11px;">Esc to cancel</span>`;
   document.body.appendChild(banner);
 }
 
@@ -1538,86 +1691,7 @@ function exitHotspotMode() {
 }
 
 function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number) {
-  pendingHotspotAnchor = anchor;
-
-  const criteriaCheckboxes = rubricItems.map(item => {
-    const code = item.label.split(' · ')[0] ?? item.label;
-    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
-      <input type="radio" name="oer-crit" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
-    </label>`;
-  }).join('');
-
-  annotationPopup.style.position = 'fixed';
-  annotationPopup.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-      <svg width="14" height="14" viewBox="0 0 28 36" fill="#3D6FA9"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>
-      <span style="font-size:12px;font-weight:600;color:#2d3748;">Hotspot Annotation</span>
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criterion</label>
-      <div style="max-height:100px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
-        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
-      </div>
-      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave unselected to save as a general note</div>
-    </div>
-
-    <div style="margin-bottom:10px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
-      <textarea id="oer-pop-body" rows="3" placeholder="Describe this hotspot…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;color:#1a202c;box-sizing:border-box;outline:none;"></textarea>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <button id="oer-pop-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
-      <button id="oer-pop-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Save Hotspot</button>
-    </div>
-  `;
-
-  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', () => {
-    hideAnnotationPopup();
-    exitHotspotMode();
-  });
-
-  annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
-    if (!pendingHotspotAnchor) return;
-    const selectedCriterion = annotationPopup.querySelector<HTMLInputElement>('.oer-crit-check:checked')?.value ?? null;
-    const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
-    if (!body) {
-      (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).style.borderColor = '#fc8181';
-      return;
-    }
-    const { pageName: extractedPageName, pageType: extractedPageType } = getTorusPageInfo();
-    const savedAnchor: PointAnchor = {
-      ...pendingHotspotAnchor,
-      pageUrl: window.location.href,
-      pageName: extractedPageName,
-      pageType: extractedPageType,
-    };
-    hideAnnotationPopup();
-    exitHotspotMode();
-
-    const savedAnns: AnnotationRecord[] = [];
-    const a = await saveAnnotation(selectedCriterion, body, null, savedAnchor);
-    if (a) savedAnns.push(a);
-
-    // Screenshot after hotspot marker is placed in the DOM.
-    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
-  });
-
-  // Position near click, keep within viewport
-  const popupW = 300;
-  const popupH = 280;
-  let left = clientX + 12;
-  let top = clientY - popupH / 2;
-  if (left + popupW > window.innerWidth - PANEL_WIDTH - 8) left = clientX - popupW - 12;
-  top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
-  annotationPopup.style.top = `${top}px`;
-  annotationPopup.style.left = `${Math.max(8, left)}px`;
-  annotationPopup.style.display = 'block';
-
-  setTimeout(() => {
-    (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
-  }, 0);
+  openAnnotationPopup({ mode: 'create-hotspot', anchor, clientX, clientY });
 }
 
 function handleMouseUp(e: MouseEvent) {
@@ -1662,12 +1736,12 @@ function showToast(message: string) {
       position: fixed;
       bottom: 20px;
       right: 20px;
-      background: #2d3748;
-      color: white;
+      background: ${tokens.color.secondaryContainer};
+      color: ${tokens.color.onSecondaryContainer};
       padding: 8px 14px;
       border-radius: 6px;
       font-size: 12px;
-      font-family: Inter, -apple-system, sans-serif;
+      font-family: ${tokens.font.body};
       z-index: 2147483647;
       opacity: 0;
       transition: opacity 0.2s;
@@ -1772,17 +1846,18 @@ function renderReviewInterface() {
     : '';
 
   panelBody.innerHTML = `
-    <div class="rubric-header">
-      <div style="flex:1;min-width:0;">
-        <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
+    <div class="sticky-hd-group">
+      <div class="rubric-header">
+        <div style="flex:1;min-width:0;">
+          <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
+        </div>
+        <div class="rubric-header-btns">
+          <button class="btn-hotspot" id="btn-hotspot"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
+          <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
+        </div>
       </div>
-      <div class="rubric-header-btns">
-        <button class="btn-hotspot" id="btn-hotspot"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
-        <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
-      </div>
+      ${rubricTabsHtml}
     </div>
-
-    ${rubricTabsHtml}
 
     <div class="side-cards">
       <div class="side-card">
@@ -1817,6 +1892,11 @@ function renderReviewInterface() {
       const targetId = tab.dataset.reviewId!;
       if (targetId !== selectedReview?.id) selectReview(targetId);
     });
+  });
+
+  shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
+    if (!selectedReview) { showToast('Select a review first'); return; }
+    if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
   });
 
   // Side card accordion toggles
@@ -2218,14 +2298,6 @@ function createPanel() {
         letter-spacing: 0.01em;
       }
 
-      .logo-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: ${tokens.color.secondaryContainer};
-        flex-shrink: 0;
-      }
-
       .hd-btn {
         background: rgba(255,255,255,0.15);
         border: none;
@@ -2338,8 +2410,6 @@ function createPanel() {
       .btn-primary:hover { background: ${tokens.color.primaryHover}; }
       .btn-full { width: 100%; }
 
-      .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: ${tokens.color.textMuted}; }
-
       /* Side cards: General Comments + Unlinked Annotations */
       .side-cards { display: flex; flex-direction: column; gap: 8px; padding: 16px 12px 0; }
       .side-card { border: 1px solid ${tokens.color.border}; border-radius: 8px; background: ${tokens.color.surfaceCard}; overflow: hidden; box-shadow: inset 3px 0 0 ${tokens.color.secondary}; }
@@ -2359,6 +2429,14 @@ function createPanel() {
       .gc-save-status.error  { color: ${tokens.color.error}; }
       .unlinked-count-badge { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; flex-shrink: 0; background: ${tokens.color.surfaceContainer}; color: ${tokens.color.textMuted}; }
       .unlinked-count-badge.has-items { background: ${tokens.color.secondaryContainer}99; color: ${tokens.color.secondary}; }
+
+      /* Sticky header + tab group */
+      .sticky-hd-group {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: ${tokens.color.surfaceCard};
+      }
 
       /* Rubric header */
       .rubric-header {
@@ -2386,7 +2464,7 @@ function createPanel() {
       .rubric-tab.active { color: ${tokens.color.primary}; border-bottom-color: ${tokens.color.primary}; background: ${tokens.color.surface}; }
       .tab-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 9999px; border: 1px solid; flex-shrink: 0; }
       .tab-badge-complete { background: ${tokens.color.successContainer}; color: ${tokens.color.success}; border-color: ${tokens.color.success}; }
-      .tab-badge-incomplete { background: #fef3c7; color: #92400e; border-color: #92400e; }
+      .tab-badge-incomplete { background: ${tokens.color.secondaryContainer}; color: ${tokens.color.secondary}; border-color: ${tokens.color.secondary}; }
 
       /* Criterion cards */
       .criterion-list { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; }
@@ -2459,7 +2537,12 @@ function createPanel() {
 
       .ann-list { display: flex; flex-direction: column; gap: 6px; }
       .ann-item { position: relative; background: ${tokens.color.surfaceContainerLow}; border: 1px solid ${tokens.color.border}; border-radius: 0; padding: 10px 48px 12px 12px; font-size: 12px; color: ${tokens.color.textSecondary}; line-height: 1.5; }
-      .ann-item.highlighted { background: #fffbeb; border-color: #fbbf24; }
+      @keyframes card-highlight-pulse {
+        0%   { box-shadow: 0 0 0 3px rgba(115, 92, 0, 0.5); }
+        40%  { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+        100% { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+      }
+      .ann-item.card-highlight.active { animation: card-highlight-pulse 1.6s ease-out; }
 
       .ann-page-label { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; color: ${tokens.color.textSecondary}; overflow: hidden; }
       .ann-page-label svg { flex-shrink: 0; }
@@ -2502,22 +2585,21 @@ function createPanel() {
       .ann-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
       .ann-edit-cancel { padding: 5px 12px; border-radius: 0; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; font-size: 11px; cursor: pointer; font-family: inherit; color: ${tokens.color.textSecondary}; }
       .ann-edit-confirm { padding: 5px 12px; border-radius: 0; border: none; background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+      .ann-edit-confirm:disabled { background: ${tokens.color.surfaceContainerHigh}; color: ${tokens.color.textMuted}; cursor: not-allowed; }
+      .ann-edit-hint { font-size: 10px; color: ${tokens.color.textMuted}; font-style: italic; flex: 1; }
 
       .btn-hotspot { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid ${tokens.color.primary}; background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
       .btn-hotspot:hover { background: ${tokens.color.primaryHover}; border-color: ${tokens.color.primaryHover}; }
       .btn-hotspot.active { background: ${tokens.color.secondaryContainer}; border-color: ${tokens.color.secondary}; color: ${tokens.color.secondary}; }
 
-      .inline-note-input { width: 100%; padding: 6px 8px; border: 1px solid ${tokens.color.border}; border-radius: 6px; font-size: 12px; resize: none; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; }
-      .inline-note-input:focus { border-color: ${tokens.color.primary}; box-shadow: 0 0 0 2px rgba(4,22,39,0.12); }
-      .inline-note-actions { display: flex; gap: 6px; margin-top: 4px; }
-      .inline-note-cancel { flex: 1; padding: 5px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceContainer}; font-size: 11px; cursor: pointer; font-family: inherit; color: ${tokens.color.textSecondary}; }
-      .inline-note-save { flex: 1; padding: 5px; border-radius: 5px; border: none; background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
     </style>
 
     <div class="panel">
       <div class="panel-hd" id="panel-hd">
         <div class="logo">
-          <div class="logo-dot"></div>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:${tokens.color.primary};outline:1px solid ${tokens.color.onPrimary};flex-shrink:0;">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1C9.4 2.3 11.1 2.9 13 3.1C13.1 5 13.7 6.6 15 8C13.7 9.4 13.1 11 13 12.9C11.1 13.1 9.4 13.7 8 15C6.6 13.7 5 13.1 3.1 12.9C2.9 11 2.3 9.4 1 8C2.3 6.6 2.9 5 3.1 3.1C5 2.9 6.6 2.3 8 1Z" stroke="${tokens.color.onPrimary}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 8L7 10.5L11.5 5" stroke="${tokens.color.onPrimary}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
           O4PR Certification Hub
         </div>
         <button class="hd-btn" id="btn-min" title="Collapse">−</button>
@@ -2573,11 +2655,6 @@ function createPanel() {
       if (btn) btn.textContent = '−';
     }
     savePanelGeometry();
-  });
-
-  shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
-    if (!selectedReview) { showToast('Select a review first'); return; }
-    if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
   });
 
   // ── Drag to move (header) ────────────────────────────────────────────────────
