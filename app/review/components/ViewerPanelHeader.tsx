@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/Button'
 interface ViewerPanelHeaderProps {
   onBack: () => void
   centerSlot?: ReactNode
+  rightSlot?: ReactNode
 }
 
-export function ViewerPanelHeader({ onBack, centerSlot }: ViewerPanelHeaderProps) {
+export function ViewerPanelHeader({ onBack, centerSlot, rightSlot }: ViewerPanelHeaderProps) {
   return (
     <div className="relative flex items-center flex-shrink-0 bg-surface-card border-b border-border px-4 py-2">
       {/* Left — back button (static in flow) */}
@@ -32,6 +33,13 @@ export function ViewerPanelHeader({ onBack, centerSlot }: ViewerPanelHeaderProps
       {centerSlot != null && (
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center">
           {centerSlot}
+        </div>
+      )}
+
+      {/* Right — flows to the right edge with ml-auto */}
+      {rightSlot != null && (
+        <div className="ml-auto flex items-center">
+          {rightSlot}
         </div>
       )}
     </div>
