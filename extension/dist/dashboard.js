@@ -27,6 +27,15 @@
     }
     return null;
   }
+  function stampPlatformUrl() {
+    const origin = window.location.origin;
+    chrome.storage.local.get("auth", (result) => {
+      const existing = result.auth;
+      if (existing?.access_token) {
+        chrome.storage.local.set({ auth: { ...existing, platformUrl: origin } });
+      }
+    });
+  }
   function saveSessionToBackground(session) {
     const auth = {
       access_token: session.access_token,
@@ -35,7 +44,7 @@
       email: session.user.email ?? "",
       expires_at: session.expires_at ?? Math.floor(Date.now() / 1e3) + 3600
     };
-    chrome.storage.local.set({ auth });
+    chrome.storage.local.set({ auth: { ...auth, platformUrl: window.location.origin } });
     chrome.runtime.sendMessage({ type: "SYNC_AUTH", payload: session });
   }
   function syncAuth() {
@@ -51,8 +60,15 @@
     }
     chrome.runtime.sendMessage({ type: "SYNC_AUTH_FROM_COOKIES" });
   }
-  syncAuth();
-  setTimeout(syncAuth, 2e3);
-  window.addEventListener("storage", syncAuth);
+  var ALLOWED_PLATFORM_HOSTNAMES = ["annotation-platform-seven.vercel.app", "localhost"];
+  var PREVIEW_PLATFORM_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
+  var hn = window.location.hostname;
+  var isAllowedPlatform = ALLOWED_PLATFORM_HOSTNAMES.includes(hn) || PREVIEW_PLATFORM_RE.test(hn);
+  if (isAllowedPlatform) {
+    stampPlatformUrl();
+    syncAuth();
+    setTimeout(syncAuth, 2e3);
+    window.addEventListener("storage", syncAuth);
+  }
 })();
 //# sourceMappingURL=dashboard.js.map

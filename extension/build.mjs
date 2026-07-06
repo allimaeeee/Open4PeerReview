@@ -10,7 +10,7 @@ const OUT = resolve(__dirname, 'dist');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
 const isDev = process.env.OERHUB_ENV === 'dev';
-const OERHUB_URL = isDev ? 'http://localhost:3000' : 'https://oerhub.vercel.app';
+const OERHUB_URL = isDev ? 'http://localhost:3000' : 'https://annotation-platform-seven.vercel.app';
 
 const base = {
   bundle: true,
@@ -31,6 +31,7 @@ await Promise.all([
   }),
   build({
     ...base,
+    loader: { '.woff2': 'dataurl' },
     define: { __OERHUB_URL__: JSON.stringify(OERHUB_URL) },
     entryPoints: [resolve(SRC, 'content.ts')],
     outfile: resolve(OUT, 'content.js'),
@@ -38,6 +39,7 @@ await Promise.all([
   }),
   build({
     ...base,
+    loader: { '.woff2': 'dataurl' },
     entryPoints: [resolve(SRC, 'popup.ts')],
     outfile: resolve(OUT, 'popup.js'),
     format: 'iife',
