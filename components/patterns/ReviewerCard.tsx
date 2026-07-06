@@ -228,7 +228,7 @@ export function ReviewerCard({
           {/* Header */}
           <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4 border-b border-border">
             <div>
-              <h2 className="text-title-md font-semibold font-heading text-text-primary">Begin Review</h2>
+              <h2 className="text-title-md font-semibold font-heading text-text-primary">{activeStarted ? 'Continue Review' : 'Begin Review'}</h2>
               <p className="text-body-sm text-text-secondary mt-0.5">
                 How would you like to review this OLI Torus course?
               </p>
