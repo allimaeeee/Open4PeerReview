@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // extension/src/dashboard.ts
+  // src/dashboard.ts
   function findSessionInLocalStorage() {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -60,7 +60,7 @@
     }
     chrome.runtime.sendMessage({ type: "SYNC_AUTH_FROM_COOKIES" });
   }
-  var ALLOWED_PLATFORM_HOSTNAMES = ["annotation-platform-seven.vercel.app", "localhost"];
+  var ALLOWED_PLATFORM_HOSTNAMES = ["open4peerreview-olitorus.vercel.app", "localhost"];
   var PREVIEW_PLATFORM_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
   var hn = window.location.hostname;
   var isAllowedPlatform = ALLOWED_PLATFORM_HOSTNAMES.includes(hn) || PREVIEW_PLATFORM_RE.test(hn);
