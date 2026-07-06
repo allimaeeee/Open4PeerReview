@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   BackgroundMessage,
   BackgroundResponse,
   StoredAuth,
@@ -15,6 +15,10 @@ import type {
   AnchorSelector,
   RangeSelector,
 } from './types';
+import { tokens } from '../../lib/design-system/token-values';
+import latoRegular from './fonts/Lato-Regular.woff2';
+import latoBold from './fonts/Lato-Bold.woff2';
+import newsreaderVariable from './fonts/Newsreader-Variable.woff2';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -25,25 +29,11 @@ const SCORE_DEBOUNCE_MS = 1500;
 // `npm run build:ext:dev` points this at localhost for local testing.
 declare const __OERHUB_URL__: string;
 const OERHUB_URL = __OERHUB_URL__;
+// Overridden at runtime with the origin stored by dashboard.ts on the platform page.
+// Falls back to the build-time constant if the user has never visited the platform.
+let platformUrl = OERHUB_URL;
 
-const SCORE_LABELS: Record<CriterionScore, string> = {
-  does_not_meet: 'Does Not Meet',
-  exemplifies:   'Exemplifies',
-  exceeds:       'Exceeds',
-};
 
-const SCORE_ABBR: Record<CriterionScore, string> = {
-  does_not_meet: 'DNM',
-  exemplifies:   'EXE',
-  exceeds:       'EXC',
-};
-
-const TAG_COLORS: Record<string, string> = {
-  action_item: 'rgba(249,115,22,0.35)',
-  quick_fix:   'rgba(59,130,246,0.35)',
-};
-
-const DEFAULT_HIGHLIGHT = 'rgba(254,214,91,0.45)';
 const SESSION_KEY = 'oer_review_id';
 const PENDING_DEEP_LINK_KEY = 'oer_pending_review';
 // How long a captured deep link stays valid — long enough to survive a Torus
@@ -78,6 +68,8 @@ let accessWatcher: ReturnType<typeof setInterval> | null = null;
 
 const scoreTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingScores = new Map<string, CriterionScore | null>();
+const criterionResizeObservers = new Map<string, ResizeObserver>();
+let gcTimer: ReturnType<typeof setTimeout> | null = null;
 type ScoreCommentEntry = { id: string | null; body: string };
 type ScoreCommentMap = { does_not_meet: ScoreCommentEntry; exceeds: ScoreCommentEntry };
 const EMPTY_SCORE_COMMENTS: ScoreCommentMap = { does_not_meet: { id: null, body: '' }, exceeds: { id: null, body: '' } };
@@ -89,7 +81,7 @@ let shadow: ShadowRoot;
 let panelHost: HTMLElement;
 let panelBody: HTMLElement;
 let saveStatusEl: HTMLElement;
-let completionFill: HTMLElement;
+const completionCountCache = new Map<string, { scored: number; total: number }>();
 
 // ── Panel drag / resize state ─────────────────────────────────────────────────
 
@@ -102,14 +94,11 @@ let resizeSt = { x: 0, y: 0, w: 0, h: 0, l: 0, t: 0 };
 let savedPanelH = 560;
 const MIN_PANEL_W = 280;
 const MIN_PANEL_H = 300;
-let completionText: HTMLElement;
 
 // ── Popup overlay (page DOM, not shadow) ──────────────────────────────────────
 
 let annotationPopup: HTMLElement;
 let annotationTooltip: HTMLElement | null = null;
-let pendingAnchor: HtmlCharOffsetAnchor | null = null;
-let pendingHotspotAnchor: PointAnchor | null = null;
 let hotspotMode = false;
 
 // Watches the page for content changes so highlights/hotspots re-apply no matter
@@ -451,7 +440,7 @@ function applyPendingHighlight(range: Range) {
     r.setEnd(textNode, e);
     const mark = document.createElement('mark');
     mark.dataset.annotationId = 'pending';
-    mark.style.cssText = 'background:rgba(254,214,91,0.6);border-radius:2px;padding:0;';
+    mark.style.cssText = 'background:' + tokens.color.annotationActive + ';border-radius:2px;padding:0;';
     try { r.surroundContents(mark); } catch { /* skip partial overlaps */ }
   }
 }
@@ -494,8 +483,7 @@ function applyHighlights() {
   for (const ann of textAnnotations) {
     const range = resolveAnchor(ann.anchor as HtmlCharOffsetAnchor);
     if (!range) continue;
-    const color = ann.tag ? (TAG_COLORS[ann.tag] ?? DEFAULT_HIGHLIGHT) : DEFAULT_HIGHLIGHT;
-    markRange(range, ann.id, color, () => scrollToAnnotationInPanel(ann.id));
+    markRange(range, ann.id, tokens.color.annotation, () => scrollToAnnotationInPanel(ann.id));
   }
 
   applyHotspotMarkers();
@@ -611,7 +599,7 @@ function placeHotspotMarker(ann: AnnotationRecord, index: number) {
       <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="${pinColor}"/>
       <circle cx="14" cy="14" r="7" fill="white" fill-opacity="0.9"/>
     </svg>
-    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${pinColor};font-family:Inter,-apple-system,sans-serif;line-height:1;">${index}</div>
+    <div style="position:absolute;top:7px;left:0;width:28px;text-align:center;font-size:10px;font-weight:700;color:${pinColor};font-family:${tokens.font.body};line-height:1;">${index}</div>
   `;
   el.addEventListener('mouseenter', (ev) => {
     el.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.45))';
@@ -690,8 +678,11 @@ function scrollToAnnotationInPanel(annotationId: string) {
 
   const el = shadow.getElementById(`ann-${annotationId}`);
   el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  el?.classList.add('highlighted');
-  setTimeout(() => el?.classList.remove('highlighted'), 1200);
+  el?.classList.remove('card-highlight', 'active');
+  requestAnimationFrame(() => {
+    el?.classList.add('card-highlight', 'active');
+    setTimeout(() => el?.classList.remove('card-highlight', 'active'), 1600);
+  });
 }
 
 // ── "View annotation" — navigate to page + scroll to location ─────────────────
@@ -778,10 +769,64 @@ function setSaveStatus(status: 'saving' | 'saved' | 'error' | 'idle') {
   if (status === 'saved') setTimeout(() => setSaveStatus('idle'), 2500);
 }
 
-// ── Completion bar ────────────────────────────────────────────────────────────
+function setGCSaveStatus(status: 'saving' | 'saved' | 'error' | 'idle') {
+  const el = shadow.getElementById('gc-save-status');
+  if (!el) return;
+  el.className = `gc-save-status ${status}`;
+  if (status === 'saving') el.textContent = 'Saving…';
+  else if (status === 'saved') el.textContent = 'Saved';
+  else if (status === 'error') el.textContent = 'Save failed — please try again';
+  else el.textContent = '';
+  if (status === 'saved') setTimeout(() => setGCSaveStatus('idle'), 2500);
+}
+
+// ── Per-tab completion badge ──────────────────────────────────────────────────
+
+async function prefetchSiblingCompletions() {
+  if (!selectedReview) return;
+  const siblings = assignments.filter(
+    a => a.document_id === selectedReview!.document_id && a.id !== selectedReview!.id
+  );
+  await Promise.all(siblings.map(async sib => {
+    if (completionCountCache.has(sib.id)) return;
+    const [itemsResp, scoresResp, commentsResp] = await Promise.all([
+      send<RubricItem[]>({ type: 'GET_RUBRIC_ITEMS', payload: { rubricId: sib.rubric_id } }),
+      send<ReviewScoreRecord[]>({ type: 'GET_SCORES', payload: { reviewId: sib.id } }),
+      send<ScoreCommentRecord[]>({ type: 'GET_SCORE_COMMENTS', payload: { reviewId: sib.id } }),
+    ]);
+    const items = itemsResp.data ?? [];
+    const total = items.length;
+    if (total === 0) return;
+    const sibScores = new Map<string, ReviewScoreRecord>();
+    (scoresResp.data ?? []).forEach(s => sibScores.set(s.rubric_item_id, s));
+    const sibComments = new Map<string, ScoreCommentMap>();
+    (commentsResp.data ?? []).forEach(c => {
+      const prev = sibComments.get(c.rubric_item_id) ?? EMPTY_SCORE_COMMENTS;
+      if (prev[c.score_level as 'does_not_meet' | 'exceeds'].id) return;
+      sibComments.set(c.rubric_item_id, { ...prev, [c.score_level]: { id: c.id, body: c.body } });
+    });
+    const scored = items.filter(item => {
+      const s = sibScores.get(item.id);
+      const levels = s?.criterion_scores ?? [];
+      if (levels.length === 0) return false;
+      const comments = sibComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
+      if (levels.includes('does_not_meet') && !comments.does_not_meet.body.trim()) return false;
+      if (levels.includes('exceeds') && !comments.exceeds.body.trim()) return false;
+      return true;
+    }).length;
+    completionCountCache.set(sib.id, { scored, total });
+    const badge = shadow.getElementById(`tab-badge-${sib.id}`) as HTMLElement | null;
+    if (badge) {
+      badge.textContent = `${scored}/${total}`;
+      badge.className = `tab-badge ${scored === total ? 'tab-badge-complete' : 'tab-badge-incomplete'}`;
+      badge.style.display = '';
+    }
+  }));
+}
 
 function updateCompletion() {
-  if (!completionFill || !completionText || rubricItems.length === 0) return;
+  if (!selectedReview || rubricItems.length === 0) return;
+  const total = rubricItems.length;
   const scored = rubricItems.filter(item => {
     const s = scores.get(item.id);
     const levels = s?.criterion_scores ?? [];
@@ -791,9 +836,13 @@ function updateCompletion() {
     if (levels.includes('exceeds') && !comments.exceeds.body.trim()) return false;
     return true;
   }).length;
-  const pct = Math.round((scored / rubricItems.length) * 100);
-  completionFill.style.width = `${pct}%`;
-  completionText.textContent = `${scored}/${rubricItems.length}`;
+  completionCountCache.set(selectedReview.id, { scored, total });
+  const badge = shadow.getElementById(`tab-badge-${selectedReview.id}`) as HTMLElement | null;
+  if (badge) {
+    badge.textContent = `${scored}/${total}`;
+    badge.className = `tab-badge ${scored === total ? 'tab-badge-complete' : 'tab-badge-incomplete'}`;
+    badge.style.display = '';
+  }
 }
 
 // ── Score handling ────────────────────────────────────────────────────────────
@@ -899,33 +948,26 @@ async function syncScoreComment(rubricItemId: string, level: 'does_not_meet' | '
 function refreshScoreButtons(rubricItemId: string) {
   const score = scores.get(rubricItemId);
   const currentLevels = score?.criterion_scores ?? [];
-  const item = shadow.getElementById(`crit-body-${rubricItemId}`);
-  if (!item) return;
 
-  item.querySelectorAll<HTMLButtonElement>('.score-btn').forEach(btn => {
-    const level = btn.dataset.level as CriterionScore;
-    const isActive = currentLevels.includes(level);
-    btn.className = `score-btn ${isActive ? `active ${level}` : ''}`;
-  });
+  // Update rating box active classes
+  const rboxExceeds = shadow.getElementById(`rbox-exceeds-${rubricItemId}`);
+  const rboxExemplifies = shadow.getElementById(`rbox-exemplifies-${rubricItemId}`);
+  const rboxDnm = shadow.getElementById(`rbox-dnm-${rubricItemId}`);
+  if (rboxExceeds) rboxExceeds.classList.toggle('active', currentLevels.includes('exceeds'));
+  if (rboxExemplifies) rboxExemplifies.classList.toggle('active', currentLevels.includes('exemplifies'));
+  if (rboxDnm) rboxDnm.classList.toggle('active', currentLevels.includes('does_not_meet'));
 
-  (['does_not_meet', 'exceeds'] as const).forEach(lvl => {
-    const box = shadow.getElementById(`score-comment-${lvl}-${rubricItemId}`);
-    if (box) box.style.display = currentLevels.includes(lvl) ? 'block' : 'none';
-  });
+  // Update three independent header mini-badges
+  const hdrBadgeExc = shadow.getElementById(`hdr-badge-exc-${rubricItemId}`);
+  const hdrBadgeExe = shadow.getElementById(`hdr-badge-exe-${rubricItemId}`);
+  const hdrBadgeDnm = shadow.getElementById(`hdr-badge-dnm-${rubricItemId}`);
+  if (hdrBadgeExc) hdrBadgeExc.classList.toggle('active', currentLevels.includes('exceeds'));
+  if (hdrBadgeExe) hdrBadgeExe.classList.toggle('active', currentLevels.includes('exemplifies'));
+  if (hdrBadgeDnm) hdrBadgeDnm.classList.toggle('active', currentLevels.includes('does_not_meet'));
 
-  const badge = shadow.getElementById(`badge-${rubricItemId}`);
-  if (badge) {
-    if (currentLevels.length === 0) {
-      badge.textContent = '—';
-      badge.className = 'score-badge unscored';
-    } else if (currentLevels.length === 1) {
-      badge.textContent = SCORE_ABBR[currentLevels[0]];
-      badge.className = `score-badge ${currentLevels[0]}`;
-    } else {
-      badge.textContent = currentLevels.map(l => SCORE_ABBR[l]).join('+');
-      badge.className = 'score-badge multi';
-    }
-  }
+  // Update status circle
+  const statusCircle = shadow.getElementById(`status-circle-${rubricItemId}`);
+  if (statusCircle) statusCircle.classList.toggle('scored', currentLevels.length > 0);
 }
 
 // ── Torus detection & auto-screenshot ────────────────────────────────────────
@@ -940,6 +982,62 @@ function isTorusPage(): boolean {
     } catch { /* ignore */ }
   }
   return /torus|oli\.cmu\.edu|course-author\.oli|torus\.oli/.test(href);
+}
+
+interface TorusPageInfo {
+  pageName: string;
+  pageType: 'nav' | 'content' | 'checkpoint';
+}
+
+// Returns a human-readable page name and type classification for the current Torus page.
+// Uses a URL-path lookup for fixed platform nav pages; reads the page H1 for content pages;
+// detects checkpoints by searching for the "SCORED PAGE" indicator text.
+function getTorusPageInfo(): TorusPageInfo {
+  const path = window.location.pathname;
+
+  // Coursewide nav pages — fixed platform routes, safe to hardcode
+  const NAV_ROUTES: Record<string, string> = {
+    '/learn': 'Learn',
+    '/assignments': 'Assignments',
+    '/welcome': 'Welcome',
+    '/explorations': 'Explorations',
+    '/practice': 'Practice',
+    '/notes': 'Notes',
+  };
+  // Check each segment of the path for a nav match
+  // e.g. /sections/cs101/learn → matches /learn
+  for (const [segment, label] of Object.entries(NAV_ROUTES)) {
+    if (path === segment || path.endsWith(segment) || path.includes(segment + '/') || path.includes(segment + '?')) {
+      return { pageName: label, pageType: 'nav' };
+    }
+  }
+  // Home: section root (no trailing page segment)
+  if (/\/sections\/[^/]+\/?$/.test(path)) {
+    return { pageName: 'Home', pageType: 'nav' };
+  }
+
+  // Content/checkpoint pages — read heading from the page DOM
+  // Try the most prominent structural heading in the main content area.
+  // Torus typically places the page title in an <h1> inside the main content, or a large heading near the top.
+  const heading = (
+    document.querySelector<HTMLElement>('main h1') ??
+    document.querySelector<HTMLElement>('[role="main"] h1') ??
+    document.querySelector<HTMLElement>('article h1') ??
+    document.querySelector<HTMLElement>('h1')
+  );
+
+  let rawTitle = heading?.textContent?.trim() ?? '';
+  // Strip leading module-number prefix: e.g. "32. " or "44. "
+  rawTitle = rawTitle.replace(/^\d+\.\s+/, '');
+  const pageName = rawTitle || 'OLI Torus';
+
+  // Checkpoint detection — look for "SCORED PAGE" or "Assignment requirement" anywhere in the page text
+  const bodyText = document.body.innerText ?? '';
+  const isCheckpoint =
+    /SCORED\s+PAGE/i.test(bodyText) ||
+    /Assignment\s+requirement/i.test(bodyText);
+
+  return { pageName, pageType: isCheckpoint ? 'checkpoint' : 'content' };
 }
 
 // Picks the assignment whose OER source_url matches the page open in this tab.
@@ -1261,9 +1359,21 @@ function listKeyForAnnotation(ann: AnnotationRecord): string {
   return isFreeNoteAnchor(ann.anchor) ? FREE_LIST_KEY : UNLINKED_LIST_KEY;
 }
 
+
 function refreshAnnotationList(rubricItemId: string) {
   if (!selectedReview) return;
   const relevant = annotations.filter(a => listKeyForAnnotation(a) === rubricItemId);
+  if (rubricItemId !== UNLINKED_LIST_KEY) {
+    const count = relevant.length;
+    const evBadge = shadow.getElementById(`evidence-badge-${rubricItemId}`) as HTMLElement | null;
+    if (evBadge) {
+      evBadge.style.display = count > 0 ? '' : 'none';
+      const countEl = shadow.getElementById(`evidence-count-${rubricItemId}`);
+      if (countEl) countEl.textContent = String(count);
+    }
+    const evLabel = shadow.getElementById(`evidence-label-${rubricItemId}`) as HTMLElement | null;
+    if (evLabel) evLabel.textContent = `Evidence (${count})`;
+  }
   const container = shadow.getElementById(`ann-list-${rubricItemId}`);
   if (!container) { updateUnlinkedCount(); return; }
   container.innerHTML = relevant.map(ann => renderAnnotationItem(ann)).join('');
@@ -1278,6 +1388,36 @@ function refreshAnnotationList(rubricItemId: string) {
       const annId = btn.dataset.id!;
       const ann = annotations.find(a => a.id === annId);
       if (ann) goToAnnotation(ann);
+    });
+  });
+  container.querySelectorAll<HTMLButtonElement>('.ann-view-screenshot').forEach(btn => {
+    btn.addEventListener('click', () => { const u = btn.dataset.url; if (u) openScreenshotModal(u); });
+  });
+  container.querySelectorAll<HTMLImageElement>('.screenshot-thumb').forEach(img => {
+    img.addEventListener('click', () => { const u = img.dataset.url; if (u) openScreenshotModal(u); });
+  });
+  // Hide expand buttons on fields that already fit in 3 lines (no overflow)
+  container.querySelectorAll<HTMLElement>('.field-clamp').forEach(el => {
+    if (el.scrollHeight <= el.clientHeight + 2) {
+      const rawId = el.id.substring('field-'.length);
+      const lastDash = rawId.lastIndexOf('-');
+      if (lastDash === -1) return;
+      const annId = rawId.substring(0, lastDash);
+      const field = rawId.substring(lastDash + 1);
+      const btn = container.querySelector(`.ann-expand-btn[data-ann-id="${annId}"][data-field="${field}"]`) as HTMLElement | null;
+      if (btn) btn.style.display = 'none';
+    }
+  });
+
+  container.querySelectorAll<HTMLButtonElement>('.ann-expand-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const annId = btn.dataset.annId!;
+      const field = btn.dataset.field!;
+      const fieldEl = container.querySelector(`#field-${annId}-${field}`) as HTMLElement | null;
+      if (!fieldEl) return;
+      const isExpanded = fieldEl.classList.contains('expanded');
+      fieldEl.classList.toggle('expanded', !isExpanded);
+      btn.textContent = isExpanded ? '(see full text)' : '(collapse)';
     });
   });
   container.querySelectorAll<HTMLSelectElement>('.ann-link').forEach(sel => {
@@ -1313,6 +1453,28 @@ async function linkAnnotationToCriterion(annotationId: string, criterionId: stri
   renderRubricCriteria();
 }
 
+const SVG_PAGE_NAV = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`;
+const SVG_PAGE_CHECKPOINT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`;
+const SVG_PAGE_CONTENT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+const SVG_EDIT_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+const SVG_DELETE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+const SVG_TAG_ACTION = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>`;
+const SVG_TAG_QUICK = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`;
+
+function annPageLabelHtml(anchor: AnnotationRecord['anchor']): string {
+  const pageName = (anchor as { pageName?: string }).pageName ?? null;
+  if (!pageName) return '';
+  const pageType = (anchor as { pageType?: string }).pageType ?? null;
+  const icon = pageType === 'nav' ? SVG_PAGE_NAV : pageType === 'checkpoint' ? SVG_PAGE_CHECKPOINT : SVG_PAGE_CONTENT;
+  return `<div class="ann-page-label" title="${escHtml(pageName)}">${icon}<span class="ann-page-text">${escHtml(pageName)}</span></div><div class="ann-divider"></div>`;
+}
+
+const SVG_PIN_INLINE = `<svg width="10" height="13" viewBox="0 0 28 36" fill="currentColor" style="flex-shrink:0"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>`;
+
+function clampField(text: string, annId: string, field: string, className: string): string {
+  return `<div class="${className} field-clamp" id="field-${annId}-${field}">${escHtml(text)}</div><button class="ann-expand-btn" data-ann-id="${annId}" data-field="${field}">(see full text)</button>`;
+}
+
 function renderAnnotationItem(ann: AnnotationRecord): string {
   const isHotspot = ann.anchor.type === 'point';
   const quote = ann.anchor.type === 'html-char-offset'
@@ -1323,34 +1485,41 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
       })()
     : '';
 
-  const tagHtml = ann.tag
-    ? `<span class="ann-tag ${ann.tag}">${ann.tag === 'action_item' ? 'Action Item' : 'Quick Fix'}</span>`
-    : '';
-
-  // screenshotUrl can live on any anchor type (bbox, point, or html-char-offset)
   const screenshotUrl = (ann.anchor as { screenshotUrl?: string }).screenshotUrl ?? null;
   const screenshotHtml = screenshotUrl
-    ? `<img class="screenshot-thumb" src="${screenshotUrl}" alt="Screenshot" />`
+    ? `<div class="ann-screenshot-row">
+        <img class="screenshot-thumb" src="${escHtml(screenshotUrl)}" data-url="${escHtml(screenshotUrl)}" alt="Screenshot" />
+        <button class="ann-view-screenshot" data-url="${escHtml(screenshotUrl)}">View full screenshot ↗</button>
+      </div>`
     : '';
 
-  const quoteHtml = quote
-    ? `<div class="ann-quote">"${quote.slice(0, 60)}${quote.length > 60 ? '…' : ''}"</div>`
-    : '';
-
-  const hotspotBadge = isHotspot
-    ? `<div class="ann-hotspot-label">📍 Hotspot</div>`
-    : '';
-
-  // Page label — show when the annotation is on a specific (named) page
-  const anchorPageName = (ann.anchor as { pageName?: string }).pageName ?? null;
-  const pageLabelHtml = anchorPageName
-    ? `<div class="ann-page-label" title="${escHtml(anchorPageName)}">📄 ${escHtml(anchorPageName.slice(0, 40))}${anchorPageName.length > 40 ? '…' : ''}</div>`
-    : '';
-
-  // "View" button — only shown for annotations that have a page URL to navigate to
   const anchorPageUrl = (ann.anchor as { pageUrl?: string }).pageUrl ?? null;
   const gotoBtn = anchorPageUrl
-    ? `<button class="ann-goto" data-id="${ann.id}" title="Go to annotation on page">↗ View</button>`
+    ? `<button class="ann-goto" data-id="${ann.id}">↗ Go to annotation</button>`
+    : '';
+
+  let primarySectionHtml: string;
+  if (isHotspot) {
+    primarySectionHtml = `
+      <div class="ann-sh-row">
+        <div class="ann-sh">${SVG_PIN_INLINE} Hotspot</div>
+        ${gotoBtn}
+      </div>`;
+  } else {
+    const quoteContent = quote
+      ? clampField(quote, ann.id, 'quote', 'ann-quote')
+      : `<div class="ann-no-quote">No annotated text</div>`;
+    primarySectionHtml = `
+      <div class="ann-sh-row">
+        <div class="ann-sh">Annotated Text</div>
+        ${gotoBtn}
+      </div>
+      ${quoteContent}`;
+  }
+
+  const tagHtml = ann.tag
+    ? `<div class="ann-sh">Tags</div>
+       <span class="ann-tag">${ann.tag === 'action_item' ? SVG_TAG_ACTION + ' Action Item' : SVG_TAG_QUICK + ' Quick Fix'}</span>`
     : '';
 
   // Unlinked annotations (real page anchor, no criterion) get a "link to criterion"
@@ -1365,81 +1534,408 @@ function renderAnnotationItem(ann: AnnotationRecord): string {
 
   return `
     <div class="ann-item" id="ann-${ann.id}">
+      <div class="ann-icon-btns">
+        <button class="ann-edit" data-id="${ann.id}" title="Edit">${SVG_EDIT_ICON}</button>
+        <button class="ann-delete" data-id="${ann.id}" title="Delete">${SVG_DELETE_ICON}</button>
+      </div>
+      ${annPageLabelHtml(ann.anchor)}
       ${screenshotHtml}
-      ${hotspotBadge}
-      ${pageLabelHtml}
-      ${quoteHtml}
-      <div class="ann-body">${escHtml(ann.body)}</div>
-      ${tagHtml}
-      ${gotoBtn}
+      ${primarySectionHtml}
+      <div class="ann-editable" id="ann-editable-${ann.id}">
+        <div class="ann-sh">Comment</div>
+        ${ann.body.trim() ? clampField(ann.body.trim(), ann.id, 'body', 'ann-body') : '<div class="ann-no-quote">No comment written</div>'}
+        ${tagHtml}
+      </div>
       ${linkHtml}
-      <button class="ann-edit" data-id="${ann.id}" title="Edit">✎</button>
-      <button class="ann-delete" data-id="${ann.id}" title="Delete">×</button>
     </div>
   `;
 }
 
 function editAnnotation(annotationId: string) {
-  const item = shadow.getElementById(`ann-${annotationId}`);
   const ann = annotations.find(a => a.id === annotationId);
-  if (!item || !ann) return;
+  if (!ann) return;
 
-  item.innerHTML = `
-    <textarea class="ann-edit-input" rows="3">${escHtml(ann.body)}</textarea>
-    <div class="inline-note-actions" style="margin-top:4px;">
-      <button class="ann-edit-cancel">Cancel</button>
-      <button class="ann-edit-confirm">Save</button>
-    </div>
-  `;
-  (item.querySelector('.ann-edit-input') as HTMLTextAreaElement)?.focus();
+  const item = shadow?.querySelector<HTMLElement>('#ann-' + annotationId);
+  if (!item) return;
+  const editableEl = item.querySelector<HTMLElement>('#ann-editable-' + annotationId);
+  if (!editableEl) return;
 
-  item.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
-    // Re-render the whole list so every control (delete/edit/goto/link) is re-wired.
+  let currentTag: HighlightTag | null = ann.tag;
+  const existingBody = ann.body.trim();
+
+  const criterionOptions = '<option value="">— No criterion —</option>' +
+    rubricItems.map(ri =>
+      '<option value="' + escHtml(ri.id) + '"' + (ann.rubric_item_id === ri.id ? ' selected' : '') + '>' + escHtml(ri.label) + '</option>'
+    ).join('');
+
+  const startDisabled = existingBody === '';
+
+  editableEl.innerHTML =
+    '<div class="ann-sh">Comment</div>' +
+    '<textarea class="ann-edit-input" rows="3" placeholder="Add a comment...">' + escHtml(existingBody) + '</textarea>' +
+    '<div class="ann-sh" style="margin-top:8px;">Tags</div>' +
+    '<div class="ann-tag-toggles">' +
+      '<button class="ann-tag-btn' + (currentTag === 'action_item' ? ' active' : '') + '" data-tag="action_item">Action Item</button>' +
+      '<button class="ann-tag-btn' + (currentTag === 'quick_fix' ? ' active' : '') + '" data-tag="quick_fix">Quick Fix</button>' +
+    '</div>' +
+    '<div class="ann-sh" style="margin-top:8px;">Link to Criteria</div>' +
+    '<select class="ann-criterion-sel">' + criterionOptions + '</select>' +
+    '<div class="ann-edit-actions">' +
+      '<span class="ann-edit-hint"' + (startDisabled ? '' : ' style="display:none;"') + '>Add a comment to save</span>' +
+      '<button class="ann-edit-cancel">Cancel</button>' +
+      '<button class="ann-edit-confirm"' + (startDisabled ? ' disabled' : '') + '>Save</button>' +
+    '</div>';
+
+  const confirmBtn = editableEl.querySelector<HTMLButtonElement>('.ann-edit-confirm')!;
+  const editHintEl = editableEl.querySelector<HTMLElement>('.ann-edit-hint')!;
+  const editTextarea = editableEl.querySelector<HTMLTextAreaElement>('.ann-edit-input')!;
+  editTextarea.addEventListener('input', () => {
+    const disabled = editTextarea.value.trim() === '';
+    confirmBtn.disabled = disabled;
+    editHintEl.style.display = disabled ? '' : 'none';
+  });
+
+  editableEl.querySelectorAll<HTMLButtonElement>('.ann-tag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag as HighlightTag;
+      currentTag = currentTag === tag ? null : tag;
+      editableEl.querySelectorAll('.ann-tag-btn').forEach(b => b.classList.remove('active'));
+      if (currentTag) editableEl.querySelector<HTMLButtonElement>('.ann-tag-btn[data-tag="' + currentTag + '"]')?.classList.add('active');
+    });
+  });
+
+  editableEl.querySelector('.ann-edit-cancel')?.addEventListener('click', () => {
     refreshAnnotationList(listKeyForAnnotation(ann));
   });
 
-  item.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
-    const newBody = (item.querySelector('.ann-edit-input') as HTMLTextAreaElement).value.trim();
-    if (!newBody) return;
+  editableEl.querySelector('.ann-edit-confirm')?.addEventListener('click', async () => {
+    const textarea = editableEl.querySelector<HTMLTextAreaElement>('.ann-edit-input')!;
+    const newBody = textarea.value.trim();
+    const selectEl = editableEl.querySelector<HTMLSelectElement>('.ann-criterion-sel')!;
+    const newCriterionId = selectEl.value || null;
+    const oldKey = listKeyForAnnotation(ann);
     setSaveStatus('saving');
-    const resp = await send({ type: 'UPDATE_ANNOTATION', payload: { id: annotationId, body: newBody } });
+    const resp = await send({
+      type: 'UPDATE_ANNOTATION',
+      payload: { id: annotationId, body: newBody, tag: currentTag, rubric_item_id: newCriterionId },
+    });
     if (resp.success) {
       ann.body = newBody;
+      ann.tag = currentTag;
+      ann.rubric_item_id = newCriterionId;
       setSaveStatus('saved');
     } else {
       setSaveStatus('error');
     }
-    refreshAnnotationList(listKeyForAnnotation(ann));
+    const newKey = listKeyForAnnotation(ann);
+    refreshAnnotationList(oldKey);
+    if (newKey !== oldKey) refreshAnnotationList(newKey);
   });
+}
+
+// ── Unified annotation popup (create text / create hotspot / edit) ────────────
+
+type PopupConfig =
+  | { mode: 'create-text'; anchor: HtmlCharOffsetAnchor }
+  | { mode: 'create-hotspot'; anchor: PointAnchor; clientX: number; clientY: number }
+  | { mode: 'edit'; annotation: AnnotationRecord };
+
+function openAnnotationPopup(config: PopupConfig) {
+  const C = tokens.color;
+  const F = tokens.font;
+  const isEdit = config.mode === 'edit';
+  const ann = isEdit ? config.annotation : null;
+  const existingTag: HighlightTag | null = ann?.tag ?? null;
+  const existingBody = (ann?.body ?? '').trim();
+  const existingCriterionId = ann?.rubric_item_id ?? null;
+  const headerTitle = isEdit ? 'EDIT ANNOTATION' : 'ADD ANNOTATION';
+  const placeholder = config.mode === 'create-hotspot'
+    ? 'Describe this hotspot...'
+    : 'Describe what this evidence shows...';
+
+  const criterionOptions =
+    '<option value="">(save to unlinked annotations)</option>' +
+    rubricItems.map((ri, idx) => {
+      const parts = ri.label.split(' · ');
+      const code = parts.length > 1 ? parts[0] : 'C' + (idx + 1);
+      const raw = parts.length > 1 ? parts.slice(1).join(' · ') : ri.label;
+      const name = raw.replace(/^[A-Za-z]?\d+\s+/, '');
+      const sel = existingCriterionId === ri.id ? ' selected' : '';
+      return '<option value="' + escHtml(ri.id) + '"' + sel + '>' + escHtml(code) + ' — ' + escHtml(name) + '</option>';
+    }).join('');
+
+  const sB = C.border + '40';
+  const lbl = 'font-size:10px;font-weight:700;font-family:' + F.body + ';color:' + C.textSecondary + ';text-transform:uppercase;letter-spacing:0.06em;';
+  const tagBase = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;cursor:pointer;font-size:10px;font-weight:600;font-family:' + F.body + ';transition:all 0.12s;';
+  const tagActInit = existingTag === 'action_item';
+  const tagQfxInit = existingTag === 'quick_fix';
+
+  annotationPopup.innerHTML =
+    '<div id="oer-pop-header" style="display:flex;align-items:center;justify-content:space-between;background:' + C.surface + ';padding:10px 14px;border-bottom:1px solid ' + sB + ';cursor:grab;user-select:none;">' +
+      '<span style="' + lbl + '">' + headerTitle + '</span>' +
+      '<button id="oer-pop-close" style="background:none;border:none;cursor:pointer;color:' + C.textMuted + ';padding:0;display:flex;align-items:center;font-family:inherit;" aria-label="Close">' +
+        '<svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">' +
+          '<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>' +
+        '</svg>' +
+      '</button>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';">' +
+      '<div style="' + lbl + 'margin-bottom:8px;">COMMENT</div>' +
+      '<textarea id="oer-pop-body" rows="3" placeholder="' + placeholder + '" style="display:block;width:100%;padding:4px 0;border:none;border-bottom:2px solid ' + C.border + ';background:transparent;font-size:12px;font-family:' + F.body + ';color:' + C.textPrimary + ';resize:none;outline:none;box-shadow:none;box-sizing:border-box;">' + escHtml(existingBody) + '</textarea>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';display:flex;align-items:center;gap:10px;">' +
+      '<span style="' + lbl + 'flex-shrink:0;">TAGS:</span>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<button class="oer-tag-btn" data-tag="action_item" style="' + tagBase + 'border:1px solid ' + (tagActInit ? C.secondary + '66' : C.border) + ';background:' + (tagActInit ? C.secondaryContainer + '99' : 'transparent') + ';color:' + (tagActInit ? C.secondary : C.textSecondary) + ';">' + SVG_TAG_ACTION + ' Action Item</button>' +
+        '<button class="oer-tag-btn" data-tag="quick_fix" style="' + tagBase + 'border:1px solid ' + (tagQfxInit ? C.secondary + '66' : C.border) + ';background:' + (tagQfxInit ? C.secondaryContainer + '99' : 'transparent') + ';color:' + (tagQfxInit ? C.secondary : C.textSecondary) + ';">' + SVG_TAG_QUICK + ' Quick Fix</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:12px 14px;border-bottom:1px solid ' + sB + ';">' +
+      '<div style="' + lbl + 'margin-bottom:8px;">LINK TO CRITERIA <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:normal;color:' + C.textMuted + ';">(optional)</span></div>' +
+      '<div style="position:relative;">' +
+        '<select id="oer-pop-criterion" style="width:100%;padding:4px 20px 4px 0;border:none;border-bottom:2px solid ' + C.border + ';background:transparent;font-size:12px;font-family:' + F.body + ';color:' + C.textPrimary + ';outline:none;cursor:pointer;box-sizing:border-box;appearance:none;-webkit-appearance:none;">' + criterionOptions + '</select>' +
+        '<span id="oer-crit-chevron" style="position:absolute;right:0;top:50%;transform:translateY(-50%);pointer-events:none;color:' + C.textMuted + ';display:flex;align-items:center;transition:transform 150ms ease;">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
+        '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:10px 14px;display:flex;align-items:center;gap:8px;">' +
+      '<span id="oer-pop-hint" style="font-size:10px;color:' + C.textMuted + ';font-style:italic;flex:1;">Add a comment to save</span>' +
+      '<button id="oer-pop-cancel" style="padding:5px 12px;border-radius:0;border:1px solid ' + C.border + ';background:' + C.surfaceCard + ';font-size:11px;font-weight:500;font-family:' + F.body + ';color:' + C.textSecondary + ';cursor:pointer;">Cancel</button>' +
+      '<button id="oer-pop-save" style="padding:5px 12px;border-radius:0;border:none;background:' + C.primary + ';color:' + C.onPrimary + ';font-size:11px;font-weight:600;font-family:' + F.body + ';cursor:pointer;">Save Evidence</button>' +
+    '</div>';
+
+  // Tag toggle
+  let selectedTag: HighlightTag | null = existingTag;
+  const updateTagStyles = () => {
+    annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
+      const active = btn.dataset.tag === selectedTag;
+      btn.style.background = active ? C.secondaryContainer + '99' : 'transparent';
+      btn.style.color = active ? C.secondary : C.textSecondary;
+      btn.style.borderColor = active ? C.secondary + '66' : C.border;
+    });
+  };
+  annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedTag = selectedTag === (btn.dataset.tag as HighlightTag) ? null : (btn.dataset.tag as HighlightTag);
+      updateTagStyles();
+    });
+  });
+
+  // Close / Cancel
+  const doCancel = () => {
+    hideAnnotationPopup();
+    if (config.mode === 'create-hotspot') exitHotspotMode();
+  };
+  annotationPopup.querySelector('#oer-pop-close')?.addEventListener('click', doCancel);
+  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', doCancel);
+
+  // Drag header
+  const hdrEl = annotationPopup.querySelector<HTMLElement>('#oer-pop-header');
+  if (hdrEl) {
+    hdrEl.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('#oer-pop-close')) return;
+      e.preventDefault();
+      const sMouseX = e.clientX;
+      const sMouseY = e.clientY;
+      const sLeft = parseInt(annotationPopup.style.left, 10) || 0;
+      const sTop  = parseInt(annotationPopup.style.top,  10) || 0;
+      hdrEl.style.cursor = 'grabbing';
+      const onMove = (ev: PointerEvent) => {
+        const nl = Math.max(0, Math.min(sLeft + ev.clientX - sMouseX, window.innerWidth - annotationPopup.offsetWidth));
+        const nt = Math.max(0, Math.min(sTop  + ev.clientY - sMouseY, window.innerHeight - annotationPopup.offsetHeight));
+        annotationPopup.style.left = nl + 'px';
+        annotationPopup.style.top  = nt + 'px';
+      };
+      const onUp = () => {
+        hdrEl.style.cursor = 'grab';
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  }
+
+  // Save
+  const bodyEl = annotationPopup.querySelector<HTMLTextAreaElement>('#oer-pop-body')!;
+  const criterionEl = annotationPopup.querySelector<HTMLSelectElement>('#oer-pop-criterion')!;
+  const chevronEl = annotationPopup.querySelector<HTMLElement>('#oer-crit-chevron');
+  const saveBtn = annotationPopup.querySelector<HTMLButtonElement>('#oer-pop-save')!;
+  const hintEl = annotationPopup.querySelector<HTMLElement>('#oer-pop-hint')!;
+
+  const updateSaveState = (disabled: boolean) => {
+    saveBtn.disabled = disabled;
+    saveBtn.style.background = disabled ? C.surfaceContainerHigh : C.primary;
+    saveBtn.style.color = disabled ? C.textMuted : C.onPrimary;
+    saveBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    hintEl.style.display = disabled ? '' : 'none';
+  };
+  updateSaveState(existingBody === '');
+
+  bodyEl.addEventListener('input', () => {
+    bodyEl.style.borderBottomColor = C.border;
+    updateSaveState(bodyEl.value.trim() === '');
+  });
+  bodyEl.addEventListener('focus', () => { bodyEl.style.borderBottomColor = C.primary; });
+  bodyEl.addEventListener('blur',  () => { bodyEl.style.borderBottomColor = C.border; });
+  criterionEl.addEventListener('focus', () => { if (chevronEl) chevronEl.style.transform = 'translateY(-50%) rotate(180deg)'; });
+  criterionEl.addEventListener('blur',  () => { if (chevronEl) chevronEl.style.transform = 'translateY(-50%)'; });
+
+  saveBtn.addEventListener('click', async () => {
+    const body = bodyEl.value.trim();
+    const selectedCriterionId = criterionEl.value || null;
+
+    if (config.mode === 'create-text') {
+      const rawAnchor = config.anchor;
+      hideAnnotationPopup();
+      const { pageName: pgName, pageType: pgType } = getTorusPageInfo();
+      const finalAnchor = { ...rawAnchor, pageUrl: window.location.href, pageName: pgName, pageType: pgType } as HtmlCharOffsetAnchor;
+      const savedAnns: AnnotationRecord[] = [];
+      const a = await saveAnnotation(selectedCriterionId, body, selectedTag, finalAnchor);
+      if (a) savedAnns.push(a);
+      setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
+
+    } else if (config.mode === 'create-hotspot') {
+      const rawAnchor = config.anchor;
+      const { pageName: pgName, pageType: pgType } = getTorusPageInfo();
+      const savedAnchor: PointAnchor = { ...rawAnchor, pageUrl: window.location.href, pageName: pgName, pageType: pgType };
+      hideAnnotationPopup();
+      exitHotspotMode();
+      const savedAnns: AnnotationRecord[] = [];
+      const a = await saveAnnotation(selectedCriterionId, body, selectedTag, savedAnchor);
+      if (a) savedAnns.push(a);
+      setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
+
+    } else {
+      const editAnn = config.annotation;
+      const oldKey = listKeyForAnnotation(editAnn);
+      setSaveStatus('saving');
+      const resp = await send({
+        type: 'UPDATE_ANNOTATION',
+        payload: { id: editAnn.id, body, tag: selectedTag, rubric_item_id: selectedCriterionId },
+      });
+      if (resp.success) {
+        editAnn.body = body;
+        editAnn.tag = selectedTag;
+        editAnn.rubric_item_id = selectedCriterionId;
+        setSaveStatus('saved');
+      } else {
+        setSaveStatus('error');
+      }
+      hideAnnotationPopup();
+      const newKey = listKeyForAnnotation(editAnn);
+      refreshAnnotationList(oldKey);
+      if (newKey !== oldKey) refreshAnnotationList(newKey);
+    }
+  });
+
+  // Position and show
+  hideAnnotationTooltip();
+  annotationPopup.style.display = 'block';
+  const popW = annotationPopup.offsetWidth || 300;
+  const popH = annotationPopup.offsetHeight || 280;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let popLeft = vw / 2 - popW / 2;
+  let popTop  = vh / 3;
+
+  if (config.mode === 'create-text') {
+    const sel = window.getSelection();
+    const selRange = sel && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
+    const rect = selRange?.getBoundingClientRect();
+    if (rect) {
+      popTop  = rect.top - popH - 8;
+      if (popTop < 8) popTop = rect.bottom + 8;
+      popLeft = rect.left;
+    }
+    if (selRange) { applyPendingHighlight(selRange); sel?.removeAllRanges(); }
+
+  } else if (config.mode === 'create-hotspot') {
+    const { clientX, clientY } = config;
+    popLeft = clientX + 12;
+    popTop  = clientY - popH / 2;
+    if (popLeft + popW > vw - PANEL_WIDTH - 8) popLeft = clientX - popW - 12;
+
+  } else {
+    const editAnn = config.annotation;
+    if (editAnn.anchor.type === 'html-char-offset') {
+      const mark = document.querySelector<HTMLElement>('mark[data-annotation-id="' + editAnn.id + '"]');
+      if (mark) {
+        const rect = mark.getBoundingClientRect();
+        popTop  = rect.top - popH - 8;
+        if (popTop < 8) popTop = rect.bottom + 8;
+        popLeft = rect.left;
+      }
+    } else if (editAnn.anchor.type === 'point') {
+      const pin = document.querySelector<HTMLElement>('.oer-hotspot-marker[data-annotation-id="' + editAnn.id + '"]');
+      if (pin) {
+        const rect = pin.getBoundingClientRect();
+        popLeft = rect.right + 12;
+        popTop  = rect.top - popH / 2;
+      }
+    }
+  }
+
+  popLeft = Math.max(8, Math.min(popLeft, vw - popW - 8));
+  popTop  = Math.max(8, Math.min(popTop,  vh - popH - 8));
+  annotationPopup.style.left = popLeft + 'px';
+  annotationPopup.style.top  = popTop  + 'px';
+  setTimeout(() => bodyEl.focus(), 0);
 }
 
 // ── Text selection popup ──────────────────────────────────────────────────────
 
+function openScreenshotModal(url: string) {
+  document.getElementById('oer-screenshot-modal')?.remove();
+  const backdrop = document.createElement('div');
+  backdrop.id = 'oer-screenshot-modal';
+  backdrop.style.cssText = `position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;`;
+
+  const img = document.createElement('img');
+  img.src = url;
+  img.style.cssText = `max-width:90vw;max-height:90vh;object-fit:contain;border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:block;`;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = `position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:24px;line-height:1;cursor:pointer;border-radius:4px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;`;
+
+  const close = () => backdrop.remove();
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  closeBtn.addEventListener('click', close);
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+
+  backdrop.appendChild(img);
+  backdrop.appendChild(closeBtn);
+  document.body.appendChild(backdrop);
+}
+
 function createAnnotationPopupEl() {
   annotationPopup = document.createElement('div');
   annotationPopup.id = 'oer-ann-popup';
-  annotationPopup.style.cssText = `
-    position: absolute;
-    z-index: 2147483646;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
-    padding: 14px;
-    width: 300px;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 13px;
-    color: #1a202c;
-    display: none;
-  `;
+  annotationPopup.style.cssText = [
+    'position:fixed',
+    'z-index:2147483646',
+    'background:' + tokens.color.surfaceCard,
+    'border:1px solid ' + tokens.color.border,
+    'border-radius:0',
+    'box-shadow:0 8px 32px rgba(4,22,39,0.14),0 2px 8px rgba(4,22,39,0.06)',
+    'width:300px',
+    'font-family:' + tokens.font.body,
+    'font-size:12px',
+    'color:' + tokens.color.textPrimary,
+    'display:none',
+    'overflow:hidden',
+  ].join(';');
   document.body.appendChild(annotationPopup);
 
-  // Prevent clicks inside popup from clearing the text selection, but allow
-  // textarea and input clicks through so focus can be placed after interacting
-  // with criteria checkboxes.
+  // Prevent clicks inside popup from propagating in ways that clear selection,
+  // but allow interactive elements (textarea, select, button) through so they
+  // receive native browser handling (dropdown open, focus, click).
   annotationPopup.addEventListener('mousedown', e => {
     const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return;
     e.preventDefault();
   });
 }
@@ -1465,18 +1961,18 @@ function createAnnotationTooltip() {
   annotationTooltip.style.cssText = [
     'position:fixed',
     'z-index:2147483647',
-    'background:#1a202c',
-    'color:#e2e8f0',
-    'border-radius:8px',
-    'padding:8px 12px',
-    'font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif',
+    'min-width:220px',
+    'max-width:300px',
+    'background:' + tokens.color.surfaceCard,
+    'border:1px solid ' + tokens.color.border,
+    'border-radius:0',
+    'box-shadow:0 12px 40px rgba(28,28,24,0.06)',
+    'font-family:' + tokens.font.body,
     'font-size:12px',
-    'line-height:1.5',
-    'max-width:260px',
-    'box-shadow:0 4px 16px rgba(0,0,0,0.3)',
+    'color:' + tokens.color.textPrimary,
     'pointer-events:auto',
     'display:none',
-    'word-break:break-word',
+    'overflow:hidden',
   ].join(';');
   annotationTooltip.addEventListener('mouseenter', cancelHideTooltip);
   annotationTooltip.addEventListener('mouseleave', scheduleHideTooltip);
@@ -1488,55 +1984,105 @@ function showAnnotationTooltipFor(annId: string, clientX: number, clientY: numbe
   cancelHideTooltip();
   const ann = annotations.find(a => a.id === annId);
   if (!ann) return;
+  if (annotationPopup.style.display !== 'none') return;
 
-  const criterionLabel = ann.rubric_item_id
-    ? rubricItems.find(r => r.id === ann.rubric_item_id)?.label ?? null
-    : null;
+  const C = tokens.color;
 
-  const actionBtnStyle = 'cursor:pointer;background:rgba(255,255,255,0.12);border:none;color:#e2e8f0;' +
-    'font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;';
+  const ri = ann.rubric_item_id ? rubricItems.find(r => r.id === ann.rubric_item_id) : null;
+  const criterionIdx = ri ? rubricItems.indexOf(ri) + 1 : null;
+  const labelAlreadyHasPrefix = ri ? /^C\d+\s/.test(ri.label) : false;
+  const criterionLabel = ri ? (labelAlreadyHasPrefix ? ri.label : 'C' + criterionIdx + ' ' + ri.label) : null;
 
-  let html = '';
-  if (criterionLabel) {
-    const code = criterionLabel.split(' · ')[0] ?? criterionLabel;
-    html += `<div style="font-size:10px;font-weight:700;color:#90cdf4;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px;">${escHtml(code)}</div>`;
-  }
-  html += `<div>${escHtml(ann.body.slice(0, 140))}${ann.body.length > 140 ? '…' : ''}</div>`;
-  html += `
-    <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.12);">
-      <button class="tt-open" style="${actionBtnStyle}">↗ Open</button>
-      <button class="tt-edit" style="${actionBtnStyle}">✎ Edit</button>
-      <button class="tt-delete" style="cursor:pointer;background:rgba(229,62,62,0.25);border:none;color:#feb2b2;font-size:11px;font-weight:600;padding:4px 8px;border-radius:5px;font-family:inherit;">🗑 Delete</button>
-    </div>
-  `;
+  const bodyText = ann.body.trim();
+  const bodyDisplay = bodyText
+    ? escHtml(bodyText.slice(0, 80)) + (bodyText.length > 80 ? '…' : '')
+    : '<em style="color:' + C.textMuted + ';">No comment written</em>';
+
+  const iconBtnBase = 'background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;line-height:1;font-family:inherit;transition:opacity 0.1s;opacity:0.7;';
+  const tagStyle = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 8px;border-radius:9999px;letter-spacing:0.04em;' +
+    'background:' + C.secondaryContainer + '99;color:' + C.secondary + ';border:1px solid ' + C.secondary + '66;';
+  const arrowUpRight = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>';
+
+  const html =
+    // ── Header ──
+    '<div style="padding:12px 16px;border-bottom:1px solid ' + C.border + ';display:flex;align-items:flex-start;gap:8px;background:' + C.surface + ';">' +
+      '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;' +
+        (criterionLabel ? 'color:' + C.textSecondary + ';' : 'color:' + C.textMuted + ';font-style:italic;') + '">' +
+        (criterionLabel ? escHtml(criterionLabel) : 'No criterion linked') +
+      '</span>' +
+      '<div style="display:flex;gap:4px;flex-shrink:0;">' +
+        '<button class="tt-edit" style="' + iconBtnBase + 'color:' + C.textMuted + ';">' + SVG_EDIT_ICON + '</button>' +
+        '<button class="tt-delete" style="' + iconBtnBase + 'color:' + C.error + ';">' + SVG_DELETE_ICON + '</button>' +
+      '</div>' +
+    '</div>' +
+    // ── Comment ──
+    '<div style="padding:12px 16px 4px;font-size:12px;color:' + C.textSecondary + ';line-height:1.5;word-break:break-word;">' +
+      bodyDisplay +
+    '</div>' +
+    // ── View full comment (only when truncated) ──
+    (bodyText.length > 80
+      ? '<div style="padding:0 16px 8px;">' +
+          '<button class="tt-view-full" style="background:none;border:none;cursor:pointer;font-size:12px;color:' + C.secondary + ';opacity:0.7;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;line-height:1.5;transition:opacity 0.1s;">' +
+            'View full comment ' + arrowUpRight +
+          '</button>' +
+        '</div>'
+      : '') +
+    // ── Tag pill ──
+    (ann.tag
+      ? '<div style="padding:0 16px 12px;">' +
+          '<span style="' + tagStyle + '">' +
+            (ann.tag === 'action_item' ? SVG_TAG_ACTION + ' Action Item' : SVG_TAG_QUICK + ' Quick Fix') +
+          '</span>' +
+        '</div>'
+      : (!bodyText && !ann.tag ? '' : (bodyText.length <= 80 ? '<div style="padding-bottom:12px;"></div>' : '')));
 
   annotationTooltip.innerHTML = html;
   annotationTooltip.style.display = 'block';
 
-  annotationTooltip.querySelector('.tt-open')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    scrollToAnnotationInPanel(annId);
-  });
-  annotationTooltip.querySelector('.tt-edit')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    scrollToAnnotationInPanel(annId);
-    editAnnotation(annId);
-  });
-  annotationTooltip.querySelector('.tt-delete')?.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    hideAnnotationTooltip();
-    deleteAnnotation(annId);
-  });
+  // Edit icon — opacity hover, opens overlay popup
+  const editBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-edit');
+  if (editBtn) {
+    editBtn.addEventListener('mouseenter', () => { editBtn.style.opacity = '1'; });
+    editBtn.addEventListener('mouseleave', () => { editBtn.style.opacity = '0.7'; });
+    editBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      const annToEdit = annotations.find(a => a.id === annId);
+      if (annToEdit) openAnnotationPopup({ mode: 'edit', annotation: annToEdit });
+    });
+  }
 
-  const tipW = 260;
+  // Delete icon — opacity hover, deletes annotation
+  const deleteBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1'; });
+    deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0.7'; });
+    deleteBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      deleteAnnotation(annId);
+    });
+  }
+
+  // View full comment — opacity hover, scrolls to evidence card in panel
+  const viewFullBtn = annotationTooltip.querySelector<HTMLButtonElement>('.tt-view-full');
+  if (viewFullBtn) {
+    viewFullBtn.addEventListener('mouseenter', () => { viewFullBtn.style.opacity = '1'; });
+    viewFullBtn.addEventListener('mouseleave', () => { viewFullBtn.style.opacity = '0.7'; });
+    viewFullBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      hideAnnotationTooltip();
+      scrollToAnnotationInPanel(annId);
+    });
+  }
+
+  const tipW = 300;
   let left = clientX - tipW / 2;
-  let top = clientY - (annotationTooltip.offsetHeight || 56) - 12;
+  let top = clientY - (annotationTooltip.offsetHeight || 80) - 12;
   left = Math.max(8, Math.min(left, window.innerWidth - tipW - 8));
   if (top < 8) top = clientY + 20;
-  annotationTooltip.style.left = `${left}px`;
-  annotationTooltip.style.top = `${top}px`;
+  annotationTooltip.style.left = left + 'px';
+  annotationTooltip.style.top = top + 'px';
 }
 
 function hideAnnotationTooltip() {
@@ -1545,138 +2091,12 @@ function hideAnnotationTooltip() {
 }
 
 function showAnnotationPopup(anchor: HtmlCharOffsetAnchor) {
-  pendingAnchor = anchor;
-  annotationPopup.style.position = 'absolute';
-  const quote = (anchor.selector.find(s => s.type === 'TextQuoteSelector') as { exact?: string })?.exact ?? '';
-  const sel = window.getSelection();
-  const selRange = sel && !sel.isCollapsed ? sel.getRangeAt(0).cloneRange() : null;
-  const rect = selRange?.getBoundingClientRect();
-
-  const criteriaCheckboxes = rubricItems.map(item => {
-    const code = item.label.split(' · ')[0] ?? item.label;
-    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
-      <input type="checkbox" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
-    </label>`;
-  }).join('');
-
-  annotationPopup.innerHTML = `
-    <div style="font-size:11px;color:#718096;margin-bottom:8px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-      "${quote.slice(0, 60)}${quote.length > 60 ? '…' : ''}"
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criteria <span style="font-weight:400;color:#a0aec0;">(select all that apply)</span></label>
-      <div style="max-height:110px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
-        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
-      </div>
-      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave all unchecked to save as an unlinked annotation</div>
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Tag</label>
-      <div style="display:flex;gap:6px;">
-        <button class="oer-tag-btn" data-tag="action_item" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Action Item</button>
-        <button class="oer-tag-btn" data-tag="quick_fix" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Quick Fix</button>
-      </div>
-    </div>
-
-    <div style="margin-bottom:10px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
-      <textarea id="oer-pop-body" rows="3" placeholder="Add a note…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;color:#1a202c;box-sizing:border-box;outline:none;"></textarea>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <button id="oer-pop-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
-      <button id="oer-pop-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Annotate</button>
-    </div>
-  `;
-
-  // Tag toggle state
-  let selectedTag: HighlightTag | null = null;
-  annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag as HighlightTag;
-      selectedTag = selectedTag === tag ? null : tag;
-      annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(b => {
-        const isActive = b.dataset.tag === selectedTag;
-        const color = b.dataset.tag === 'action_item' ? '#c2410c' : '#1d4ed8';
-        const bg = b.dataset.tag === 'action_item' ? '#fed7aa' : '#bfdbfe';
-        const border = b.dataset.tag === 'action_item' ? '#fb923c' : '#93c5fd';
-        b.style.background = isActive ? bg : '#f7fafc';
-        b.style.color = isActive ? color : '#718096';
-        b.style.borderColor = isActive ? border : '#e2e8f0';
-      });
-    });
-  });
-
-  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', hideAnnotationPopup);
-
-  annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
-    if (!pendingAnchor) return;
-    const checkedCriteria = [...annotationPopup.querySelectorAll<HTMLInputElement>('.oer-crit-check:checked')]
-      .map(cb => cb.value);
-    const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
-    if (!body) {
-      (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)
-        .style.borderColor = '#fc8181';
-      return;
-    }
-    const rawAnchor = pendingAnchor;
-    hideAnnotationPopup();
-
-    // Always keep the text-position anchor so applyHighlights() can mark the text in the DOM.
-    // Record pageUrl (for the "View" button) and pageName (shown on Torus multi-page courses).
-    // Screenshot is taken AFTER save so the highlight mark appears in the image.
-    const finalAnchor = {
-      ...rawAnchor,
-      pageUrl: window.location.href,
-      pageName: document.title,
-    } as HtmlCharOffsetAnchor;
-
-    const savedAnns: AnnotationRecord[] = [];
-    if (checkedCriteria.length === 0) {
-      const a = await saveAnnotation(null, body, selectedTag, finalAnchor);
-      if (a) savedAnns.push(a);
-    } else {
-      for (const criterionId of checkedCriteria) {
-        const a = await saveAnnotation(criterionId, body, selectedTag, finalAnchor);
-        if (a) savedAnns.push(a);
-      }
-    }
-
-    // Capture screenshot after highlight marks are in the DOM (~200 ms for paint).
-    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
-  });
-
-  // Position popup near selection
-  if (rect) {
-    const top = rect.top + window.scrollY - annotationPopup.offsetHeight - 8;
-    const left = Math.min(
-      rect.left + window.scrollX,
-      window.innerWidth - 316
-    );
-    annotationPopup.style.top = `${Math.max(window.scrollY + 4, top)}px`;
-    annotationPopup.style.left = `${Math.max(4, left)}px`;
-  }
-
-  // Apply persistent pending highlight and clear native browser selection.
-  // This keeps the selected text visually highlighted while the popup is open.
-  if (selRange) {
-    applyPendingHighlight(selRange);
-    sel?.removeAllRanges();
-  }
-
-  annotationPopup.style.display = 'block';
-  setTimeout(() => {
-    (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
-  }, 0);
+  openAnnotationPopup({ mode: 'create-text', anchor });
 }
 
 function hideAnnotationPopup() {
   clearPendingHighlight();
   annotationPopup.style.display = 'none';
-  pendingAnchor = null;
-  pendingHotspotAnchor = null;
 }
 
 // ── Hotspot mode ──────────────────────────────────────────────────────────────
@@ -1693,11 +2113,11 @@ function enterHotspotMode() {
     top: 12px;
     left: calc(50% - ${PANEL_WIDTH / 2}px);
     transform: translateX(-50%);
-    background: #3D6FA9;
-    color: white;
+    background: ${tokens.color.secondaryContainer};
+    color: ${tokens.color.onSecondaryContainer};
     padding: 8px 16px;
     border-radius: 20px;
-    font-family: Inter, -apple-system, sans-serif;
+    font-family: ${tokens.font.body};
     font-size: 12px;
     font-weight: 500;
     z-index: 2147483646;
@@ -1708,7 +2128,7 @@ function enterHotspotMode() {
     pointer-events: none;
     white-space: nowrap;
   `;
-  banner.innerHTML = `📍 Click anywhere to place a hotspot &nbsp;<span style="background:rgba(255,255,255,0.2);padding:2px 7px;border-radius:10px;font-size:11px;">Esc to cancel</span>`;
+  banner.innerHTML = `📍 Click anywhere to place a hotspot &nbsp;<span style="background:rgba(0,0,0,0.1);padding:2px 7px;border-radius:10px;font-size:11px;">Esc to cancel</span>`;
   document.body.appendChild(banner);
 }
 
@@ -1720,117 +2140,7 @@ function exitHotspotMode() {
 }
 
 function showHotspotPopup(anchor: PointAnchor, clientX: number, clientY: number) {
-  pendingHotspotAnchor = anchor;
-
-  const criteriaCheckboxes = rubricItems.map(item => {
-    const code = item.label.split(' · ')[0] ?? item.label;
-    return `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-radius:3px;user-select:none;" onmouseover="this.style.background='#f7fafc'" onmouseout="this.style.background='transparent'">
-      <input type="checkbox" class="oer-crit-check" value="${item.id}" style="cursor:pointer;flex-shrink:0;"> ${code}
-    </label>`;
-  }).join('');
-
-  annotationPopup.style.position = 'fixed';
-  annotationPopup.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-      <svg width="14" height="14" viewBox="0 0 28 36" fill="#3D6FA9"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>
-      <span style="font-size:12px;font-weight:600;color:#2d3748;">Hotspot Annotation</span>
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Criteria <span style="font-weight:400;color:#a0aec0;">(select all that apply)</span></label>
-      <div style="max-height:100px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;padding:2px 2px;">
-        ${criteriaCheckboxes || '<span style="font-size:11px;color:#a0aec0;padding:4px 6px;display:block;">No criteria available</span>'}
-      </div>
-      <div style="font-size:10px;color:#a0aec0;margin-top:3px;">Leave all unchecked to save as an unlinked annotation</div>
-    </div>
-
-    <div style="margin-bottom:8px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Tag</label>
-      <div style="display:flex;gap:6px;">
-        <button class="oer-tag-btn" data-tag="action_item" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Action Item</button>
-        <button class="oer-tag-btn" data-tag="quick_fix" style="flex:1;padding:5px;border-radius:5px;border:1.5px solid #e2e8f0;background:#f7fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;color:#718096;">Quick Fix</button>
-      </div>
-    </div>
-
-    <div style="margin-bottom:10px;">
-      <label style="display:block;font-size:11px;font-weight:600;color:#4a5568;margin-bottom:4px;">Note</label>
-      <textarea id="oer-pop-body" rows="3" placeholder="Describe this hotspot…" style="width:100%;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;resize:none;font-family:inherit;color:#1a202c;box-sizing:border-box;outline:none;"></textarea>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <button id="oer-pop-cancel" style="flex:1;padding:7px;border-radius:6px;border:1px solid #e2e8f0;background:#f7fafc;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;color:#4a5568;">Cancel</button>
-      <button id="oer-pop-save" style="flex:1;padding:7px;border-radius:6px;border:none;background:#3D6FA9;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Save Hotspot</button>
-    </div>
-  `;
-
-  // Tag toggle state (mirrors the text-highlight popup)
-  let selectedTag: HighlightTag | null = null;
-  annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tag = btn.dataset.tag as HighlightTag;
-      selectedTag = selectedTag === tag ? null : tag;
-      annotationPopup.querySelectorAll<HTMLButtonElement>('.oer-tag-btn').forEach(b => {
-        const isActive = b.dataset.tag === selectedTag;
-        const color = b.dataset.tag === 'action_item' ? '#c2410c' : '#1d4ed8';
-        const bg = b.dataset.tag === 'action_item' ? '#fed7aa' : '#bfdbfe';
-        const border = b.dataset.tag === 'action_item' ? '#fb923c' : '#93c5fd';
-        b.style.background = isActive ? bg : '#f7fafc';
-        b.style.color = isActive ? color : '#718096';
-        b.style.borderColor = isActive ? border : '#e2e8f0';
-      });
-    });
-  });
-
-  annotationPopup.querySelector('#oer-pop-cancel')?.addEventListener('click', () => {
-    hideAnnotationPopup();
-    exitHotspotMode();
-  });
-
-  annotationPopup.querySelector('#oer-pop-save')?.addEventListener('click', async () => {
-    if (!pendingHotspotAnchor) return;
-    const checkedCriteria = [...annotationPopup.querySelectorAll<HTMLInputElement>('.oer-crit-check:checked')]
-      .map(cb => cb.value);
-    const body = (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).value.trim();
-    if (!body) {
-      (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement).style.borderColor = '#fc8181';
-      return;
-    }
-    const savedAnchor: PointAnchor = {
-      ...pendingHotspotAnchor,
-      pageName: document.title,
-    };
-    hideAnnotationPopup();
-    exitHotspotMode();
-
-    const savedAnns: AnnotationRecord[] = [];
-    if (checkedCriteria.length === 0) {
-      const a = await saveAnnotation(null, body, selectedTag, savedAnchor);
-      if (a) savedAnns.push(a);
-    } else {
-      for (const criterionId of checkedCriteria) {
-        const a = await saveAnnotation(criterionId, body, selectedTag, savedAnchor);
-        if (a) savedAnns.push(a);
-      }
-    }
-
-    // Screenshot after hotspot marker is placed in the DOM.
-    setTimeout(() => attachScreenshotToAnnotations(savedAnns), 200);
-  });
-
-  // Position near click, keep within viewport
-  const popupW = 300;
-  const popupH = 340;
-  let left = clientX + 12;
-  let top = clientY - popupH / 2;
-  if (left + popupW > window.innerWidth - PANEL_WIDTH - 8) left = clientX - popupW - 12;
-  top = Math.max(8, Math.min(top, window.innerHeight - popupH - 8));
-  annotationPopup.style.top = `${top}px`;
-  annotationPopup.style.left = `${Math.max(8, left)}px`;
-  annotationPopup.style.display = 'block';
-
-  setTimeout(() => {
-    (annotationPopup.querySelector('#oer-pop-body') as HTMLTextAreaElement)?.focus();
-  }, 0);
+  openAnnotationPopup({ mode: 'create-hotspot', anchor, clientX, clientY });
 }
 
 function handleMouseUp(e: MouseEvent) {
@@ -1876,12 +2186,12 @@ function showToast(message: string) {
       position: fixed;
       bottom: 20px;
       right: 20px;
-      background: #2d3748;
-      color: white;
+      background: ${tokens.color.secondaryContainer};
+      color: ${tokens.color.onSecondaryContainer};
       padding: 8px 14px;
       border-radius: 6px;
       font-size: 12px;
-      font-family: Inter, -apple-system, sans-serif;
+      font-family: ${tokens.font.body};
       z-index: 2147483647;
       opacity: 0;
       transition: opacity 0.2s;
@@ -1908,6 +2218,11 @@ function escHtml(str: string): string {
 function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'torus-access' | 'review') {
   if (!panelBody) return;
 
+  // Footer lives outside panel-body in the outer shell — hide it for all
+  // states except 'review', where a hotspot placement is meaningful.
+  const panelFt = shadow?.querySelector<HTMLElement>('.panel-ft');
+  if (panelFt) panelFt.style.display = state === 'review' ? '' : 'none';
+
   switch (state) {
     case 'loading':
       panelBody.innerHTML = `
@@ -1921,19 +2236,24 @@ function renderContent(state: 'loading' | 'login' | 'no-assignments' | 'torus-ac
     case 'login':
       panelBody.innerHTML = `
         <div class="state-box" style="padding:24px 20px;">
-          <div style="font-size:28px;margin-bottom:8px;">🔒</div>
-          <p class="state-title">Sign in to review</p>
-          <p class="state-sub" style="margin-bottom:16px;">Use your OER Hub account credentials</p>
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input id="login-email" type="email" class="input" placeholder="you@institution.edu" />
+          <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:44px;height:44px;display:block;margin-bottom:12px;flex-shrink:0;">
+            <circle cx="40" cy="40" r="39.75" fill="#FEF5DE" stroke="#C4C6CD" stroke-width="0.5"/>
+            <path d="M53.9643 27H44.6429C43.8389 27 43.046 27.1883 42.3269 27.5499C41.6079 27.9115 40.9824 28.4365 40.5 29.0833C40.0176 28.4365 39.3921 27.9115 38.6731 27.5499C37.954 27.1883 37.1611 27 36.3571 27H27.0357C26.761 27 26.4976 27.1097 26.3034 27.3051C26.1091 27.5004 26 27.7654 26 28.0417V46.7917C26 47.0679 26.1091 47.3329 26.3034 47.5282C26.4976 47.7236 26.761 47.8333 27.0357 47.8333H36.3571C37.1812 47.8333 37.9715 48.1626 38.5542 48.7486C39.1369 49.3347 39.4643 50.1295 39.4643 50.9583C39.4643 51.2346 39.5734 51.4996 39.7676 51.6949C39.9619 51.8903 40.2253 52 40.5 52C40.7747 52 41.0381 51.8903 41.2324 51.6949C41.4266 51.4996 41.5357 51.2346 41.5357 50.9583C41.5357 50.1295 41.8631 49.3347 42.4458 48.7486C43.0285 48.1626 43.8188 47.8333 44.6429 47.8333H53.9643C54.239 47.8333 54.5024 47.7236 54.6966 47.5282C54.8909 47.3329 55 47.0679 55 46.7917V28.0417C55 27.7654 54.8909 27.5004 54.6966 27.3051C54.5024 27.1097 54.239 27 53.9643 27ZM36.3571 45.75H28.0714V29.0833H36.3571C37.1812 29.0833 37.9715 29.4126 38.5542 29.9986C39.1369 30.5847 39.4643 31.3795 39.4643 32.2083V46.7917C38.5688 46.1138 37.4779 45.7481 36.3571 45.75ZM52.9286 45.75H44.6429C43.5221 45.7481 42.4312 46.1138 41.5357 46.7917V32.2083C41.5357 31.3795 41.8631 30.5847 42.4458 29.9986C43.0285 29.4126 43.8188 29.0833 44.6429 29.0833H52.9286V45.75ZM44.6429 32.2083H49.8214C50.0961 32.2083 50.3596 32.3181 50.5538 32.5134C50.748 32.7088 50.8571 32.9737 50.8571 33.25C50.8571 33.5263 50.748 33.7912 50.5538 33.9866C50.3596 34.1819 50.0961 34.2917 49.8214 34.2917H44.6429C44.3682 34.2917 44.1047 34.1819 43.9105 33.9866C43.7163 33.7912 43.6071 33.5263 43.6071 33.25C43.6071 32.9737 43.7163 32.7088 43.9105 32.5134C44.1047 32.3181 44.3682 32.2083 44.6429 32.2083ZM50.8571 37.4167C50.8571 37.6929 50.748 37.9579 50.5538 38.1532C50.3596 38.3486 50.0961 38.4583 49.8214 38.4583H44.6429C44.3682 38.4583 44.1047 38.3486 43.9105 38.1532C43.7163 37.9579 43.6071 37.6929 43.6071 37.4167C43.6071 37.1404 43.7163 36.8754 43.9105 36.6801C44.1047 36.4847 44.3682 36.375 44.6429 36.375H49.8214C50.0961 36.375 50.3596 36.4847 50.5538 36.6801C50.748 36.8754 50.8571 37.1404 50.8571 37.4167ZM50.8571 41.5833C50.8571 41.8596 50.748 42.1246 50.5538 42.3199C50.3596 42.5153 50.0961 42.625 49.8214 42.625H44.6429C44.3682 42.625 44.1047 42.5153 43.9105 42.3199C43.7163 42.1246 43.6071 41.8596 43.6071 41.5833C43.6071 41.3071 43.7163 41.0421 43.9105 40.8468C44.1047 40.6514 44.3682 40.5417 44.6429 40.5417H49.8214C50.0961 40.5417 50.3596 40.6514 50.5538 40.8468C50.748 41.0421 50.8571 41.3071 50.8571 41.5833Z" fill="#512906"/>
+          </svg>
+          <p class="state-title">Log In</p>
+          <p class="state-sub" style="margin-bottom:4px;">Use your O4PR Hub account credentials</p>
+          <div style="width:100%;max-width:400px;margin:0 auto;text-align:left;">
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input id="login-email" type="email" class="input" placeholder="you@institution.edu" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input id="login-password" type="password" class="input" placeholder="Password" />
+            </div>
+            <div id="login-error" style="color:${tokens.color.error};font-size:12px;margin-bottom:8px;display:none;"></div>
+            <button id="btn-login" class="btn btn-primary btn-full" style="margin-top:4px;">Sign In</button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input id="login-password" type="password" class="input" placeholder="Password" />
-          </div>
-          <div id="login-error" style="color:#e53e3e;font-size:12px;margin-bottom:8px;display:none;"></div>
-          <button id="btn-login" class="btn btn-primary btn-full" style="margin-top:4px;">Sign In</button>
         </div>
       `;
       shadow.getElementById('btn-login')?.addEventListener('click', handleLogin);
@@ -1990,68 +2310,58 @@ function renderReviewInterface() {
   // same reviewer — surface them as tabs instead of only ever showing the one
   // the extension happened to land on.
   const siblingReviews = assignments.filter(a => a.document_id === selectedReview!.document_id);
-  const rubricTabsHtml = siblingReviews.length > 1
-    ? `
-      <div class="rubric-tabs" id="rubric-tabs">
-        ${siblingReviews.map(sib => `
-          <button
-            class="rubric-tab${sib.id === selectedReview!.id ? ' active' : ''}"
-            data-review-id="${sib.id}"
-          >${escHtml(sib.rubrics?.title ?? 'Untitled rubric')}</button>
-        `).join('')}
-      </div>
-    `
+  const rubricTabsHtml = siblingReviews.length > 0
+    ? `<div class="rubric-tabs" id="rubric-tabs">${siblingReviews.map(sib => {
+        const cached = completionCountCache.get(sib.id);
+        const badge = cached
+          ? `<span class="tab-badge ${cached.scored === cached.total ? 'tab-badge-complete' : 'tab-badge-incomplete'}" id="tab-badge-${sib.id}">${cached.scored}/${cached.total}</span>`
+          : `<span class="tab-badge tab-badge-incomplete" id="tab-badge-${sib.id}" style="display:none"></span>`;
+        return `<button class="rubric-tab${sib.id === selectedReview!.id ? ' active' : ''}" data-review-id="${sib.id}">${escHtml(sib.rubrics?.title ?? 'Untitled rubric')}${badge}</button>`;
+      }).join('')}</div>`
     : '';
 
   panelBody.innerHTML = `
-    <div class="rubric-header">
-      <div style="flex:1;min-width:0;">
-        <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
-        <div class="rubric-name">${escHtml(selectedReview.rubrics?.title ?? '')}</div>
+    <div class="sticky-hd-group">
+      <div class="rubric-header">
+        <div style="flex:1;min-width:0;">
+          <div class="doc-title">${escHtml(selectedReview.documents?.title ?? 'Untitled')}</div>
+        </div>
+        <div class="rubric-header-btns">
+          <button class="btn-hotspot" id="btn-hotspot"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
+          <a class="btn-open-console" id="btn-open-console" href="${platformUrl}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
+        </div>
       </div>
-      <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">↗ Console</a>
+      ${rubricTabsHtml}
     </div>
 
-    ${rubricTabsHtml}
-
-    <div class="completion-bar">
-      <div class="completion-track">
-        <div class="completion-fill" id="completion-fill" style="width:0%"></div>
+    <div class="side-cards">
+      <div class="side-card">
+        <div class="side-card-hd" id="side-card-gc-hd">
+          <span class="side-card-title">General Comments</span>
+          <span class="gc-save-status" id="gc-save-status"></span>
+          <span class="expand-icon expanded" id="expand-gc"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </div>
+        <div class="side-card-bd open" id="side-card-gc-bd">
+          <textarea class="gc-textarea" id="general-comment-ta" placeholder="Add comments not tied to a specific criterion…"></textarea>
+        </div>
       </div>
-      <span class="completion-text" id="completion-text">0/${rubricItems.length}</span>
-    </div>
-
-    <div class="criterion-list" id="criterion-list"></div>
-
-    <div class="unlinked-section" style="padding:12px 16px;border-top:1px solid #f0f4f8;">
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
-        <p class="section-label" style="margin:0;">Unlinked Annotations</p>
-        <span class="unlinked-badge" id="unlinked-count">0</span>
-      </div>
-      <div id="unlinked-empty" style="display:none;font-size:11px;color:#a0aec0;line-height:1.4;">
-        Highlights and hotspots you make without picking a criterion appear here. Use “Link to criterion…” to categorize them.
-      </div>
-      <div class="ann-list" id="ann-list-__unlinked__"></div>
-    </div>
-
-    <div style="padding:12px 16px;border-top:1px solid #f0f4f8;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <p class="section-label">General Notes</p>
-        <button class="add-note-btn" id="btn-add-general-note">+ Add Note</button>
-      </div>
-      <div class="ann-list" id="ann-list-__free__"></div>
-      <div id="general-note-form" style="display:none;margin-top:8px;">
-        <textarea class="inline-note-input" id="general-note-input" rows="3" placeholder="Add a general note…"></textarea>
-        <div class="inline-note-actions">
-          <button class="inline-note-cancel" id="btn-cancel-general-note">Cancel</button>
-          <button class="inline-note-save" id="btn-save-general-note">Save Note</button>
+      <div class="side-card">
+        <div class="side-card-hd" id="side-card-ua-hd">
+          <div class="side-card-title-group">
+            <span class="side-card-title-text">Unlinked Annotations</span>
+            <span class="unlinked-count-badge" id="unlinked-count">0</span>
+          </div>
+          <span class="expand-icon" id="expand-ua"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+        </div>
+        <div class="side-card-bd" id="side-card-ua-bd">
+          <p class="ann-empty" id="unlinked-empty" style="display:none">All annotations have been linked to a criterion</p>
+          <div class="ann-list" id="ann-list-__unlinked__"></div>
         </div>
       </div>
     </div>
-  `;
 
-  completionFill = shadow.getElementById('completion-fill') as HTMLElement;
-  completionText = shadow.getElementById('completion-text') as HTMLElement;
+    <div class="criterion-list" id="criterion-list"></div>
+  `;
 
   shadow.querySelectorAll<HTMLButtonElement>('.rubric-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -2060,30 +2370,47 @@ function renderReviewInterface() {
     });
   });
 
-  shadow.getElementById('btn-add-general-note')?.addEventListener('click', () => {
-    const form = shadow.getElementById('general-note-form')!;
-    form.style.display = 'block';
-    shadow.getElementById('btn-add-general-note')!.style.display = 'none';
-    (shadow.getElementById('general-note-input') as HTMLTextAreaElement)?.focus();
+  shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
+    if (!selectedReview) { showToast('Select a review first'); return; }
+    if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
   });
 
-  shadow.getElementById('btn-cancel-general-note')?.addEventListener('click', () => {
-    shadow.getElementById('general-note-form')!.style.display = 'none';
-    (shadow.getElementById('general-note-input') as HTMLTextAreaElement).value = '';
-    shadow.getElementById('btn-add-general-note')!.style.display = '';
+  // Side card accordion toggles
+  shadow.getElementById('side-card-gc-hd')?.addEventListener('click', () => {
+    const bd = shadow.getElementById('side-card-gc-bd');
+    const icon = shadow.getElementById('expand-gc');
+    if (!bd) return;
+    const isOpen = bd.classList.toggle('open');
+    if (icon) icon.classList.toggle('expanded', isOpen);
   });
 
-  shadow.getElementById('btn-save-general-note')?.addEventListener('click', async () => {
-    const input = shadow.getElementById('general-note-input') as HTMLTextAreaElement;
-    const body = input?.value.trim() ?? '';
-    if (!body) { if (input) input.style.borderColor = '#fc8181'; return; }
-    input.style.borderColor = '#e2e8f0';
-    shadow.getElementById('general-note-form')!.style.display = 'none';
-    input.value = '';
-    shadow.getElementById('btn-add-general-note')!.style.display = '';
-    const anchor: BboxAnchor = { type: 'bbox', x: 0, y: 0, width: 0, height: 0, pageUrl: window.location.href };
-    await saveAnnotation(null, body, null, anchor);
+  shadow.getElementById('side-card-ua-hd')?.addEventListener('click', () => {
+    const bd = shadow.getElementById('side-card-ua-bd');
+    const icon = shadow.getElementById('expand-ua');
+    if (!bd) return;
+    const isOpen = bd.classList.toggle('open');
+    if (icon) icon.classList.toggle('expanded', isOpen);
   });
+
+  // General Comments autosave — writes to reviews.notes (same field the platform reads)
+  const gcTa = shadow.getElementById('general-comment-ta') as HTMLTextAreaElement;
+  if (gcTa) {
+    gcTa.value = selectedReview?.notes ?? '';
+    gcTa.addEventListener('input', () => {
+      if (gcTimer) clearTimeout(gcTimer);
+      setGCSaveStatus('saving');
+      gcTimer = setTimeout(async () => {
+        if (!selectedReview) return;
+        const resp = await send({ type: 'UPDATE_REVIEW_NOTES', payload: { reviewId: selectedReview.id, notes: gcTa.value } });
+        if (resp.success) {
+          selectedReview.notes = gcTa.value;
+          setGCSaveStatus('saved');
+        } else {
+          setGCSaveStatus('error');
+        }
+      }, SCORE_DEBOUNCE_MS);
+    });
+  }
 
   renderRubricCriteria();
   updateCompletion();
@@ -2097,55 +2424,45 @@ function renderRubricCriteria() {
 
   list.innerHTML = rubricItems.map((item, idx) => {
     const labelParts = item.label.split(' · ');
-    const code = labelParts[0] ?? `C${idx + 1}`;
-    const name = labelParts.slice(1).join(' · ') || item.label;
+    const code = labelParts.length > 1 ? labelParts[0] : `C${idx + 1}`;
+    const rawName = labelParts.length > 1 ? labelParts.slice(1).join(' · ') : item.label;
+    const name = rawName.replace(/^[A-Za-z]?\d+\s+/, '');
     const score = scores.get(item.id);
     const selectedLevels = score?.criterion_scores ?? [];
-    const badgeClass = selectedLevels.length === 0 ? 'unscored'
-      : selectedLevels.length === 1 ? selectedLevels[0]
-      : 'multi';
-    const badgeText = selectedLevels.length === 0 ? '—'
-      : selectedLevels.length === 1 ? SCORE_ABBR[selectedLevels[0]]
-      : selectedLevels.map(l => SCORE_ABBR[l]).join('+');
     const annCount = annotations.filter(a => a.rubric_item_id === item.id).length;
     const savedComments = scoreComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
 
     return `
-      <div class="criterion-item">
+      <div class="criterion-item" id="criterion-item-${item.id}">
         <div class="criterion-hd" data-id="${item.id}">
-          <span class="expand-icon" id="expand-${item.id}">▶</span>
+          <div class="status-circle${selectedLevels.length > 0 ? ' scored' : ''}" id="status-circle-${item.id}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
           <span class="crit-code">${escHtml(code)}</span>
           <span class="crit-name">${escHtml(name)}</span>
-          ${annCount > 0 ? `<span class="ann-count">${annCount}</span>` : ''}
-          <span class="score-badge ${badgeClass}" id="badge-${item.id}">${escHtml(badgeText)}</span>
+          <span class="evidence-badge" id="evidence-badge-${item.id}"${annCount === 0 ? ' style="display:none"' : ''}><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg><span id="evidence-count-${item.id}">${annCount}</span></span>
+          <div class="hdr-badges">
+            <span class="hdr-badge hdr-badge-exc${selectedLevels.includes('exceeds') ? ' active' : ''}" id="hdr-badge-exc-${item.id}">EXC</span>
+            <span class="hdr-badge hdr-badge-exe${selectedLevels.includes('exemplifies') ? ' active' : ''}" id="hdr-badge-exe-${item.id}">EXE</span>
+            <span class="hdr-badge hdr-badge-dnm${selectedLevels.includes('does_not_meet') ? ' active' : ''}" id="hdr-badge-dnm-${item.id}">DNM</span>
+          </div>
+          <span class="expand-icon" id="expand-${item.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div class="criterion-bd" id="crit-body-${item.id}">
-          <div class="crit-desc">${escHtml(item.description.slice(0, 200))}${item.description.length > 200 ? '…' : ''}</div>
-          <div class="score-btns">
-            ${((['does_not_meet', 'exemplifies', 'exceeds'] as CriterionScore[])).map(lvl => `
-              <button class="score-btn ${selectedLevels.includes(lvl) ? `active ${lvl}` : ''}" data-level="${lvl}" data-item="${item.id}">
-                ${SCORE_LABELS[lvl]}
-              </button>
-            `).join('')}
-          </div>
-          <div class="score-comment-box score-comment-dnm" id="score-comment-does_not_meet-${item.id}" style="display:${selectedLevels.includes('does_not_meet') ? 'block' : 'none'};">
-            <div class="score-comment-label">Why does this not meet the standard? <span class="score-comment-required">required</span></div>
-            <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="2" placeholder="Describe what's missing or needs improvement…">${escHtml(savedComments.does_not_meet.body)}</textarea>
-          </div>
-          <div class="score-comment-box score-comment-exc" id="score-comment-exceeds-${item.id}" style="display:${selectedLevels.includes('exceeds') ? 'block' : 'none'};">
-            <div class="score-comment-label">Why does this exceed the standard? <span class="score-comment-required">required</span></div>
-            <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="2" placeholder="Describe what makes this exemplary…">${escHtml(savedComments.exceeds.body)}</textarea>
-          </div>
-          <div class="ann-section-label">Annotations</div>
-          <div class="ann-list" id="ann-list-${item.id}"></div>
-          <button class="add-crit-comment-btn" data-item="${item.id}">+ Add Comment</button>
-          <div class="crit-comment-form" id="crit-comment-form-${item.id}" style="display:none;">
-            <textarea class="inline-note-input" id="crit-comment-input-${item.id}" rows="2" placeholder="Add a comment…"></textarea>
-            <div class="inline-note-actions">
-              <button class="inline-note-cancel crit-comment-cancel" data-item="${item.id}">Cancel</button>
-              <button class="inline-note-save crit-comment-save" data-item="${item.id}">Save</button>
+          <div class="rating-row">
+            <div class="rating-box rating-box-exceeds${selectedLevels.includes('exceeds') ? ' active' : ''}" id="rbox-exceeds-${item.id}" data-variant="exceeds" data-item="${item.id}">
+              <div class="rbox-label rbox-label-exceeds">Exceeds</div>
+              <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="4" placeholder="Note what exceeds the standard...">${escHtml(savedComments.exceeds.body)}</textarea>
+            </div>
+            <div class="rating-box rating-box-exemplifies${selectedLevels.includes('exemplifies') ? ' active' : ''}" id="rbox-exemplifies-${item.id}" data-variant="exemplifies" data-item="${item.id}">
+              <div class="rbox-label rbox-label-exemplifies">Exemplifies</div>
+              <div class="rbox-desc">${escHtml(item.description.replace(/\d+\.\s+/g, ''))}</div>
+            </div>
+            <div class="rating-box rating-box-dnm${selectedLevels.includes('does_not_meet') ? ' active' : ''}" id="rbox-dnm-${item.id}" data-variant="does_not_meet" data-item="${item.id}">
+              <div class="rbox-label rbox-label-dnm">Does Not Meet</div>
+              <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="4" placeholder="Note what does not meet the standard...">${escHtml(savedComments.does_not_meet.body)}</textarea>
             </div>
           </div>
+          <div class="ann-section-label" id="evidence-label-${item.id}">Evidence (${annCount})</div>
+          <div class="ann-list" id="ann-list-${item.id}"></div>
         </div>
       </div>
     `;
@@ -2159,66 +2476,74 @@ function renderRubricCriteria() {
       const icon = shadow.getElementById(`expand-${id}`);
       if (!body) return;
       const isOpen = body.classList.toggle('open');
-      if (icon) icon.textContent = isOpen ? '▼' : '▶';
+      if (icon) icon.classList.toggle('expanded', isOpen);
       if (isOpen) refreshAnnotationList(id);
       saveExpandedCriteria();
     });
   });
 
-  // Score buttons
-  list.querySelectorAll<HTMLButtonElement>('.score-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // Rating box click handlers (toggle score; textarea clicks pass through)
+  list.querySelectorAll<HTMLElement>('.rating-box').forEach(box => {
+    box.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleScore(btn.dataset.item!, btn.dataset.level as CriterionScore);
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'TEXTAREA' || target.closest('textarea')) return;
+      toggleScore(box.dataset.item!, box.dataset.variant as CriterionScore);
     });
   });
 
-  // Add Comment buttons
-  list.querySelectorAll<HTMLButtonElement>('.add-crit-comment-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const itemId = btn.dataset.item!;
-      const form = shadow.getElementById(`crit-comment-form-${itemId}`)!;
-      const isOpen = form.style.display !== 'none';
-      form.style.display = isOpen ? 'none' : 'block';
-      if (!isOpen) {
-        (shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement)?.focus();
-      }
+  // Focus-expand behavior (wide mode only — collapses the other textarea box)
+  list.querySelectorAll<HTMLTextAreaElement>('.score-comment-input').forEach(ta => {
+    ta.addEventListener('focus', () => {
+      const itemId = ta.dataset.item!;
+      const level = ta.dataset.level as 'does_not_meet' | 'exceeds';
+      const cardEl = shadow.getElementById(`criterion-item-${itemId}`);
+      if (!cardEl || cardEl.classList.contains('is-narrow')) return;
+      const transition = 'flex 150ms ease, max-width 150ms ease, opacity 150ms ease, padding 150ms ease';
+      const focused = shadow.getElementById(level === 'exceeds' ? `rbox-exceeds-${itemId}` : `rbox-dnm-${itemId}`);
+      const other   = shadow.getElementById(level === 'exceeds' ? `rbox-dnm-${itemId}` : `rbox-exceeds-${itemId}`);
+      const exemplifies = shadow.getElementById(`rbox-exemplifies-${itemId}`);
+      if (focused) { focused.style.flex = '2 1 0%'; focused.style.transition = transition; }
+      if (exemplifies) { exemplifies.style.flex = '1 1 0%'; exemplifies.style.transition = transition; }
+      if (other) Object.assign(other.style, { flex: '0 0 0%', maxWidth: '0', opacity: '0', overflow: 'hidden', padding: '0', transition });
+    });
+    ta.addEventListener('blur', () => {
+      const itemId = ta.dataset.item!;
+      const cardEl = shadow.getElementById(`criterion-item-${itemId}`);
+      if (!cardEl || cardEl.classList.contains('is-narrow')) return;
+      const transition = 'flex 150ms ease, max-width 150ms ease, opacity 150ms ease, padding 150ms ease';
+      [
+        shadow.getElementById(`rbox-exceeds-${itemId}`),
+        shadow.getElementById(`rbox-exemplifies-${itemId}`),
+        shadow.getElementById(`rbox-dnm-${itemId}`),
+      ].forEach(box => {
+        if (box) Object.assign(box.style, { flex: '1 1 0%', maxWidth: '', opacity: '', overflow: '', padding: '', transition });
+      });
     });
   });
 
-  list.querySelectorAll<HTMLButtonElement>('.crit-comment-cancel').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const itemId = btn.dataset.item!;
-      shadow.getElementById(`crit-comment-form-${itemId}`)!.style.display = 'none';
-      const input = shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement;
-      if (input) { input.value = ''; input.style.borderColor = '#e2e8f0'; }
-    });
-  });
-
-  list.querySelectorAll<HTMLButtonElement>('.crit-comment-save').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const itemId = btn.dataset.item!;
-      const input = shadow.getElementById(`crit-comment-input-${itemId}`) as HTMLTextAreaElement;
-      const body = input?.value.trim() ?? '';
-      if (!body) { if (input) input.style.borderColor = '#fc8181'; return; }
-      input.style.borderColor = '#e2e8f0';
-      shadow.getElementById(`crit-comment-form-${itemId}`)!.style.display = 'none';
-      input.value = '';
-      const anchor: BboxAnchor = { type: 'bbox', x: 0, y: 0, width: 0, height: 0 };
-      await saveAnnotation(itemId, body, null, anchor);
-    });
-  });
-
-  // Score comment inputs (required when Does Not Meet or Exceeds is selected)
+  // Score comment inputs: save text and auto-activate/deactivate the rating on typing.
   list.querySelectorAll<HTMLTextAreaElement>('.score-comment-input').forEach(ta => {
     ta.addEventListener('input', () => {
       const itemId = ta.dataset.item!;
       const level = ta.dataset.level as 'does_not_meet' | 'exceeds';
+      // Update in-memory body first so toggleScore → flushScore → syncScoreComment sees the new value.
       const prev = scoreComments.get(itemId) ?? EMPTY_SCORE_COMMENTS;
       scoreComments.set(itemId, { ...prev, [level]: { id: prev[level].id, body: ta.value } });
+
+      const trimmed = ta.value.trim();
+      const currentLevels = scores.get(itemId)?.criterion_scores ?? [];
+      if (trimmed && !currentLevels.includes(level)) {
+        // Typing into an unselected box — activate it exclusively; toggleScore handles UI + scheduling.
+        toggleScore(itemId, level);
+        return;
+      }
+      if (!trimmed && currentLevels.includes(level)) {
+        // Clearing the box — deactivate this rating.
+        toggleScore(itemId, level);
+        return;
+      }
+      // Score unchanged (already active or already inactive) — just persist the updated comment text.
       updateCompletion();
       setSaveStatus('saving');
       const existing = scoreTimers.get(itemId);
@@ -2236,8 +2561,32 @@ function renderRubricCriteria() {
     const icon = shadow.getElementById(`expand-${item.id}`);
     if (!body) return;
     body.classList.add('open');
-    if (icon) icon.textContent = '▼';
+    if (icon) icon.classList.add('expanded');
     refreshAnnotationList(item.id);
+  });
+
+  // ResizeObservers — toggle .is-narrow on each criterion card at 492px
+  criterionResizeObservers.forEach(obs => obs.disconnect());
+  criterionResizeObservers.clear();
+  rubricItems.forEach(item => {
+    const cardEl = shadow.getElementById(`criterion-item-${item.id}`);
+    if (!cardEl) return;
+    const obs = new ResizeObserver(([entry]) => {
+      const isNarrow = entry.contentRect.width < 492;
+      cardEl.classList.toggle('is-narrow', isNarrow);
+      if (isNarrow) {
+        // Clear any JS-applied focus-expand inline styles
+        [
+          shadow.getElementById(`rbox-exceeds-${item.id}`),
+          shadow.getElementById(`rbox-exemplifies-${item.id}`),
+          shadow.getElementById(`rbox-dnm-${item.id}`),
+        ].forEach(box => {
+          if (box) Object.assign(box.style, { flex: '', maxWidth: '', opacity: '', overflow: '', padding: '' });
+        });
+      }
+    });
+    obs.observe(cardEl);
+    criterionResizeObservers.set(item.id, obs);
   });
 }
 
@@ -2326,20 +2675,36 @@ function createPanel() {
 
   shadow.innerHTML = `
     <style>
+      @font-face {
+        font-family: 'Lato';
+        font-weight: 400;
+        src: url(${latoRegular}) format('woff2');
+      }
+      @font-face {
+        font-family: 'Lato';
+        font-weight: 700;
+        src: url(${latoBold}) format('woff2');
+      }
+      @font-face {
+        font-family: 'Newsreader';
+        font-weight: 200 800;
+        src: url(${newsreaderVariable}) format('woff2-variations');
+      }
+
       * { box-sizing: border-box; margin: 0; padding: 0; }
       :host { display: block; }
 
       .panel {
         width: 100%;
         height: 100%;
-        background: #fff;
-        border: 1px solid #c8d5e3;
+        background: ${tokens.color.surfaceCard};
+        border: 1px solid ${tokens.color.border};
         border-radius: 12px;
         display: flex;
         flex-direction: column;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: ${tokens.font.body};
         font-size: 14px;
-        color: #1a202c;
+        color: ${tokens.color.textPrimary};
         box-shadow: 0 8px 40px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
         overflow: hidden;
       }
@@ -2351,8 +2716,8 @@ function createPanel() {
         align-items: center;
         justify-content: space-between;
         padding: 10px 14px;
-        background: #3D6FA9;
-        color: #fff;
+        background: ${tokens.color.primary};
+        color: ${tokens.color.onPrimary};
         flex-shrink: 0;
         gap: 8px;
         cursor: grab;
@@ -2384,18 +2749,10 @@ function createPanel() {
         letter-spacing: 0.01em;
       }
 
-      .logo-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #C4622D;
-        flex-shrink: 0;
-      }
-
       .hd-btn {
         background: rgba(255,255,255,0.15);
         border: none;
-        color: #fff;
+        color: ${tokens.color.onPrimary};
         cursor: pointer;
         width: 26px;
         height: 26px;
@@ -2415,15 +2772,16 @@ function createPanel() {
         flex: 1;
         overflow-y: auto;
         overflow-x: hidden;
+        background: ${tokens.color.surface};
       }
 
       .panel-body::-webkit-scrollbar { width: 4px; }
       .panel-body::-webkit-scrollbar-track { background: transparent; }
-      .panel-body::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+      .panel-body::-webkit-scrollbar-thumb { background: ${tokens.color.border}; border-radius: 4px; }
 
       .panel-ft {
         padding: 10px 14px;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid ${tokens.color.border};
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -2431,10 +2789,13 @@ function createPanel() {
         gap: 8px;
       }
 
-      .save-status { font-size: 11px; color: #a0aec0; }
-      .save-status.saving { color: #C4622D; }
-      .save-status.saved  { color: #38a169; }
-      .save-status.error  { color: #e53e3e; }
+      .submit-reminder { font-size: 10px; color: ${tokens.color.textMuted}; font-style: italic; }
+
+      /* "saving" uses textMuted (matches platform's FreeNotesSection autosave pattern) */
+      .save-status { font-size: 11px; color: ${tokens.color.textMuted}; }
+      .save-status.saving { color: ${tokens.color.textMuted}; }
+      .save-status.saved  { color: ${tokens.color.success}; }
+      .save-status.error  { color: ${tokens.color.error}; }
 
       /* State boxes */
       .state-box {
@@ -2451,12 +2812,13 @@ function createPanel() {
       .state-title {
         font-size: 14px;
         font-weight: 600;
-        color: #2d3748;
+        color: ${tokens.color.textPrimary};
+        font-family: ${tokens.font.heading};
       }
 
       .state-sub {
-        font-size: 12px;
-        color: #718096;
+        font-size: 11px;
+        color: ${tokens.color.textSecondary};
         line-height: 1.5;
         max-width: 280px;
       }
@@ -2464,8 +2826,8 @@ function createPanel() {
       .spinner {
         width: 24px;
         height: 24px;
-        border: 2.5px solid #e2e8f0;
-        border-top-color: #3D6FA9;
+        border: 2.5px solid ${tokens.color.border};
+        border-top-color: ${tokens.color.primary};
         border-radius: 50%;
         animation: spin 0.7s linear infinite;
       }
@@ -2474,155 +2836,225 @@ function createPanel() {
       /* Forms */
       .input {
         width: 100%;
-        padding: 7px 10px;
-        border: 1px solid #e2e8f0;
-        border-radius: 6px;
-        font-size: 13px;
-        color: #1a202c;
-        background: #fff;
+        padding: 0 0 8px;
+        border: none;
+        border-bottom: 2px solid ${tokens.color.border};
+        border-radius: 0;
+        font-size: 11px;
+        color: ${tokens.color.textPrimary};
+        background: transparent;
         outline: none;
         font-family: inherit;
         transition: border-color 0.15s;
       }
-      .input:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+      .input::placeholder { color: ${tokens.color.textMuted}; }
+      .input:focus { border-bottom-color: ${tokens.color.primary}; }
+      .input.error { border-bottom-color: ${tokens.color.error}; }
 
-      .form-group { margin-bottom: 10px; }
-      .form-label { display: block; font-size: 11px; font-weight: 600; color: #4a5568; margin-bottom: 4px; }
+      .form-group { margin-bottom: 16px; }
+      .form-label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: ${tokens.color.textSecondary}; margin-bottom: 6px; }
 
-      .btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; }
-      .btn-primary { background: #3D6FA9; color: #fff; }
-      .btn-primary:hover { background: #2c5f96; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: inherit; transition: all 0.2s; }
+      .btn:active { transform: scale(0.99); }
+      .btn:focus-visible { outline: 2px solid ${tokens.color.primary}; outline-offset: 2px; }
+      .btn-primary { background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; }
+      .btn-primary:hover { background: ${tokens.color.primaryHover}; }
       .btn-full { width: 100%; }
 
-      .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #a0aec0; }
+      /* Side cards: General Comments + Unlinked Annotations */
+      .side-cards { display: flex; flex-direction: column; gap: 8px; padding: 16px 12px 0; }
+      .side-card { border: 1px solid ${tokens.color.border}; border-radius: 8px; background: ${tokens.color.surfaceCard}; overflow: hidden; box-shadow: inset 3px 0 0 ${tokens.color.secondary}; }
+      .side-card-hd { display: flex; align-items: center; gap: 8px; padding: 12px 16px; cursor: pointer; user-select: none; transition: background 0.1s; }
+      .side-card-title { flex: 1; font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; }
+      .side-card-title-group { display: flex; align-items: center; gap: 6px; flex: 1; }
+      .side-card-title-text { font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; }
+      .side-card-bd { display: none; border-top: 1px solid ${tokens.color.border}; padding: 12px 16px 16px; flex-direction: column; gap: 8px; }
+      .side-card-bd.open { display: flex; }
+      .ann-empty { font-size: 11px; font-style: italic; color: ${tokens.color.textMuted}; padding: 4px 0; }
+      .gc-textarea { width: 100%; padding: 8px 0; border: none; border-bottom: 2px solid ${tokens.color.border}; border-radius: 0; font-size: 12px; resize: vertical; min-height: 80px; font-family: inherit; color: ${tokens.color.textPrimary}; background: transparent; box-sizing: border-box; outline: none; transition: border-color 0.15s; }
+      .gc-textarea:focus { border-bottom-color: ${tokens.color.primary}; }
+      .gc-textarea::placeholder { color: ${tokens.color.textMuted}; }
+      .gc-save-status { font-size: 10px; flex-shrink: 0; }
+      .gc-save-status.saving { color: ${tokens.color.textMuted}; }
+      .gc-save-status.saved  { color: ${tokens.color.success}; }
+      .gc-save-status.error  { color: ${tokens.color.error}; }
+      .unlinked-count-badge { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; flex-shrink: 0; background: ${tokens.color.surfaceContainer}; color: ${tokens.color.textMuted}; }
+      .unlinked-count-badge.has-items { background: ${tokens.color.secondaryContainer}99; color: ${tokens.color.secondary}; }
+
+      /* Sticky header + tab group */
+      .sticky-hd-group {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: ${tokens.color.surfaceCard};
+      }
 
       /* Rubric header */
       .rubric-header {
         padding: 10px 14px;
-        background: #f7fafc;
-        border-bottom: 1px solid #e2e8f0;
+        background: ${tokens.color.surfaceCard};
+        border-bottom: 1px solid ${tokens.color.border};
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
         gap: 8px;
         flex-shrink: 0;
       }
-      .doc-title { font-size: 12px; font-weight: 600; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
-      .rubric-name { font-size: 11px; color: #718096; margin-top: 1px; }
+      .doc-title { font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+      .rubric-header-btns { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
-      .rubric-tabs { display: flex; gap: 2px; padding: 0 10px; background: #f7fafc; border-bottom: 1px solid #e2e8f0; overflow-x: auto; flex-shrink: 0; }
+      .rubric-tabs { display: flex; gap: 2px; padding: 0 10px; background: ${tokens.color.surfaceCard}; border-bottom: 1px solid ${tokens.color.border}; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
+      .rubric-tabs::-webkit-scrollbar { display: none; }
       .rubric-tab {
-        background: none; border: none; border-bottom: 2px solid transparent;
-        padding: 7px 10px; font-size: 11px; font-weight: 600; color: #718096;
+        display: inline-flex; align-items: center; gap: 6px;
+        background: ${tokens.color.surfaceCard}; border: none; border-bottom: 2px solid transparent;
+        padding: 7px 10px; font-size: 11px; font-weight: 600; color: ${tokens.color.textSecondary};
         cursor: pointer; white-space: nowrap; font-family: inherit; transition: color 0.15s, border-color 0.15s;
       }
-      .rubric-tab:hover { color: #3D6FA9; }
-      .rubric-tab.active { color: #3D6FA9; border-bottom-color: #3D6FA9; }
-
-      /* Completion */
-      .completion-bar { padding: 7px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #f0f4f8; }
-      .completion-track { flex: 1; height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
-      .completion-fill { height: 100%; background: #3D6FA9; border-radius: 2px; transition: width 0.3s; }
-      .completion-text { font-size: 11px; color: #a0aec0; white-space: nowrap; }
+      .rubric-tab:hover { color: ${tokens.color.primary}; }
+      .rubric-tab.active { color: ${tokens.color.primary}; border-bottom-color: ${tokens.color.primary}; background: ${tokens.color.surface}; }
+      .tab-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 9999px; border: 1px solid; flex-shrink: 0; }
+      .tab-badge-complete { background: ${tokens.color.successContainer}; color: ${tokens.color.success}; border-color: ${tokens.color.success}; }
+      .tab-badge-incomplete { background: ${tokens.color.secondaryContainer}; color: ${tokens.color.secondary}; border-color: ${tokens.color.secondary}; }
 
       /* Criterion cards */
-      .criterion-item { border-bottom: 1px solid #f0f4f8; }
-      .criterion-hd { display: flex; align-items: center; gap: 7px; padding: 10px 14px; cursor: pointer; transition: background 0.1s; user-select: none; }
-      .criterion-hd:hover { background: #f7fafc; }
-      .expand-icon { font-size: 9px; color: #a0aec0; width: 12px; flex-shrink: 0; }
-      .crit-code { font-size: 11px; font-weight: 700; color: #718096; min-width: 28px; flex-shrink: 0; }
-      .crit-name { flex: 1; font-size: 12px; font-weight: 500; color: #2d3748; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ann-count { font-size: 10px; background: #edf2f7; color: #718096; border-radius: 10px; padding: 1px 6px; flex-shrink: 0; }
+      .criterion-list { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; }
+      .criterion-item { border: 1px solid ${tokens.color.border}; border-radius: 8px; background: ${tokens.color.surfaceCard}; overflow: hidden; }
+      .criterion-hd { display: flex; align-items: center; gap: 8px; padding: 12px 16px; cursor: pointer; transition: background 0.1s; user-select: none; }
+      .expand-icon { color: ${tokens.color.textMuted}; flex-shrink: 0; display: flex; align-items: center; transition: transform 150ms ease; }
+      .expand-icon.expanded { transform: rotate(180deg); }
 
-      .score-badge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
-      .score-badge.does_not_meet { background: #fed7d7; color: #c53030; }
-      .score-badge.exemplifies   { background: #dbeafe; color: #1d4ed8; }
-      .score-badge.exceeds       { background: #fde8d8; color: #c4622d; }
-      .score-badge.unscored      { background: #f7fafc; color: #a0aec0; border: 1px dashed #e2e8f0; }
+      .status-circle { width: 20px; height: 20px; border-radius: 50%; border: 2px solid ${tokens.color.border}; background: transparent; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: transparent; transition: border-color 0.1s, background 0.1s, color 0.1s; }
+      .status-circle.scored { border-color: ${tokens.color.secondary}; background: ${tokens.color.secondaryContainer}; color: ${tokens.color.onSecondaryContainer}; }
 
-      .criterion-bd { display: none; padding: 10px 14px 14px; }
-      .criterion-bd.open { display: block; }
-      .crit-desc { font-size: 12px; color: #718096; line-height: 1.5; margin-bottom: 10px; max-height: 72px; overflow-y: auto; }
+      .crit-code { font-size: 10px; font-weight: 700; color: ${tokens.color.secondary}; min-width: 28px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.07em; }
+      .crit-name { flex: 1; font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .evidence-badge { display: flex; align-items: center; gap: 4px; background: ${tokens.color.secondaryContainer}99; color: ${tokens.color.secondary}; border-radius: 9999px; padding: 2px 8px; font-size: 10px; font-weight: 700; flex-shrink: 0; }
 
-      .score-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 10px; }
-      .score-btn { padding: 6px 4px; border-radius: 5px; border: 1.5px solid #e2e8f0; background: #f7fafc; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.12s; color: #718096; font-family: inherit; line-height: 1.2; }
-      .score-btn:hover { border-color: #cbd5e0; background: #edf2f7; }
-      .score-btn.active.does_not_meet { background: #fed7d7; border-color: #fc8181; color: #c53030; }
-      .score-btn.active.exemplifies   { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
-      .score-btn.active.exceeds       { background: #fde8d8; border-color: #fdba74; color: #c4622d; }
+      .hdr-badges { display: flex; flex-direction: row; gap: 4px; flex-shrink: 0; }
+      .hdr-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 0; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid ${tokens.color.border}66; color: ${tokens.color.textSecondary}66; background: transparent; }
+      .hdr-badge-exc.active { background: ${tokens.rating.exceedsBg}; color: ${tokens.rating.exceedsText}; border-color: ${tokens.rating.exceedsBorder}; }
+      .hdr-badge-exe.active { background: ${tokens.rating.exemplifiesBg}; color: ${tokens.rating.exemplifiesText}; border-color: ${tokens.color.primary}; }
+      .hdr-badge-dnm.active { background: ${tokens.rating.dnmBg}; color: ${tokens.rating.dnmText}; border-color: ${tokens.rating.dnmBorder}; }
 
-      .score-badge.multi { background: #e2e8f0; color: #2d3748; }
+      .criterion-bd { display: none; border-top: 1px solid ${tokens.color.border}; padding: 12px 16px 16px; flex-direction: column; gap: 16px; }
+      .criterion-bd.open { display: flex; }
 
-      .score-comment-box { margin: 4px 0 8px; padding: 8px 10px; border-radius: 6px; border: 1.5px solid #e2e8f0; }
-      .score-comment-dnm { background: #fff5f5; border-color: #fc8181; }
-      .score-comment-exc { background: #fffaf5; border-color: #fdba74; }
-      .score-comment-label { font-size: 11px; font-weight: 600; color: #4a5568; margin-bottom: 4px; }
-      .score-comment-required { font-size: 10px; font-weight: 500; color: #e53e3e; margin-left: 3px; }
-      .score-comment-input { width: 100%; padding: 5px 7px; border: 1px solid #e2e8f0; border-radius: 5px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; background: #fff; }
-      .score-comment-input:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+      /* Rating row — replaces .score-btns */
+      .rating-row { display: flex; flex-direction: row; gap: 8px; min-width: 0; }
+      .criterion-item.is-narrow .rating-row { flex-direction: column; }
 
-      .btn-open-console { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f7fafc; color: #3D6FA9; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; text-decoration: none; flex-shrink: 0; }
-      .btn-open-console:hover { background: #ebf4ff; border-color: #3D6FA9; }
+      .rating-box {
+        flex: 1 1 0%;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px;
+        border-radius: 0;
+        border: 1px solid ${tokens.color.border};
+        background: ${tokens.color.surfaceContainer};
+        cursor: pointer;
+        min-width: 0;
+        overflow: hidden;
+        transition: flex 150ms ease, max-width 150ms ease, opacity 150ms ease, padding 150ms ease;
+      }
+      .criterion-item.is-narrow .rating-box { flex: none !important; width: 100%; max-width: none !important; opacity: 1 !important; overflow: hidden; }
 
-      .ann-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #a0aec0; margin-bottom: 6px; }
+      .rating-box-exceeds.active    { border: 2px solid ${tokens.color.secondary}; }
+      .rating-box-exemplifies.active { border: 2px solid ${tokens.color.primary}; }
+      .rating-box-dnm.active        { border: 2px solid ${tokens.color.error}; }
 
-      .ann-list { display: flex; flex-direction: column; gap: 5px; }
-      .ann-item { position: relative; background: #f7fafc; border: 1px solid #e8edf2; border-radius: 6px; padding: 7px 28px 9px 9px; font-size: 12px; color: #4a5568; line-height: 1.4; }
-      .ann-item.highlighted { background: #fffbeb; border-color: #fbbf24; }
-      .ann-quote { font-style: italic; color: #a0aec0; font-size: 11px; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ann-body { }
-      .ann-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-top: 4px; text-transform: uppercase; }
-      .ann-tag.action_item { background: #fed7aa; color: #c2410c; }
-      .ann-tag.quick_fix   { background: #bfdbfe; color: #1d4ed8; }
+      .rbox-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+      .rbox-label-exceeds     { color: ${tokens.color.secondary}; }
+      .rbox-label-exemplifies { color: ${tokens.color.primary}; }
+      .rbox-label-dnm         { color: ${tokens.color.error}; }
+      .rbox-desc { font-size: 11px; color: ${tokens.color.textSecondary}; line-height: 1.5; max-height: 5.5rem; overflow-y: auto; padding-right: 4px; }
+      .rbox-desc::-webkit-scrollbar { width: 6px; }
+      .rbox-desc::-webkit-scrollbar-track { background: transparent; }
+      .rbox-desc::-webkit-scrollbar-thumb { background: rgba(115,92,0,0.4); border-radius: 9999px; }
+      .rbox-desc::-webkit-scrollbar-thumb:hover { background: rgba(115,92,0,0.6); }
 
-      .screenshot-thumb { width: 100%; height: 56px; object-fit: cover; border-radius: 4px; margin-bottom: 3px; border: 1px solid #e2e8f0; display: block; }
+      .score-comment-input { flex: 1; width: 100%; padding: 0 0 8px; border: none; border-bottom: 1px solid ${tokens.color.border}; border-radius: 0; font-size: 12px; resize: none; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; background: transparent; }
+      .score-comment-input::placeholder { color: ${tokens.color.textMuted}; opacity: 0.7; }
+      .rating-box-exceeds .score-comment-input { border-bottom-color: rgba(115,92,0,0.4); }
+      .rating-box-exceeds .score-comment-input:focus { border-bottom-color: ${tokens.color.secondary}; }
+      .rating-box-dnm .score-comment-input { border-bottom-color: rgba(186,26,26,0.4); }
+      .rating-box-dnm .score-comment-input:focus { border-bottom-color: ${tokens.color.error}; }
 
-      .add-note-btn { background: none; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 10px; font-weight: 600; color: #a0aec0; cursor: pointer; padding: 2px 7px; font-family: inherit; transition: all 0.12s; }
-      .add-note-btn:hover { border-color: #3D6FA9; color: #3D6FA9; }
+      .btn-open-console { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.primary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; text-decoration: none; flex-shrink: 0; }
+      .btn-open-console:hover { background: ${tokens.color.surface}; border-color: ${tokens.color.primary}; }
 
-      .inline-note-input { width: 100%; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; }
-      .inline-note-input:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+      .ann-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: ${tokens.color.textMuted}; margin-bottom: 4px; }
 
-      .inline-note-actions { display: flex; gap: 6px; margin-top: 4px; }
-      .inline-note-cancel { flex: 1; padding: 5px; border-radius: 5px; border: 1px solid #e2e8f0; background: #f7fafc; font-size: 11px; cursor: pointer; font-family: inherit; color: #4a5568; }
-      .inline-note-save { flex: 1; padding: 5px; border-radius: 5px; border: none; background: #3D6FA9; color: white; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+      .ann-list { display: flex; flex-direction: column; gap: 6px; }
+      .ann-item { position: relative; background: ${tokens.color.surfaceContainerLow}; border: 1px solid ${tokens.color.border}; border-radius: 0; padding: 10px 48px 12px 12px; font-size: 12px; color: ${tokens.color.textSecondary}; line-height: 1.5; }
+      @keyframes card-highlight-pulse {
+        0%   { box-shadow: 0 0 0 3px rgba(115, 92, 0, 0.5); }
+        40%  { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+        100% { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
+      }
+      .ann-item.card-highlight.active { animation: card-highlight-pulse 1.6s ease-out; }
 
-      .add-crit-comment-btn { margin-top: 8px; background: none; border: 1px dashed #e2e8f0; border-radius: 5px; font-size: 11px; font-weight: 500; color: #a0aec0; cursor: pointer; padding: 5px; width: 100%; font-family: inherit; transition: all 0.12s; }
-      .add-crit-comment-btn:hover { border-color: #3D6FA9; color: #3D6FA9; border-style: solid; }
-      .crit-comment-form { margin-top: 6px; }
+      .ann-page-label { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; color: ${tokens.color.textSecondary}; overflow: hidden; }
+      .ann-page-label svg { flex-shrink: 0; }
+      .ann-page-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .ann-divider { height: 1px; background: ${tokens.color.border}; margin: 6px 0; }
 
-      .btn-hotspot { display: flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-      .btn-hotspot:hover { background: #edf2f7; border-color: #cbd5e0; }
-      .btn-hotspot.active { background: #ebf4ff; border-color: #3D6FA9; color: #3D6FA9; }
+      .ann-screenshot-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+      .screenshot-thumb { width: 44px; height: 44px; flex-shrink: 0; object-fit: cover; border-radius: 4px; border: 1px solid ${tokens.color.border}; cursor: pointer; display: block; }
+      .ann-view-screenshot { background: none; border: none; color: ${tokens.color.secondary}; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 0; }
+      .ann-view-screenshot:hover { text-decoration: underline; }
 
-      .ann-page-label { font-size: 10px; color: #a0aec0; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .ann-goto { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; padding: 3px 7px; border-radius: 4px; border: 1px solid #3D6FA9; background: none; color: #3D6FA9; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.12s; }
-      .ann-goto:hover { background: #3D6FA9; color: white; }
+      .ann-sh { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: ${tokens.color.textMuted}; margin-top: 8px; margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
+      .ann-sh-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 3px; }
+      .ann-sh-row .ann-sh { margin-top: 0; margin-bottom: 0; }
+      .ann-quote { font-style: italic; font-family: ${tokens.font.heading}; font-size: 11px; color: ${tokens.color.textPrimary}; line-height: 1.5; }
+      .ann-no-quote { font-style: italic; font-size: 11px; color: ${tokens.color.textMuted}; }
+      .ann-body { font-size: 12px; color: ${tokens.color.textSecondary}; }
+      .field-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+      .field-clamp.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }
+      .ann-expand-btn { background: none; border: none; color: ${tokens.color.secondary}; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 0; }
+      .ann-expand-btn:hover { text-decoration: underline; }
+      .ann-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: ${tokens.color.secondaryContainer}99; color: ${tokens.color.secondary}; border: 1px solid ${tokens.color.secondary}66; letter-spacing: 0.04em; }
+      .ann-tag svg { flex-shrink: 0; }
 
-      .unlinked-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #fce7dd; color: #c4622d; font-size: 10px; font-weight: 700; }
-      .ann-link { display: block; margin-top: 6px; width: 100%; padding: 4px 6px; border-radius: 5px; border: 1px solid #e2e8f0; background: #fff; color: #4a5568; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; }
-      .ann-link:hover { border-color: #cbd5e0; }
-      .ann-link:focus { border-color: #3D6FA9; box-shadow: 0 0 0 2px rgba(61,111,169,0.12); }
+      .ann-icon-btns { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 2px; }
+      .ann-goto { background: none; border: none; color: ${tokens.color.secondary}; font-size: 10px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 0; }
+      .ann-goto:hover { text-decoration: underline; }
+      .ann-edit { background: none; border: none; cursor: pointer; color: ${tokens.color.textMuted}; padding: 3px; border-radius: 3px; display: flex; align-items: center; line-height: 1; font-family: inherit; }
+      .ann-edit:hover { color: ${tokens.color.primary}; }
+      .ann-delete { background: none; border: none; cursor: pointer; color: ${tokens.color.textMuted}; padding: 3px; border-radius: 3px; display: flex; align-items: center; line-height: 1; font-family: inherit; }
+      .ann-delete:hover { color: ${tokens.color.error}; }
+      .ann-link { display: block; margin-top: 6px; width: 100%; padding: 4px 6px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.textSecondary}; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; }
+      .ann-link:hover { border-color: ${tokens.color.borderStrong}; }
+      .ann-link:focus { border-color: ${tokens.color.secondary}; box-shadow: 0 0 0 2px ${tokens.color.secondaryContainer}66; }
 
-      .ann-edit { position: absolute; top: 5px; right: 22px; background: none; border: none; cursor: pointer; color: #cbd5e0; font-size: 13px; line-height: 1; padding: 2px 3px; border-radius: 3px; display: none; font-family: inherit; }
-      .ann-item:hover .ann-edit { display: block; }
-      .ann-edit:hover { color: #3D6FA9; }
-      .ann-delete { position: absolute; top: 5px; right: 5px; background: none; border: none; cursor: pointer; color: #cbd5e0; font-size: 15px; line-height: 1; padding: 2px; border-radius: 3px; display: none; font-family: inherit; }
-      .ann-item:hover .ann-delete { display: block; }
-      .ann-delete:hover { color: #e53e3e; }
+      .ann-edit-input { width: 100%; padding: 6px 0; border: none; border-bottom: 2px solid ${tokens.color.border}; background: transparent; font-size: 12px; resize: vertical; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; transition: border-color 0.15s; }
+      .ann-edit-input:focus { border-bottom-color: ${tokens.color.primary}; }
+      .ann-tag-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+      .ann-tag-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; border: 1px solid ${tokens.color.border}; background: transparent; color: ${tokens.color.textSecondary}; cursor: pointer; font-family: inherit; transition: all 0.12s; letter-spacing: 0.04em; }
+      .ann-tag-btn.active { background: ${tokens.color.secondaryContainer}99; color: ${tokens.color.secondary}; border-color: ${tokens.color.secondary}66; }
+      .ann-criterion-sel { width: 100%; padding: 6px 0; border: none; border-bottom: 2px solid ${tokens.color.border}; background: transparent; font-size: 12px; font-family: inherit; color: ${tokens.color.textPrimary}; outline: none; cursor: pointer; }
+      .ann-criterion-sel:focus { border-bottom-color: ${tokens.color.primary}; }
+      .ann-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+      .ann-edit-cancel { padding: 5px 12px; border-radius: 0; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; font-size: 11px; cursor: pointer; font-family: inherit; color: ${tokens.color.textSecondary}; }
+      .ann-edit-confirm { padding: 5px 12px; border-radius: 0; border: none; background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+      .ann-edit-confirm:disabled { background: ${tokens.color.surfaceContainerHigh}; color: ${tokens.color.textMuted}; cursor: not-allowed; }
+      .ann-edit-hint { font-size: 10px; color: ${tokens.color.textMuted}; font-style: italic; flex: 1; }
 
-      .ann-edit-input { width: 100%; padding: 5px 7px; border: 1px solid #3D6FA9; border-radius: 5px; font-size: 12px; resize: none; font-family: inherit; color: #1a202c; box-sizing: border-box; outline: none; }
-      .ann-edit-cancel { flex: 1; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0; background: #f7fafc; font-size: 11px; cursor: pointer; font-family: inherit; color: #4a5568; }
-      .ann-edit-confirm { flex: 1; padding: 4px; border-radius: 4px; border: none; background: #3D6FA9; color: white; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; }
+      .btn-hotspot { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid ${tokens.color.primary}; background: ${tokens.color.primary}; color: ${tokens.color.onPrimary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+      .btn-hotspot:hover { background: ${tokens.color.primaryHover}; border-color: ${tokens.color.primaryHover}; }
+      .btn-hotspot.active { background: ${tokens.color.secondaryContainer}; border-color: ${tokens.color.secondary}; color: ${tokens.color.secondary}; }
 
-      .ann-hotspot-label { font-size: 10px; font-weight: 600; color: #3D6FA9; margin-bottom: 3px; }
     </style>
 
     <div class="panel">
       <div class="panel-hd" id="panel-hd">
         <div class="logo">
-          <div class="logo-dot"></div>
-          OER Review
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:${tokens.color.primary};outline:1px solid ${tokens.color.onPrimary};flex-shrink:0;">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1C9.4 2.3 11.1 2.9 13 3.1C13.1 5 13.7 6.6 15 8C13.7 9.4 13.1 11 13 12.9C11.1 13.1 9.4 13.7 8 15C6.6 13.7 5 13.1 3.1 12.9C2.9 11 2.3 9.4 1 8C2.3 6.6 2.9 5 3.1 3.1C5 2.9 6.6 2.3 8 1Z" stroke="${tokens.color.onPrimary}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 8L7 10.5L11.5 5" stroke="${tokens.color.onPrimary}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          O4PR Certification Hub
         </div>
         <button class="hd-btn" id="btn-min" title="Collapse">−</button>
       </div>
@@ -2630,14 +3062,7 @@ function createPanel() {
       <div class="panel-body" id="panel-body"></div>
 
       <div class="panel-ft">
-        <div style="display:flex;gap:5px;flex:1;">
-          <button class="btn-hotspot" id="btn-hotspot">
-            <svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor">
-              <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/>
-            </svg>
-            Hotspot
-          </button>
-        </div>
+        <span class="submit-reminder">Once finished, submit your review from the platform review console.</span>
         <span class="save-status" id="save-status"></span>
       </div>
     </div>
@@ -2684,11 +3109,6 @@ function createPanel() {
       if (btn) btn.textContent = '−';
     }
     savePanelGeometry();
-  });
-
-  shadow.getElementById('btn-hotspot')?.addEventListener('click', () => {
-    if (!selectedReview) { showToast('Select a review first'); return; }
-    if (hotspotMode) { exitHotspotMode(); } else { enterHotspotMode(); }
   });
 
   // ── Drag to move (header) ────────────────────────────────────────────────────
@@ -2809,6 +3229,7 @@ async function selectReview(reviewId: string) {
   });
 
   renderContent('review');
+  prefetchSiblingCompletions();
   applyHighlights();
   scheduleHighlightRetries();
   checkPendingAnnotationNavigation();
@@ -2841,6 +3262,9 @@ async function handleLogin() {
   }
 
   currentAuth = resp.data;
+  if (resp.data.platformUrl && isAllowedPlatformOrigin(resp.data.platformUrl)) {
+    platformUrl = resp.data.platformUrl;
+  }
   renderContent('loading');
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });
@@ -2849,6 +3273,18 @@ async function handleLogin() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+
+// Allowed platform origins for the Console button destination and for guard use.
+// The *.vercel.app manifest permission is broad; this regex narrows it at runtime.
+const ALLOWED_CONSOLE_HOSTNAMES = ['annotation-platform-seven.vercel.app', 'localhost'];
+const PREVIEW_CONSOLE_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
+
+function isAllowedPlatformOrigin(origin: string): boolean {
+  try {
+    const hostname = new URL(origin).hostname;
+    return ALLOWED_CONSOLE_HOSTNAMES.includes(hostname) || PREVIEW_CONSOLE_RE.test(hostname);
+  } catch { return false; }
+}
 
 async function init() {
   createPanel();
@@ -2895,7 +3331,14 @@ async function init() {
     try {
       const auth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
       if (auth.access_token && auth.user_id) {
-        await new Promise<void>(resolve => chrome.storage.local.set({ auth }, resolve));
+        // Merge: preserve platformUrl from existing storage — the oer_token payload
+        // is generated by the platform without a platformUrl field, so a plain
+        // replace would wipe whatever stampPlatformUrl() just wrote.
+        const existingOerAuth = await new Promise<StoredAuth | undefined>(resolve =>
+          chrome.storage.local.get('auth', r => resolve((r as { auth?: StoredAuth }).auth))
+        );
+        const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
+        await new Promise<void>(resolve => chrome.storage.local.set({ auth: authToStore }, resolve));
         // Remove the token from browser history so it isn't exposed in the URL bar
         urlParams.delete('oer_token');
         const clean = window.location.pathname
@@ -2930,6 +3373,9 @@ async function init() {
     return;
   }
   currentAuth = authResp.data;
+  if (authResp.data.platformUrl && isAllowedPlatformOrigin(authResp.data.platformUrl)) {
+    platformUrl = authResp.data.platformUrl;
+  }
   renderContent('loading');
 
   const assignResp = await send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' });

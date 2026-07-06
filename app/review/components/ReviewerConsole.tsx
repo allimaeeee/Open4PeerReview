@@ -44,7 +44,7 @@ export interface LocalScore {
   proficientSelected: boolean
   niComments: ScoreCommentItem[]
   exceedsComments: ScoreCommentItem[]
-  annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
+  annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null; created_at?: string }[]
 }
 
 function computePrimaryScore(
@@ -76,10 +76,11 @@ export function ReviewerConsole({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [generalAnnotations, setGeneralAnnotations] = useState<
-    { id: string; anchor: Record<string, unknown>; body: string; tag: string | null }[]
+    { id: string; anchor: Record<string, unknown>; body: string; tag: string | null; created_at?: string }[]
   >(
     (review.annotations ?? []).filter((a) => a.rubric_item_id === null).reverse()
   )
+  const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
 
   const isSubmitted = review.status === 'submitted'
   const router = useRouter()
@@ -765,6 +766,11 @@ export function ReviewerConsole({
                 onAnnotationViewFull={handleViewFullComment}
                 pulseAnnotationId={pulseAnnotationId}
                 onPulseComplete={() => setPulseAnnotationId(null)}
+                submissionTitle={document.title}
+                onIndexMapReady={setAnnotationIndexMap}
+                onCarouselNavigate={(annotationId) => {
+                  handleViewFullComment(annotationId)
+                }}
               />
             ) : document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas
@@ -835,6 +841,8 @@ export function ReviewerConsole({
               initialNotes={review.notes}
               onGeneralCommentChange={onGeneralCommentChange}
               saveStatus={saveStatus}
+              goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
+              annotationIndexMap={annotationIndexMap}
             />
           </div>
         }

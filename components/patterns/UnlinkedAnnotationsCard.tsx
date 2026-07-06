@@ -28,6 +28,8 @@ interface UnlinkedAnnotationsCardProps {
   onEdit: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDelete: (annotationId: string) => void
   isReadOnly?: boolean
+  goToLabel?: string
+  annotationIndexMap?: Map<string, number>
 }
 
 export function UnlinkedAnnotationsCard({
@@ -38,6 +40,8 @@ export function UnlinkedAnnotationsCard({
   onEdit,
   onDelete,
   isReadOnly = false,
+  goToLabel,
+  annotationIndexMap,
 }: UnlinkedAnnotationsCardProps) {
   const [expanded, setExpanded] = useState(true)
 
@@ -87,6 +91,8 @@ export function UnlinkedAnnotationsCard({
                   criteria={criterionOptions}
                   onLink={onLink}
                   isReadOnly={isReadOnly}
+                  goToLabel={goToLabel}
+                  screenshotNumber={annotationIndexMap?.get(ann.id)}
                 />
               </div>
             ))

@@ -31,6 +31,8 @@ interface CriterionCardProps {
   allCriteria?: CriterionOption[]
   expandToAnnotationId?: string | null
   isReadOnly?: boolean
+  goToLabel?: string
+  annotationIndexMap?: Map<string, number>
 }
 
 function TrendingUpIcon({ size }: { size: number }) {
@@ -103,6 +105,8 @@ export function CriterionCard({
   allCriteria,
   expandToAnnotationId,
   isReadOnly = false,
+  goToLabel,
+  annotationIndexMap,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [focusedBox, setFocusedBox] = useState<'exceeds' | 'does_not_meet' | null>(null)
@@ -298,6 +302,8 @@ export function CriterionCard({
                         criteria={allCriteria}
                         onLink={onMoveAnnotation}
                         isReadOnly={isReadOnly}
+                        goToLabel={goToLabel}
+                        screenshotNumber={annotationIndexMap?.get(ann.id)}
                       />
                     )}
                   </div>

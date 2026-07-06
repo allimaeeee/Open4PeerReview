@@ -17,7 +17,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(
       try {
         const auth = JSON.parse(decodeURIComponent(atob(rawToken)));
         if (auth.access_token && auth.user_id) {
-          chrome.storage.local.set({ auth });
+          chrome.storage.local.get("auth", ({ auth: existing }) => {
+            const toStore = { ...auth, platformUrl: existing?.platformUrl };
+            chrome.storage.local.set({ auth: toStore });
+          });
         }
       } catch {
       }
@@ -124,6 +127,11 @@ async function handleMessage(msg, sender) {
       const { reviewId, status } = msg.payload;
       return patch(`reviews?id=eq.${reviewId}`, { status }, auth.access_token);
     }
+    case "UPDATE_REVIEW_NOTES": {
+      if (!auth) return { success: false, error: "Not authenticated" };
+      const { reviewId, notes } = msg.payload;
+      return patch(`reviews?id=eq.${reviewId}`, { notes }, auth.access_token);
+    }
     case "UPDATE_DOCUMENT_PAGES": {
       if (!auth) return { success: false, error: "Not authenticated" };
       const { documentId, storagePath, pageEntry } = msg.payload;
@@ -137,20 +145,26 @@ async function handleMessage(msg, sender) {
     case "SYNC_AUTH": {
       const s = msg.payload;
       if (!s.access_token || !s.user?.id) return { success: false, error: "Invalid session" };
+      const senderOriginSync = getSenderOrigin(sender);
       const authToStore = {
         access_token: s.access_token,
         refresh_token: s.refresh_token ?? "",
         user_id: s.user.id,
         email: s.user.email ?? "",
-        expires_at: s.expires_at ?? Math.floor(Date.now() / 1e3) + 3600
+        expires_at: s.expires_at ?? Math.floor(Date.now() / 1e3) + 3600,
+        ...senderOriginSync ? { platformUrl: senderOriginSync } : {}
       };
       await chrome.storage.local.set({ auth: authToStore });
       return { success: true };
     }
     case "SYNC_AUTH_FROM_COOKIES": {
-      const cookieAuth = await readSessionFromOerhubCookies();
+      const senderOriginCookies = getSenderOrigin(sender);
+      if (!senderOriginCookies) return { success: false, error: "Could not determine platform origin" };
+      const cookieAuth = await readSessionFromCookies(senderOriginCookies);
       if (cookieAuth) {
-        await chrome.storage.local.set({ auth: cookieAuth });
+        const existingForCookies = (await chrome.storage.local.get("auth")).auth;
+        const platformUrl = existingForCookies?.platformUrl ?? senderOriginCookies;
+        await chrome.storage.local.set({ auth: { ...cookieAuth, platformUrl } });
         return { success: true };
       }
       return { success: false, error: "No session found in cookies" };
@@ -159,10 +173,18 @@ async function handleMessage(msg, sender) {
       return { success: false, error: `Unknown message type` };
   }
 }
-var SUPABASE_REF = "nkcyjfuzmmkuavhmqyvu";
-async function readSessionFromOerhubCookies() {
+function getSenderOrigin(sender) {
+  if (sender.origin && sender.origin !== "null") return sender.origin;
   try {
-    const cookies = await chrome.cookies.getAll({ url: "https://oerhub.vercel.app" });
+    return new URL(sender.tab?.url ?? "").origin;
+  } catch {
+    return null;
+  }
+}
+var SUPABASE_REF = "nkcyjfuzmmkuavhmqyvu";
+async function readSessionFromCookies(platformOrigin) {
+  try {
+    const cookies = await chrome.cookies.getAll({ url: platformOrigin });
     const prefix = `sb-${SUPABASE_REF}-auth-token`;
     const single = cookies.find((c) => c.name === prefix);
     let sessionStr = single ? decodeURIComponent(single.value) : "";
@@ -199,15 +221,19 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
     if (rawToken) {
       const tokenAuth = JSON.parse(decodeURIComponent(atob(rawToken)));
       if (tokenAuth.access_token && tokenAuth.user_id) {
-        await chrome.storage.local.set({ auth: tokenAuth });
+        const existingTokenAuth = (await chrome.storage.local.get("auth")).auth;
+        const stored = { ...tokenAuth, platformUrl: existingTokenAuth?.platformUrl };
+        await chrome.storage.local.set({ auth: stored });
         return;
       }
     }
   } catch {
   }
-  const cookieAuth = await readSessionFromOerhubCookies();
+  const existingTabAuth = (await chrome.storage.local.get("auth")).auth;
+  const cookieAuth = await readSessionFromCookies("https://annotation-platform-seven.vercel.app");
   if (cookieAuth) {
-    await chrome.storage.local.set({ auth: cookieAuth });
+    const stored = { ...cookieAuth, platformUrl: existingTabAuth?.platformUrl };
+    await chrome.storage.local.set({ auth: stored });
   }
 });
 async function getStoredAuth() {
@@ -230,12 +256,14 @@ async function login(email, password) {
       return { success: false, error: err.error_description ?? err.msg ?? "Login failed" };
     }
     const data = await res.json();
+    const existingLoginAuth = (await chrome.storage.local.get("auth")).auth;
     const auth = {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user_id: data.user.id,
       email: data.user.email,
-      expires_at: Math.floor(Date.now() / 1e3) + data.expires_in
+      expires_at: Math.floor(Date.now() / 1e3) + data.expires_in,
+      platformUrl: existingLoginAuth?.platformUrl
     };
     await chrome.storage.local.set({ auth });
     return { success: true, data: auth };
@@ -255,12 +283,14 @@ async function refreshToken(token) {
       return null;
     }
     const data = await res.json();
+    const existingRefreshAuth = (await chrome.storage.local.get("auth")).auth;
     const auth = {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user_id: data.user.id,
       email: data.user.email,
-      expires_at: Math.floor(Date.now() / 1e3) + data.expires_in
+      expires_at: Math.floor(Date.now() / 1e3) + data.expires_in,
+      platformUrl: existingRefreshAuth?.platformUrl
     };
     await chrome.storage.local.set({ auth });
     return auth;
@@ -368,7 +398,7 @@ async function upsertScore(payload, token) {
 }
 async function getAssignments(auth) {
   return get(
-    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,documents(title,source_url),rubrics(title)`,
+    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
     auth.access_token
   );
 }

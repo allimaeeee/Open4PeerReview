@@ -28,6 +28,8 @@ export interface RangeSelector {
 
 export type AnchorSelector = TextPositionSelector | TextQuoteSelector | RangeSelector;
 
+export type PageType = 'nav' | 'content' | 'checkpoint';
+
 export interface HtmlCharOffsetAnchor {
   type: 'html-char-offset';
   pageIndex: number;
@@ -35,6 +37,7 @@ export interface HtmlCharOffsetAnchor {
   screenshotUrl?: string;
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
 }
 
 export interface BboxAnchor {
@@ -46,6 +49,7 @@ export interface BboxAnchor {
   screenshotUrl?: string;
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
   textQuote?: string;
 }
 
@@ -64,6 +68,7 @@ export interface PointAnchor {
   targetText?: string;       // short text sample of the target element (disambiguation)
   pageUrl?: string;
   pageName?: string;
+  pageType?: PageType;
   screenshotUrl?: string;
 }
 
@@ -109,6 +114,7 @@ export interface ReviewAssignment {
   document_id: string;
   rubric_id: string;
   status: string;
+  notes: string | null;
   documents: { title: string; source_url: string | null } | null;
   rubrics: { title: string } | null;
 }
@@ -119,6 +125,7 @@ export interface StoredAuth {
   user_id: string;
   email: string;
   expires_at: number;
+  platformUrl?: string;
 }
 
 export type BackgroundMessageType =
@@ -136,6 +143,7 @@ export type BackgroundMessageType =
   | 'SAVE_SCORE_COMMENT'
   | 'DELETE_SCORE_COMMENT'
   | 'SET_REVIEW_STATUS'
+  | 'UPDATE_REVIEW_NOTES'
   | 'UPDATE_DOCUMENT_PAGES'
   | 'LOGIN'
   | 'LOGOUT'

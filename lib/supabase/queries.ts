@@ -463,7 +463,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
   const { data, error } = await supabase
     .from('reviews')
     .select(`
-      id, status, overall_comment, submitted_at,
+      id, status, overall_comment, notes, submitted_at,
       reviewer:users!reviewer_id ( display_name, email ),
       rubric:rubrics ( id, title ),
       review_scores (
