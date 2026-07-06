@@ -25,12 +25,27 @@ chrome.webNavigation.onBeforeNavigate.addListener(
     try {
       const auth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
       if (auth.access_token && auth.user_id) {
-        chrome.storage.local.set({ auth });
+        // Preserve platformUrl if already stored — the oer_token payload doesn't include it.
+        chrome.storage.local.get('auth', ({ auth: existing }) => {
+          const toStore = { ...auth, platformUrl: (existing as StoredAuth | undefined)?.platformUrl };
+          chrome.storage.local.set({ auth: toStore });
+        });
       }
     } catch { /* malformed token — ignore */ }
   },
   { url: [{ hostContains: 'proton.oli.cmu.edu' }] },
 );
+
+// ── Storage change tracer (temporary diagnostic) ─────────────────────────────
+// Catches every write to auth from any code path, in any context.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.auth) return;
+  const oldUrl = (changes.auth.oldValue as StoredAuth | undefined)?.platformUrl;
+  const newUrl = (changes.auth.newValue as StoredAuth | undefined)?.platformUrl;
+  if (oldUrl !== newUrl) {
+    console.log('[OER-DEBUG] storage.auth CHANGED: platformUrl ' + (oldUrl ?? '(none)') + ' -> ' + (newUrl ?? '(none)') + ' ts=' + Date.now());
+  }
+});
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
@@ -167,30 +182,44 @@ async function handleMessage(
     // ── Dashboard → background auth sync ────────────────────────────────────────
 
     case 'SYNC_AUTH': {
-      // dashboard.ts sends the raw localStorage session object directly
+      // dashboard.ts sends the raw localStorage session object directly.
+      // We use the sender's origin as platformUrl so storage reflects whichever
+      // platform page triggered the sync (production, preview, or localhost).
       const s = msg.payload as {
         access_token?: string; refresh_token?: string;
         expires_at?: number; user?: { id: string; email: string };
       };
       if (!s.access_token || !s.user?.id) return { success: false, error: 'Invalid session' };
+      const senderOriginSync = getSenderOrigin(sender);
       const authToStore: StoredAuth = {
         access_token: s.access_token,
         refresh_token: s.refresh_token ?? '',
         user_id: s.user.id,
         email: s.user.email ?? '',
         expires_at: s.expires_at ?? Math.floor(Date.now() / 1000) + 3600,
+        ...(senderOriginSync ? { platformUrl: senderOriginSync } : {}),
       };
       await chrome.storage.local.set({ auth: authToStore });
       return { success: true };
     }
 
     case 'SYNC_AUTH_FROM_COOKIES': {
-      // Read Supabase session from oerhub.vercel.app cookies (including HttpOnly)
-      const cookieAuth = await readSessionFromOerhubCookies();
+      // Read Supabase session cookies from the actual platform page that sent this message.
+      const senderOriginCookies = getSenderOrigin(sender);
+      console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: senderOrigin=' + (senderOriginCookies ?? '(null)') + ' ts=' + Date.now());
+      if (!senderOriginCookies) return { success: false, error: 'Could not determine platform origin' };
+      const cookieAuth = await readSessionFromCookies(senderOriginCookies);
       if (cookieAuth) {
-        await chrome.storage.local.set({ auth: cookieAuth });
+        // Merge: read existing auth first so we never silently drop a field another
+        // code path (e.g. stampPlatformUrl) already wrote. Prefer existing platformUrl;
+        // fall back to senderOriginCookies only if nothing is stored yet.
+        const existingForCookies = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
+        const platformUrl = existingForCookies?.platformUrl ?? senderOriginCookies;
+        console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: cookieAuth found, existingPlatformUrl=' + (existingForCookies?.platformUrl ?? '(none)') + ' -> writing platformUrl=' + platformUrl);
+        await chrome.storage.local.set({ auth: { ...cookieAuth, platformUrl } });
         return { success: true };
       }
+      console.log('[OER-DEBUG] SYNC_AUTH_FROM_COOKIES: no cookies found for origin=' + senderOriginCookies);
       return { success: false, error: 'No session found in cookies' };
     }
 
@@ -199,15 +228,23 @@ async function handleMessage(
   }
 }
 
-// ── Supabase session from oerhub.vercel.app cookies ──────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getSenderOrigin(sender: chrome.runtime.MessageSender): string | null {
+  if (sender.origin && sender.origin !== 'null') return sender.origin;
+  try { return new URL(sender.tab?.url ?? '').origin; } catch { return null; }
+}
+
+// ── Supabase session from platform cookies ────────────────────────────────────
 // chrome.cookies can read HttpOnly cookies — this works even when the session
-// is set server-side by Next.js middleware.
+// is set server-side by Next.js middleware. Pass the platform origin so this
+// is not tied to any hardcoded domain.
 
 const SUPABASE_REF = 'nkcyjfuzmmkuavhmqyvu';
 
-async function readSessionFromOerhubCookies(): Promise<StoredAuth | null> {
+async function readSessionFromCookies(platformOrigin: string): Promise<StoredAuth | null> {
   try {
-    const cookies = await chrome.cookies.getAll({ url: 'https://oerhub.vercel.app' });
+    const cookies = await chrome.cookies.getAll({ url: platformOrigin });
     const prefix = `sb-${SUPABASE_REF}-auth-token`;
 
     // Try single cookie first
@@ -258,16 +295,20 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
     if (rawToken) {
       const tokenAuth = JSON.parse(decodeURIComponent(atob(rawToken))) as StoredAuth;
       if (tokenAuth.access_token && tokenAuth.user_id) {
-        await chrome.storage.local.set({ auth: tokenAuth });
+        const existingTokenAuth = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
+        const stored = { ...tokenAuth, platformUrl: existingTokenAuth?.platformUrl };
+        await chrome.storage.local.set({ auth: stored });
         return;
       }
     }
   } catch { /* fall through */ }
 
-  // Fallback: read from oerhub.vercel.app cookies
-  const cookieAuth = await readSessionFromOerhubCookies();
+  // Fallback: read from production platform cookies, preserving any existing platformUrl.
+  const existingTabAuth = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
+  const cookieAuth = await readSessionFromCookies('https://annotation-platform-seven.vercel.app');
   if (cookieAuth) {
-    await chrome.storage.local.set({ auth: cookieAuth });
+    const stored = { ...cookieAuth, platformUrl: existingTabAuth?.platformUrl };
+    await chrome.storage.local.set({ auth: stored });
   }
 });
 
@@ -299,12 +340,14 @@ async function login(email: string, password: string): Promise<BackgroundRespons
       expires_in: number;
       user: { id: string; email: string };
     };
+    const existingLoginAuth = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
     const auth: StoredAuth = {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user_id: data.user.id,
       email: data.user.email,
       expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+      platformUrl: existingLoginAuth?.platformUrl,
     };
     await chrome.storage.local.set({ auth });
     return { success: true, data: auth };
@@ -327,12 +370,14 @@ async function refreshToken(token: string): Promise<StoredAuth | null> {
       expires_in: number;
       user: { id: string; email: string };
     };
+    const existingRefreshAuth = (await chrome.storage.local.get('auth') as { auth?: StoredAuth }).auth;
     const auth: StoredAuth = {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       user_id: data.user.id,
       email: data.user.email,
       expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
+      platformUrl: existingRefreshAuth?.platformUrl,
     };
     await chrome.storage.local.set({ auth });
     return auth;

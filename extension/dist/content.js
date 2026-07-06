@@ -72,7 +72,8 @@
   var PANEL_WIDTH = 380;
   var CONTEXT = 32;
   var SCORE_DEBOUNCE_MS = 1500;
-  var OERHUB_URL = "https://oerhub.vercel.app";
+  var OERHUB_URL = "https://annotation-platform-seven.vercel.app";
+  var platformUrl = OERHUB_URL;
   var SESSION_KEY = "oer_review_id";
   var PANEL_GEOM_KEY = "oer_panel_geom";
   var EXPANDED_CRIT_KEY = "oer_expanded_criteria";
@@ -1544,7 +1545,7 @@
         </div>
         <div class="rubric-header-btns">
           <button class="btn-hotspot" id="btn-hotspot"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
-          <a class="btn-open-console" id="btn-open-console" href="${OERHUB_URL}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
+          <a class="btn-open-console" id="btn-open-console" href="${platformUrl}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
         </div>
       </div>
       ${rubricTabsHtml}
@@ -2428,6 +2429,9 @@
       return;
     }
     currentAuth = resp.data;
+    if (resp.data.platformUrl && isAllowedPlatformOrigin(resp.data.platformUrl)) {
+      platformUrl = resp.data.platformUrl;
+    }
     renderContent("loading");
     const assignResp = await send({ type: "GET_ASSIGNMENTS" });
     assignments = assignResp.data ?? [];
@@ -2437,6 +2441,16 @@
     }
     const match = resolveAssignmentForCurrentPage(assignments);
     await selectReview((match ?? assignments[0]).id);
+  }
+  var ALLOWED_CONSOLE_HOSTNAMES = ["annotation-platform-seven.vercel.app", "localhost"];
+  var PREVIEW_CONSOLE_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
+  function isAllowedPlatformOrigin(origin) {
+    try {
+      const hostname = new URL(origin).hostname;
+      return ALLOWED_CONSOLE_HOSTNAMES.includes(hostname) || PREVIEW_CONSOLE_RE.test(hostname);
+    } catch {
+      return false;
+    }
   }
   async function init() {
     createPanel();
@@ -2472,7 +2486,12 @@
       try {
         const auth = JSON.parse(decodeURIComponent(atob(rawToken)));
         if (auth.access_token && auth.user_id) {
-          await new Promise((resolve) => chrome.storage.local.set({ auth }, resolve));
+          const existingOerAuth = await new Promise(
+            (resolve) => chrome.storage.local.get("auth", (r) => resolve(r.auth))
+          );
+          const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
+          console.log("[OER-DEBUG] oer_token write: preserving platformUrl=" + (authToStore.platformUrl ?? "(none)"));
+          await new Promise((resolve) => chrome.storage.local.set({ auth: authToStore }, resolve));
           urlParams.delete("oer_token");
           const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
           window.history.replaceState({}, "", clean);
@@ -2481,11 +2500,16 @@
       }
     }
     const authResp = await send({ type: "GET_AUTH" });
+    console.log("[OER-DEBUG] content.ts GET_AUTH ts=" + Date.now() + " success=" + authResp.success + " platformUrl=" + (authResp.data?.platformUrl ?? "(none)") + " user_id=" + (authResp.data?.user_id ?? "(none)"));
     if (!authResp.success || !authResp.data) {
       renderContent("login");
       return;
     }
     currentAuth = authResp.data;
+    if (authResp.data.platformUrl && isAllowedPlatformOrigin(authResp.data.platformUrl)) {
+      platformUrl = authResp.data.platformUrl;
+    }
+    console.log("[OER-DEBUG] content.ts effective platformUrl=" + platformUrl + " isAllowedOrigin=" + (authResp.data.platformUrl ? isAllowedPlatformOrigin(authResp.data.platformUrl) : false));
     renderContent("loading");
     const assignResp = await send({ type: "GET_ASSIGNMENTS" });
     if (!assignResp.success) {

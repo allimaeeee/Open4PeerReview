@@ -10,7 +10,7 @@ const OUT = resolve(__dirname, 'dist');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
 const isDev = process.env.OERHUB_ENV === 'dev';
-const OERHUB_URL = isDev ? 'http://localhost:3000' : 'https://oerhub.vercel.app';
+const OERHUB_URL = isDev ? 'http://localhost:3000' : 'https://annotation-platform-seven.vercel.app';
 
 const base = {
   bundle: true,

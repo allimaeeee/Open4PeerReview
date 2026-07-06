@@ -105,6 +105,7 @@ export interface StoredAuth {
   user_id: string;
   email: string;
   expires_at: number;
+  platformUrl?: string;
 }
 
 export type BackgroundMessageType =
