@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   BackgroundMessage,
   BackgroundResponse,
   StoredAuth,
@@ -2345,17 +2345,17 @@ function renderReviewInterface() {
           <textarea class="gc-textarea" id="general-comment-ta" placeholder="Add comments not tied to a specific criterion…"></textarea>
         </div>
       </div>
-      <div class=”side-card”>
-        <div class=”side-card-hd” id=”side-card-ua-hd”>
-          <div class=”side-card-title-group”>
-            <span class=”side-card-title-text”>Unlinked Annotations</span>
-            <span class=”unlinked-count-badge” id=”unlinked-count”>0</span>
+      <div class="side-card">
+        <div class="side-card-hd" id="side-card-ua-hd">
+          <div class="side-card-title-group">
+            <span class="side-card-title-text">Unlinked Annotations</span>
+            <span class="unlinked-count-badge" id="unlinked-count">0</span>
           </div>
-          <span class=”expand-icon” id=”expand-ua”><svg width=”16” height=”16” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2” stroke-linecap=”round” stroke-linejoin=”round”><polyline points=”6 9 12 15 18 9”/></svg></span>
+          <span class="expand-icon" id="expand-ua"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
-        <div class=”side-card-bd” id=”side-card-ua-bd”>
-          <p class=”ann-empty” id=”unlinked-empty” style=”display:none”>All annotations have been linked to a criterion</p>
-          <div class=”ann-list” id=”ann-list-__unlinked__”></div>
+        <div class="side-card-bd" id="side-card-ua-bd">
+          <p class="ann-empty" id="unlinked-empty" style="display:none">All annotations have been linked to a criterion</p>
+          <div class="ann-list" id="ann-list-__unlinked__"></div>
         </div>
       </div>
     </div>
