@@ -95,6 +95,7 @@ export interface ReviewAssignment {
   document_id: string;
   rubric_id: string;
   status: string;
+  notes: string | null;
   documents: { title: string; source_url: string | null } | null;
   rubrics: { title: string } | null;
 }
@@ -123,6 +124,7 @@ export type BackgroundMessageType =
   | 'SAVE_SCORE_COMMENT'
   | 'DELETE_SCORE_COMMENT'
   | 'SET_REVIEW_STATUS'
+  | 'UPDATE_REVIEW_NOTES'
   | 'UPDATE_DOCUMENT_PAGES'
   | 'LOGIN'
   | 'LOGOUT'

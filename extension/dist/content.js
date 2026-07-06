@@ -85,8 +85,7 @@
   var scores = /* @__PURE__ */ new Map();
   var scoreTimers = /* @__PURE__ */ new Map();
   var criterionResizeObservers = /* @__PURE__ */ new Map();
-  var generalCommentAnnId = null;
-  var generalCommentTimer = null;
+  var gcTimer = null;
   var EMPTY_SCORE_COMMENTS = { does_not_meet: { id: null, body: "" }, exceeds: { id: null, body: "" } };
   var scoreComments = /* @__PURE__ */ new Map();
   var shadow;
@@ -818,7 +817,7 @@
     const key = rubricItemId === "__free__" ? null : rubricItemId;
     let relevant = annotations.filter((a) => a.rubric_item_id === key);
     if (rubricItemId === "__free__") {
-      relevant = relevant.filter((a) => a.id !== generalCommentAnnId);
+      relevant = relevant.filter((a) => a.anchor.type !== "general_comment");
       const badge = shadow.getElementById("unlinked-count-badge");
       if (badge) {
         badge.textContent = String(relevant.length);
@@ -1611,49 +1610,25 @@
     });
     const gcTa = shadow.getElementById("general-comment-ta");
     if (gcTa) {
+      gcTa.value = selectedReview?.notes ?? "";
       gcTa.addEventListener("input", () => {
-        if (generalCommentTimer) clearTimeout(generalCommentTimer);
+        if (gcTimer) clearTimeout(gcTimer);
         setGCSaveStatus("saving");
-        generalCommentTimer = setTimeout(async () => {
+        gcTimer = setTimeout(async () => {
           if (!selectedReview) return;
-          const payload = {
-            review_id: selectedReview.id,
-            rubric_item_id: null,
-            anchor: { type: "general_comment" },
-            body: gcTa.value
-          };
-          if (generalCommentAnnId) payload.id = generalCommentAnnId;
-          const resp = await send({ type: "SAVE_ANNOTATION", payload });
-          if (resp.success && resp.data) {
-            if (!generalCommentAnnId) {
-              generalCommentAnnId = resp.data.id;
-              annotations.push(resp.data);
-            } else {
-              const idx = annotations.findIndex((a) => a.id === generalCommentAnnId);
-              if (idx >= 0) annotations[idx] = resp.data;
-            }
+          const resp = await send({ type: "UPDATE_REVIEW_NOTES", payload: { reviewId: selectedReview.id, notes: gcTa.value } });
+          if (resp.success) {
+            selectedReview.notes = gcTa.value;
             setGCSaveStatus("saved");
           } else {
             setGCSaveStatus("error");
           }
-        }, 800);
+        }, SCORE_DEBOUNCE_MS);
       });
     }
-    initGeneralComment();
     renderRubricCriteria();
     updateCompletion();
     refreshAnnotationList("__free__");
-  }
-  function initGeneralComment() {
-    generalCommentAnnId = null;
-    const existing = annotations.find(
-      (a) => a.rubric_item_id === null && a.anchor.type === "general_comment"
-    );
-    if (existing) {
-      generalCommentAnnId = existing.id;
-      const ta = shadow.getElementById("general-comment-ta");
-      if (ta) ta.value = existing.body;
-    }
   }
   function renderRubricCriteria() {
     const list = shadow.getElementById("criterion-list");
@@ -2490,7 +2465,6 @@
             (resolve) => chrome.storage.local.get("auth", (r) => resolve(r.auth))
           );
           const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
-          console.log("[OER-DEBUG] oer_token write: preserving platformUrl=" + (authToStore.platformUrl ?? "(none)"));
           await new Promise((resolve) => chrome.storage.local.set({ auth: authToStore }, resolve));
           urlParams.delete("oer_token");
           const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
@@ -2500,7 +2474,6 @@
       }
     }
     const authResp = await send({ type: "GET_AUTH" });
-    console.log("[OER-DEBUG] content.ts GET_AUTH ts=" + Date.now() + " success=" + authResp.success + " platformUrl=" + (authResp.data?.platformUrl ?? "(none)") + " user_id=" + (authResp.data?.user_id ?? "(none)"));
     if (!authResp.success || !authResp.data) {
       renderContent("login");
       return;
@@ -2509,7 +2482,6 @@
     if (authResp.data.platformUrl && isAllowedPlatformOrigin(authResp.data.platformUrl)) {
       platformUrl = authResp.data.platformUrl;
     }
-    console.log("[OER-DEBUG] content.ts effective platformUrl=" + platformUrl + " isAllowedOrigin=" + (authResp.data.platformUrl ? isAllowedPlatformOrigin(authResp.data.platformUrl) : false));
     renderContent("loading");
     const assignResp = await send({ type: "GET_ASSIGNMENTS" });
     if (!assignResp.success) {
