@@ -32,6 +32,8 @@ interface ReviewRightPanelProps {
   initialNotes: string | null
   onGeneralCommentChange: (val: string) => void
   saveStatus: SaveStatus
+  goToLabel?: string
+  annotationIndexMap?: Map<string, number>
 }
 
 export function ReviewRightPanel({
@@ -54,6 +56,8 @@ export function ReviewRightPanel({
   initialNotes,
   onGeneralCommentChange,
   saveStatus,
+  goToLabel,
+  annotationIndexMap,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
@@ -164,6 +168,8 @@ export function ReviewRightPanel({
           onEdit={onEditAnnotation}
           onDelete={onDeleteAnnotation}
           isReadOnly={activeRubricIsReadOnly}
+          goToLabel={goToLabel}
+          annotationIndexMap={annotationIndexMap}
         />
 
         <div className="flex flex-col gap-2 p-4">
@@ -187,6 +193,8 @@ export function ReviewRightPanel({
                 allCriteria={criteriaOptions}
                 expandToAnnotationId={expandToAnnotationId}
                 isReadOnly={activeRubricIsReadOnly}
+                goToLabel={goToLabel}
+                annotationIndexMap={annotationIndexMap}
               />
             )
           })}

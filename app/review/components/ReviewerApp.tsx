@@ -51,6 +51,7 @@ export interface AnnotationRecord {
   anchor: Record<string, unknown>
   body: string
   tag: string | null
+  created_at: string
 }
 
 export interface ReviewScore {
@@ -100,7 +101,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
     id, status, overall_comment, notes, last_saved_at, rubric_id,
     rubric:rubrics ( id, title, description, operational_definition ),
     review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
-    annotations ( id, rubric_item_id, anchor, body, tag ),
+    annotations ( id, rubric_item_id, anchor, body, tag, created_at ),
     score_comments ( id, rubric_item_id, score_level, body )
   `
 

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import type { CriterionScore } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
+import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import { OerReadOnlyViewer } from './OerReadOnlyViewer'
@@ -45,6 +46,7 @@ interface AnnotationRow {
 interface ReviewRow {
   id: string
   overall_comment: string | null
+  notes: string | null
   submitted_at: string | null
   reviewer: { display_name: string | null; email: string } | null
   rubric: { id: string; title: string } | null
@@ -98,6 +100,7 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(true)
+  const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
 
   const handleCriterionClick = (rubricItemId: string) => {
     setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
@@ -174,6 +177,15 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
     return result
   }, [reviews])
 
+  const unlinkedAnnotations = useMemo(
+    () => review
+      ? review.annotations.filter(
+          a => a.rubric_item_id === null && Object.keys(a.anchor as Record<string, unknown>).length > 0
+        )
+      : [],
+    [review]
+  )
+
   return (
     <div className="flex-1 min-h-0">
       <style>{`
@@ -218,6 +230,7 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
               scrollToAnnotationId={scrollToAnnotationId}
               rubricItems={rubricItems}
               onBack={() => setLeftPanelCollapsed(true)}
+              onIndexMapReady={setAnnotationIndexMap}
               onViewFullComment={(rubricItemId) => {
                 setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
                 setTimeout(() => {
@@ -361,8 +374,44 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
               Detailed Feedback
             </h2>
 
-            {/* Criterion report cards */}
+            {/* Criterion report cards + General Comments + Unlinked Annotations */}
             <div className="flex flex-col gap-3 mt-2">
+              {/* General Comments — reviews.notes */}
+              {review.notes && (
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-card)] shadow-[var(--shadow-1)] px-5 py-4">
+                  <span className="block text-body-md font-heading font-semibold text-text-primary mb-3">
+                    General Comments
+                  </span>
+                  <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
+                    {review.notes}
+                  </p>
+                </div>
+              )}
+
+              {/* Unlinked Annotations */}
+              {unlinkedAnnotations.length > 0 && (
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-card)] shadow-[var(--shadow-1)] px-5 py-4">
+                  <span className="block text-body-md font-heading font-semibold text-text-primary mb-3">
+                    Unlinked Annotations
+                  </span>
+                  <div className="flex flex-col gap-2">
+                    {unlinkedAnnotations.map(ann => (
+                      <EvidenceCard
+                        key={ann.id}
+                        annotation={ann as { id: string; rubric_item_id: string | null; anchor: Record<string, unknown>; body: string; tag: string | null }}
+                        onGoToAnnotation={() => {
+                          setLeftPanelCollapsed(false)
+                          setScrollToAnnotationId(ann.id)
+                          setTimeout(() => setScrollToAnnotationId(null), 500)
+                        }}
+                        goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
+                        screenshotNumber={annotationIndexMap.get(ann.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {sortedScores.map((rs, i) => (
                 <CriterionReportCard
                   key={rs.id}
@@ -393,6 +442,8 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                     setScrollToAnnotationId(annotationId)
                     setTimeout(() => setScrollToAnnotationId(null), 500)
                   }}
+                  goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
+                  annotationIndexMap={annotationIndexMap}
                 />
               ))}
             </div>

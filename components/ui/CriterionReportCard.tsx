@@ -44,6 +44,8 @@ interface CriterionReportCardProps {
   onToggle?: () => void
   className?: string
   onGoToAnnotation?: (annotationId: string) => void
+  goToLabel?: string
+  annotationIndexMap?: Map<string, number>
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -80,6 +82,15 @@ const POLARITY_CONFIG: Record<'does_not_meet' | 'exceeds', { label: string; bord
     border: 'var(--color-rating-exceeds-border)',
     text:   'var(--color-rating-exceeds-text)',
   },
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDescription(text: string): string[] {
+  const byNewline = text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+  if (byNewline.length > 1) return byNewline
+  const byNumber = text.split(/\s+(?=\d+\.\s)/).map(s => s.trim()).filter(Boolean)
+  return byNumber.length > 1 ? byNumber : byNewline
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -129,6 +140,8 @@ export function CriterionReportCard({
   onToggle,
   className,
   onGoToAnnotation,
+  goToLabel,
+  annotationIndexMap,
 }: CriterionReportCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultExpanded)
   const isControlled = isOpenProp !== undefined
@@ -169,7 +182,7 @@ export function CriterionReportCard({
             C{index}
           </span>
           <span className="text-body-md font-heading font-semibold text-text-primary truncate">
-            {rubricItem.label}
+            {rubricItem.label.replace(/^C\d+\s+/, '')}
           </span>
         </div>
 
@@ -213,21 +226,16 @@ export function CriterionReportCard({
 
             {/* Section 1 — Standard */}
             <div className="pt-5">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Standard
-                </span>
-                <span
-                  title="This describes what 'Exemplifies Established Standards of Quality' looks like for this criterion."
-                  aria-label="About this criterion"
-                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[10px] font-bold leading-none cursor-help text-[var(--color-text-muted)] border border-[var(--color-border)]"
-                >
-                  i
-                </span>
+              <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+                Standard
+              </span>
+              <div className="flex flex-col gap-1">
+                {formatDescription(rubricItem.description).map((line, i) => (
+                  <p key={i} className="text-body-sm text-[var(--color-text-secondary)] leading-relaxed">
+                    {line}
+                  </p>
+                ))}
               </div>
-              <p className="text-body-sm text-[var(--color-text-secondary)] leading-relaxed">
-                {rubricItem.description}
-              </p>
             </div>
 
             {/* Section 2 — Reviewer Comments */}
@@ -264,6 +272,8 @@ export function CriterionReportCard({
                       onGoToAnnotation={
                         onGoToAnnotation ? () => onGoToAnnotation(annotation.id) : undefined
                       }
+                      goToLabel={goToLabel}
+                      screenshotNumber={annotationIndexMap?.get(annotation.id)}
                     />
                   ))}
                 </div>

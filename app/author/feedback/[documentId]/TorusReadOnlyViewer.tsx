@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { TorusAnnotationViewer } from '@/app/review/components/TorusAnnotationViewer'
 
 interface AnnotationRow {
@@ -18,6 +19,7 @@ interface TorusReadOnlyViewerProps {
   rubricItems: { id: string; label: string }[]
   onBack: () => void
   onViewFullComment?: (rubricItemId: string) => void
+  onIndexMapReady?: (map: Map<string, number>) => void
 }
 
 export function TorusReadOnlyViewer({
@@ -28,14 +30,15 @@ export function TorusReadOnlyViewer({
   rubricItems,
   onBack,
   onViewFullComment,
+  onIndexMapReady,
 }: TorusReadOnlyViewerProps) {
-  const savedAnnotations = annotations.map(a => ({
+  const savedAnnotations = useMemo(() => annotations.map(a => ({
     id: a.id,
     rubricItemId: a.rubric_item_id,
     anchor: (a.anchor as Record<string, unknown>) ?? {},
     body: a.body,
     tag: a.tag,
-  }))
+  })), [annotations])
 
   return (
     <TorusAnnotationViewer
@@ -46,6 +49,7 @@ export function TorusReadOnlyViewer({
       onBack={onBack}
       disabled={true}
       scrollToAnnotationId={scrollToAnnotationId}
+      onIndexMapReady={onIndexMapReady}
       onAnnotationViewFull={onViewFullComment ? (annotationId) => {
         const ann = annotations.find(a => a.id === annotationId)
         if (ann?.rubric_item_id) onViewFullComment(ann.rubric_item_id)
