@@ -1912,17 +1912,17 @@
           <textarea class="gc-textarea" id="general-comment-ta" placeholder="Add comments not tied to a specific criterion\u2026"></textarea>
         </div>
       </div>
-      <div class=\u201Dside-card\u201D>
-        <div class=\u201Dside-card-hd\u201D id=\u201Dside-card-ua-hd\u201D>
-          <div class=\u201Dside-card-title-group\u201D>
-            <span class=\u201Dside-card-title-text\u201D>Unlinked Annotations</span>
-            <span class=\u201Dunlinked-count-badge\u201D id=\u201Dunlinked-count\u201D>0</span>
+      <div class="side-card">
+        <div class="side-card-hd" id="side-card-ua-hd">
+          <div class="side-card-title-group">
+            <span class="side-card-title-text">Unlinked Annotations</span>
+            <span class="unlinked-count-badge" id="unlinked-count">0</span>
           </div>
-          <span class=\u201Dexpand-icon\u201D id=\u201Dexpand-ua\u201D><svg width=\u201D16\u201D height=\u201D16\u201D viewBox=\u201D0 0 24 24\u201D fill=\u201Dnone\u201D stroke=\u201DcurrentColor\u201D stroke-width=\u201D2\u201D stroke-linecap=\u201Dround\u201D stroke-linejoin=\u201Dround\u201D><polyline points=\u201D6 9 12 15 18 9\u201D/></svg></span>
+          <span class="expand-icon" id="expand-ua"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
-        <div class=\u201Dside-card-bd\u201D id=\u201Dside-card-ua-bd\u201D>
-          <p class=\u201Dann-empty\u201D id=\u201Dunlinked-empty\u201D style=\u201Ddisplay:none\u201D>All annotations have been linked to a criterion</p>
-          <div class=\u201Dann-list\u201D id=\u201Dann-list-__unlinked__\u201D></div>
+        <div class="side-card-bd" id="side-card-ua-bd">
+          <p class="ann-empty" id="unlinked-empty" style="display:none">All annotations have been linked to a criterion</p>
+          <div class="ann-list" id="ann-list-__unlinked__"></div>
         </div>
       </div>
     </div>
