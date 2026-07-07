@@ -1,5 +1,6 @@
 //Root layout
 import { Lato, Newsreader } from 'next/font/google'
+import { AIChatWidget } from '@/features/ai-chat/AIChatWidget'
 import type { Metadata } from 'next'
 import './globals.css'
 import { Suspense } from 'react'
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Navbar />
           </Suspense>
           {children}
+          <AIChatWidget />
         </ReviewSaveStatusProvider>
       </body>
     </html>
