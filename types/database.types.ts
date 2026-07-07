@@ -62,6 +62,64 @@ export type Database = {
           },
         ]
       }
+      author_feedback_responses: {
+        Row: {
+          author_id: string
+          created_at: string
+          document_id: string
+          id: string
+          review_id: string
+          status: Database["public"]["Enums"]["feedback_response_status"]
+          target_id: string
+          target_type: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          document_id: string
+          id?: string
+          review_id: string
+          status: Database["public"]["Enums"]["feedback_response_status"]
+          target_id: string
+          target_type: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          review_id?: string
+          status?: Database["public"]["Enums"]["feedback_response_status"]
+          target_id?: string
+          target_type?: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "author_feedback_responses_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "author_feedback_responses_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "author_feedback_responses_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_acceptances: {
         Row: {
           created_at: string
@@ -278,6 +336,45 @@ export type Database = {
         }
         Relationships: []
       }
+      review_declines: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          note: string
+          reviewer_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          note: string
+          reviewer_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          note?: string
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_declines_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_declines_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_events: {
         Row: {
           data: Json | null
@@ -364,54 +461,17 @@ export type Database = {
           },
         ]
       }
-      review_declines: {
-        Row: {
-          created_at: string
-          document_id: string
-          id: string
-          note: string
-          reviewer_id: string
-        }
-        Insert: {
-          created_at?: string
-          document_id: string
-          id?: string
-          note: string
-          reviewer_id: string
-        }
-        Update: {
-          created_at?: string
-          document_id?: string
-          id?: string
-          note?: string
-          reviewer_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "review_declines_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "review_declines_reviewer_id_fkey"
-            columns: ["reviewer_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       reviews: {
         Row: {
           created_at: string
           document_id: string
+          general_comment: string | null
           id: string
           last_saved_at: string | null
           notes: string | null
           overall_comment: string | null
           reviewer_id: string
+          reviewer_notes: string | null
           rubric_id: string
           status: Database["public"]["Enums"]["review_status"]
           submitted_at: string | null
@@ -420,11 +480,13 @@ export type Database = {
         Insert: {
           created_at?: string
           document_id: string
+          general_comment?: string | null
           id?: string
           last_saved_at?: string | null
           notes?: string | null
           overall_comment?: string | null
           reviewer_id: string
+          reviewer_notes?: string | null
           rubric_id: string
           status?: Database["public"]["Enums"]["review_status"]
           submitted_at?: string | null
@@ -433,11 +495,13 @@ export type Database = {
         Update: {
           created_at?: string
           document_id?: string
+          general_comment?: string | null
           id?: string
           last_saved_at?: string | null
           notes?: string | null
           overall_comment?: string | null
           reviewer_id?: string
+          reviewer_notes?: string | null
           rubric_id?: string
           status?: Database["public"]["Enums"]["review_status"]
           submitted_at?: string | null
@@ -463,6 +527,58 @@ export type Database = {
             columns: ["rubric_id"]
             isOneToOne: false
             referencedRelation: "rubrics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revision_notes: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          document_id: string
+          id: string
+          review_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          document_id: string
+          id?: string
+          review_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          review_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revision_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revision_notes_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revision_notes_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
             referencedColumns: ["id"]
           },
         ]
@@ -583,7 +699,7 @@ export type Database = {
           primary_discipline: string | null
           profession: string | null
           reviewer_type: string | null
-          role: Database["public"]["Enums"]["user_role"]
+          role: Database["public"]["Enums"]["user_role"] | null
           roles: string[]
           rubric_specializations: string[] | null
         }
@@ -598,7 +714,7 @@ export type Database = {
           primary_discipline?: string | null
           profession?: string | null
           reviewer_type?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
+          role?: Database["public"]["Enums"]["user_role"] | null
           roles?: string[]
           rubric_specializations?: string[] | null
         }
@@ -613,7 +729,7 @@ export type Database = {
           primary_discipline?: string | null
           profession?: string | null
           reviewer_type?: string | null
-          role?: Database["public"]["Enums"]["user_role"]
+          role?: Database["public"]["Enums"]["user_role"] | null
           roles?: string[]
           rubric_specializations?: string[] | null
         }
@@ -627,6 +743,14 @@ export type Database = {
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      update_torus_document_pages: {
+        Args: {
+          p_document_id: string
+          p_page_entry: Json
+          p_storage_path: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
@@ -657,9 +781,15 @@ export type Database = {
         | "physics"
         | "social_sciences"
         | "other"
+      feedback_response_status: "addressed" | "will_address_later"
+      feedback_target_type:
+        | "annotation"
+        | "score_comment"
+        | "general_comment"
+        | "overall_comment"
       file_type: "pdf" | "html" | "image" | "audio"
-      review_status: "unassigned" | "assigned" | "in_progress" | "submitted"
-      user_role: "author" | "reviewer" | "admin"
+      review_status: "in_progress" | "submitted" | "unassigned" | "assigned"
+      user_role: "reviewer" | "author" | "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -692,13 +822,13 @@ export type Tables<
     : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
         DefaultSchema["Views"])
-  ? (DefaultSchema["Tables"] &
-      DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-      Row: infer R
-    }
-    ? R
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
     : never
-  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
@@ -718,12 +848,12 @@ export type TablesInsert<
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-      Insert: infer I
-    }
-    ? I
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
     : never
-  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
@@ -743,12 +873,12 @@ export type TablesUpdate<
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-      Update: infer U
-    }
-    ? U
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
     : never
-  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
@@ -764,8 +894,8 @@ export type Enums<
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-  : never
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
@@ -781,8 +911,8 @@ export type CompositeTypes<
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-  : never
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
 
 export const Constants = {
   public: {
@@ -816,9 +946,16 @@ export const Constants = {
         "social_sciences",
         "other",
       ],
+      feedback_response_status: ["addressed", "will_address_later"],
+      feedback_target_type: [
+        "annotation",
+        "score_comment",
+        "general_comment",
+        "overall_comment",
+      ],
       file_type: ["pdf", "html", "image", "audio"],
-      review_status: ["unassigned", "assigned", "in_progress", "submitted"],
-      user_role: ["author", "reviewer", "admin"],
+      review_status: ["in_progress", "submitted", "unassigned", "assigned"],
+      user_role: ["reviewer", "author", "admin"],
     },
   },
 } as const

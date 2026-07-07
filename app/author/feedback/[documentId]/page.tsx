@@ -30,6 +30,9 @@ export default async function FeedbackPage({
             allRubrics={data.allRubrics}
             pdfUrl={pdfUrl}
             includeAuthorNotes={data.isAuthor}
+            isAuthor={data.isAuthor}
+            initialResponses={data.feedbackResponses}
+            initialRevisionNotes={data.revisionNotes}
           />
         </Suspense>
       </main>

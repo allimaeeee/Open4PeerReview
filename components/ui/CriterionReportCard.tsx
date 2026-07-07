@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { CriterionScore } from '@/types'
+import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType } from '@/types'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
+import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
 
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
@@ -46,6 +47,10 @@ interface CriterionReportCardProps {
   onGoToAnnotation?: (annotationId: string) => void
   goToLabel?: string
   annotationIndexMap?: Map<string, number>
+  /** Author-only feedback status controls (on score comments + evidence). */
+  showStatusControls?: boolean
+  statusFor?: (targetType: FeedbackTargetType, targetId: string) => FeedbackResponseStatus | null
+  onStatusChange?: (targetType: FeedbackTargetType, targetId: string, status: FeedbackResponseStatus | null) => void
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -98,9 +103,15 @@ function formatDescription(text: string): string[] {
 function ScoreCommentBlock({
   comments,
   level,
+  showStatusControls,
+  statusFor,
+  onStatusChange,
 }: {
   comments: ScoreComment[]
   level: 'does_not_meet' | 'exceeds'
+  showStatusControls?: boolean
+  statusFor?: (targetType: FeedbackTargetType, targetId: string) => FeedbackResponseStatus | null
+  onStatusChange?: (targetType: FeedbackTargetType, targetId: string, status: FeedbackResponseStatus | null) => void
 }) {
   const cfg = POLARITY_CONFIG[level]
   return (
@@ -113,13 +124,22 @@ function ScoreCommentBlock({
       </span>
       <div className="flex flex-col gap-2">
         {comments.map(comment => (
-          <blockquote
-            key={comment.id}
-            className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed break-words hyphens-auto"
-            style={{ borderLeft: `2px solid ${cfg.border}` }}
-          >
-            {comment.body}
-          </blockquote>
+          <div key={comment.id} className="flex flex-col gap-1.5">
+            <blockquote
+              className="pl-3 text-body-sm text-[var(--color-text-secondary)] leading-relaxed break-words hyphens-auto"
+              style={{ borderLeft: `2px solid ${cfg.border}` }}
+            >
+              {comment.body}
+            </blockquote>
+            {showStatusControls && onStatusChange && (
+              <div className="pl-3">
+                <AddressStatusControl
+                  status={statusFor?.('score_comment', comment.id) ?? null}
+                  onChange={s => onStatusChange('score_comment', comment.id, s)}
+                />
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -142,6 +162,9 @@ export function CriterionReportCard({
   onGoToAnnotation,
   goToLabel,
   annotationIndexMap,
+  showStatusControls,
+  statusFor,
+  onStatusChange,
 }: CriterionReportCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultExpanded)
   const isControlled = isOpenProp !== undefined
@@ -246,13 +269,16 @@ export function CriterionReportCard({
                 </span>
                 {bothPolarities ? (
                   <div className="grid grid-cols-2 gap-4">
-                    <ScoreCommentBlock comments={exceedsComments} level="exceeds" />
-                    <ScoreCommentBlock comments={dnmComments} level="does_not_meet" />
+                    <ScoreCommentBlock comments={exceedsComments} level="exceeds" showStatusControls={showStatusControls} statusFor={statusFor} onStatusChange={onStatusChange} />
+                    <ScoreCommentBlock comments={dnmComments} level="does_not_meet" showStatusControls={showStatusControls} statusFor={statusFor} onStatusChange={onStatusChange} />
                   </div>
                 ) : (
                   <ScoreCommentBlock
                     comments={dnmComments.length > 0 ? dnmComments : exceedsComments}
                     level={dnmComments.length > 0 ? 'does_not_meet' : 'exceeds'}
+                    showStatusControls={showStatusControls}
+                    statusFor={statusFor}
+                    onStatusChange={onStatusChange}
                   />
                 )}
               </div>
@@ -274,6 +300,11 @@ export function CriterionReportCard({
                       }
                       goToLabel={goToLabel}
                       screenshotNumber={annotationIndexMap?.get(annotation.id)}
+                      showStatusControl={showStatusControls}
+                      status={statusFor?.('annotation', annotation.id) ?? null}
+                      onStatusChange={
+                        onStatusChange ? s => onStatusChange('annotation', annotation.id, s) : undefined
+                      }
                     />
                   ))}
                 </div>

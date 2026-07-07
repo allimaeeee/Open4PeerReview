@@ -13,6 +13,8 @@ export type ReviewStatus            = Enums<'review_status'>
 export type CriterionScore          = Enums<'criterion_score'>
 export type CreativeCommonsLicense  = Enums<'creative_commons_license'>
 export type HighlightTag   = 'action_item' | 'quick_fix'
+export type FeedbackResponseStatus  = Enums<'feedback_response_status'>
+export type FeedbackTargetType      = Enums<'feedback_target_type'>
 
 // ─── Table row types ──────────────────────────────────────────────────────────
 
@@ -23,6 +25,8 @@ export type RubricItem   = Tables<'rubric_items'>
 export type Review       = Tables<'reviews'>
 export type ReviewScore  = Tables<'review_scores'>
 export type Annotation   = Tables<'annotations'>
+export type AuthorFeedbackResponse = Tables<'author_feedback_responses'>
+export type RevisionNote           = Tables<'revision_notes'>
 
 // ─── Insert / Update types ────────────────────────────────────────────────────
 

@@ -478,11 +478,32 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     .order('submitted_at', { ascending: true })
 
   if (error) throw error
+
+  // Author-side response state. RLS restricts these tables to the document author,
+  // so non-authors (coordinators/reviewers) simply receive empty arrays.
+  const { data: feedbackResponses } = await supabase
+    .from('author_feedback_responses')
+    .select('id, target_type, target_id, status, review_id')
+    .eq('document_id', documentId)
+
+  const { data: revisionNotes } = await supabase
+    .from('revision_notes')
+    .select('id, body, review_id, created_at, updated_at')
+    .eq('document_id', documentId)
+    .order('created_at', { ascending: true })
+
   const allRubrics = ((doc as { document_rubrics?: { rubric: { id: string; title: string; rubric_items?: { id: string }[] } | null }[] }).document_rubrics ?? [])
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string; rubric_items?: { id: string }[] } => r !== null)
     .map(r => ({ id: r.id, title: r.title, itemIds: (r.rubric_items ?? []).map(item => item.id) }))
-  return { document: doc, reviews: data ?? [], isAuthor, allRubrics }
+  return {
+    document: doc,
+    reviews: data ?? [],
+    isAuthor,
+    allRubrics,
+    feedbackResponses: feedbackResponses ?? [],
+    revisionNotes: revisionNotes ?? [],
+  }
 }
 
 /** All distinct subject_matter values stored across documents (used to populate the custom options list) */
