@@ -1,4 +1,3 @@
-import { SchemaType } from '@google/generative-ai'
 import { callAI } from './aiService'
 import { getCriterionStandardByIndex, type CriterionStandard } from '../rubric-data/criteriaStandards'
 import {
@@ -48,11 +47,14 @@ export async function explainCriterionFirstTurn(input: {
       // (quotes/braces/array syntax add overhead) — too tight a cap here
       // truncates mid-JSON and breaks the parse below.
       maxOutputTokens: 512,
+      // Plain lowercase `type` strings (matching @google/generative-ai's
+      // SchemaType enum) so the SDK stays out of the client bundle — the
+      // schema is only forwarded as JSON to /api/ai-chat.
       responseSchema: {
-        type: SchemaType.OBJECT,
+        type: 'object',
         properties: {
-          summary: { type: SchemaType.STRING },
-          followUps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          summary: { type: 'string' },
+          followUps: { type: 'array', items: { type: 'string' } },
         },
         required: ['summary', 'followUps'],
       },
