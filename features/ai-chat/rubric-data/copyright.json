@@ -1,0 +1,56 @@
+{
+  "id": "copyright",
+  "name": "Copyright",
+  "description": "Evaluates whether the OER appropriately handles copyright, licensing, and attribution for all included content.",
+  "preamble": "Copyright review for OER requires a careful audit of every piece of content — text, image, audio, video, data, and code. The goal is not punitive compliance but ensuring that the resource truly functions as an open educational resource: legally reusable, adaptable, and shareable by others.\n\nReviewers should be attuned to the difference between 'freely available online' and 'openly licensed.' Many works are accessible on the web but retain full copyright protections.",
+  "criteria": [
+    {
+      "id": "C1", "title": "Original Content Licensing",
+      "standard": "Original content is licensed under an appropriate Creative Commons license, clearly stated at the resource level.",
+      "needsImprovementPrompt": "No license stated. Copyright notice contradicts declared OER status.",
+      "exceedsPrompt": "License is prominently displayed, machine-readable, and applied precisely to original vs. adapted content."
+    },
+    {
+      "id": "C2", "title": "Third-Party Content Documentation",
+      "standard": "All third-party content (images, quotes, data) is identified, sourced, and its licensing status documented.",
+      "needsImprovementPrompt": "Third-party content is used without identification or acknowledgment.",
+      "exceedsPrompt": "A comprehensive permissions log documents every third-party element with license type, source URL, and access date."
+    },
+    {
+      "id": "C3", "title": "Attribution Practices",
+      "standard": "All openly licensed content includes a complete attribution statement (Title, Author, Source, License — TASL).",
+      "needsImprovementPrompt": "Attributions are incomplete, missing license information, or formatted inconsistently.",
+      "exceedsPrompt": "All attributions follow the full TASL format and are placed directly adjacent to the attributed content."
+    },
+    {
+      "id": "C4", "title": "Fair Use Application & Documentation",
+      "standard": "Where fair use is claimed, a brief written justification addresses the four fair use factors.",
+      "needsImprovementPrompt": "Copyrighted materials are used without license or documented fair use rationale.",
+      "exceedsPrompt": "Each fair use claim includes a documented four-factor analysis and has been reviewed by a subject matter expert."
+    },
+    {
+      "id": "C5", "title": "License Compatibility & Documentation",
+      "standard": "Licenses of all adapted materials are compatible with the OER's declared license.",
+      "needsImprovementPrompt": "Incompatible licenses are mixed (e.g., CC BY-ND content adapted in a CC BY-SA work).",
+      "exceedsPrompt": "License compatibility is explicitly documented for every adapted element, with chain-of-licensing traced."
+    },
+    {
+      "id": "C6", "title": "Public Domain Materials",
+      "standard": "Public domain works are correctly identified and the basis for PD status is noted (age, government work, etc.).",
+      "needsImprovementPrompt": "Public domain claims are unsubstantiated or incorrect. Works incorrectly assumed to be PD.",
+      "exceedsPrompt": "PD status is verified using authoritative sources (copyright.gov, Creative Commons tools) and documented."
+    },
+    {
+      "id": "C7", "title": "Copyright Status Communication",
+      "standard": "The licensing status of the entire work is communicated clearly to potential adopters.",
+      "needsImprovementPrompt": "Licensing information is buried, ambiguous, or contradictory across sections.",
+      "exceedsPrompt": "A prominent licensing summary page explains what can be reused, adapted, and under what conditions."
+    },
+    {
+      "id": "C8", "title": "Permissions & Documentation Trail",
+      "standard": "Written permissions (where required) are secured and documented for restricted-license third-party content.",
+      "needsImprovementPrompt": "No evidence of permissions sought or obtained for rights-restricted materials used.",
+      "exceedsPrompt": "Full permissions trail on file, including correspondence and license agreements where applicable."
+    }
+  ]
+}

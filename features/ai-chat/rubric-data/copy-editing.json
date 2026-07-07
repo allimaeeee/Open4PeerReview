@@ -1,0 +1,68 @@
+{
+  "id": "copy-editing",
+  "name": "Copy Editing",
+  "description": "Evaluates the language quality, editorial consistency, and written clarity of the OER.",
+  "preamble": "Copy editing for OER goes beyond surface-level grammar correction. It ensures that the resource communicates with precision, consistency, and accessibility across diverse academic audiences. Reviewers should read as a careful editor would — attending to the rhythm of prose, the logic of structure, and the clarity of every claim.",
+  "criteria": [
+    {
+      "id": "C1", "title": "Grammar & Syntax",
+      "standard": "Writing is grammatically correct throughout. Sentences are well-formed and syntactically clear.",
+      "needsImprovementPrompt": "Frequent grammatical errors, run-on sentences, or dangling modifiers disrupt comprehension.",
+      "exceedsPrompt": "Writing demonstrates mastery of grammar with sophisticated, varied sentence construction."
+    },
+    {
+      "id": "C2", "title": "Spelling & Typographical Accuracy",
+      "standard": "Text is free from spelling errors and typos. Technical terms are spelled correctly and consistently.",
+      "needsImprovementPrompt": "Multiple spelling errors or inconsistent spelling of key terms throughout the resource.",
+      "exceedsPrompt": "Zero errors. Technical vocabulary is deployed with precision and consistency across all sections."
+    },
+    {
+      "id": "C3", "title": "Punctuation & Mechanics",
+      "standard": "Punctuation is correctly and consistently applied throughout, including commas, apostrophes, and quotation marks.",
+      "needsImprovementPrompt": "Systematic punctuation errors (e.g., misused apostrophes, inconsistent serial comma) appear throughout.",
+      "exceedsPrompt": "Punctuation is not only correct but is used to create precise rhetorical effect and clarity."
+    },
+    {
+      "id": "C4", "title": "Style Guide Consistency",
+      "standard": "A consistent editorial style (APA, Chicago, or other) is applied throughout the resource.",
+      "needsImprovementPrompt": "Style is undefined or mixed across sections, creating confusion in citation and usage.",
+      "exceedsPrompt": "Style guide adherence is flawless and explicitly declared; all edge cases are handled consistently."
+    },
+    {
+      "id": "C5", "title": "Internal Consistency & Usage",
+      "standard": "Terminology, abbreviations, and naming conventions are used consistently throughout.",
+      "needsImprovementPrompt": "Key terms are used interchangeably or redefined across sections without explanation.",
+      "exceedsPrompt": "A glossary or style sheet is evident. Terminology is introduced, defined, and applied with complete consistency."
+    },
+    {
+      "id": "C6", "title": "Clarity & Readability",
+      "standard": "Writing is clear and appropriate for college-level readers. Complex ideas are explained accessibly.",
+      "needsImprovementPrompt": "Jargon-heavy or overly dense prose impedes understanding without adequate scaffolding.",
+      "exceedsPrompt": "Exceptionally clear prose makes complex ideas accessible without sacrificing academic rigor."
+    },
+    {
+      "id": "C7", "title": "Formatting & Visual Consistency",
+      "standard": "Visual formatting (headings, lists, tables, fonts) is consistent and enhances readability.",
+      "needsImprovementPrompt": "Inconsistent fonts, random bolding, or misaligned formatting create a disorganized appearance.",
+      "exceedsPrompt": "Formatting is purposeful, consistent, and designed to support the learning hierarchy of the content."
+    },
+    {
+      "id": "C8", "title": "Citations, References & Attributions",
+      "standard": "All sources are properly cited and referenced according to the declared style guide.",
+      "needsImprovementPrompt": "Citations are missing, incomplete, or inconsistently formatted. Reference list does not match in-text citations.",
+      "exceedsPrompt": "All citations are complete, accurate, and consistently formatted. DOIs and access dates are included where appropriate."
+    },
+    {
+      "id": "C9", "title": "Cross-References & Navigational Elements",
+      "standard": "Internal cross-references, tables of contents, and chapter links are accurate and functional.",
+      "needsImprovementPrompt": "Cross-references point to wrong sections. TOC entries are absent or inaccurate.",
+      "exceedsPrompt": "Navigation is comprehensive, accurate, and enhances the learning journey through clear wayfinding."
+    },
+    {
+      "id": "C10", "title": "Inclusive & Accessible Language",
+      "standard": "Language is gender-neutral, culturally sensitive, and free from stereotypes or bias.",
+      "needsImprovementPrompt": "Gendered or exclusionary language used without awareness. Examples center narrow demographic groups.",
+      "exceedsPrompt": "Language actively centers equity and inclusion. Diverse examples and perspectives are woven throughout."
+    }
+  ]
+}
