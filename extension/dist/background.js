@@ -1,4 +1,4 @@
-// src/background.ts
+// extension/src/background.ts
 var SUPABASE_URL = "https://nkcyjfuzmmkuavhmqyvu.supabase.co";
 var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rY3lqZnV6bW1rdWF2aG1xeXZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2ODMyNzksImV4cCI6MjA5MTI1OTI3OX0._KEfRSNTIehhl2biJnixwl3yjf_Y2zylWKsOhcBXLeU";
 var SCREENSHOTS_BUCKET = "screenshots";
