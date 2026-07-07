@@ -413,6 +413,42 @@ export type Database = {
           },
         ]
       }
+      review_rubric_submissions: {
+        Row: {
+          id: string
+          review_id: string
+          rubric_id: string
+          submitted_at: string
+        }
+        Insert: {
+          id?: string
+          review_id: string
+          rubric_id: string
+          submitted_at?: string
+        }
+        Update: {
+          id?: string
+          review_id?: string
+          rubric_id?: string
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_rubric_submissions_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_rubric_submissions_rubric_id_fkey"
+            columns: ["rubric_id"]
+            isOneToOne: false
+            referencedRelation: "rubrics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_scores: {
         Row: {
           comment: string | null

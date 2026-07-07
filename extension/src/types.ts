@@ -136,6 +136,7 @@ export type BackgroundMessageType =
   | 'DELETE_ANNOTATION'
   | 'SAVE_SCORE'
   | 'GET_ASSIGNMENTS'
+  | 'GET_REVIEW'
   | 'GET_RUBRIC_ITEMS'
   | 'GET_ANNOTATIONS'
   | 'GET_SCORES'

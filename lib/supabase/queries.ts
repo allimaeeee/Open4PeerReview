@@ -409,7 +409,7 @@ export async function getMyDocumentsWithStats(supabase: Client) {
       creative_commons_license, third_party_content_disclosure, source_url,
       submission_scope, coordinator_released_at, is_draft,
       document_rubrics ( rubric:rubrics ( id, title ) ),
-      reviews ( id, status, submitted_at, rubric_id )
+      reviews ( id, status, submitted_at, rubric_id, review_rubric_submissions ( rubric_id ) )
     `)
     .eq('author_id', user.id)
     .eq('coordinator_upload', false)
@@ -466,6 +466,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
       id, status, overall_comment, notes, submitted_at,
       reviewer:users!reviewer_id ( display_name, email ),
       rubric:rubrics ( id, title ),
+      review_rubric_submissions!inner ( rubric_id, submitted_at ),
       review_scores (
         id, score, criterion_scores, comment,
         rubric_item:rubric_items ( id, label, sort_order, description )
@@ -474,7 +475,6 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
       score_comments ( id, rubric_item_id, score_level, body )
     `)
     .eq('document_id', documentId)
-    .eq('status', 'submitted')
     .order('submitted_at', { ascending: true })
 
   if (error) throw error

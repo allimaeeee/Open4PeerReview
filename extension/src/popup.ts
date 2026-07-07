@@ -239,7 +239,7 @@ function renderStatus(auth: StoredAuth, review: ReviewAssignment | null) {
     : `
       <div class="review-box">
         <div class="review-label">No active review</div>
-        <div class="review-rubric" style="margin-top:2px;">Navigate to the OER you're assigned to review on Torus — the panel will open automatically.</div>
+        <div class="review-rubric" style="margin-top:2px;">Open a review from your OER Hub dashboard — the panel appears on Torus automatically. It won't show up if you browse Torus on your own.</div>
       </div>
     `;
 
