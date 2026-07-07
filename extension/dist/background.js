@@ -67,6 +67,11 @@ async function handleMessage(msg, sender) {
     case "GET_ASSIGNMENTS":
       if (!auth) return { success: false, error: "Not authenticated" };
       return getAssignments(auth);
+    case "GET_REVIEW": {
+      if (!auth) return { success: false, error: "Not authenticated" };
+      const { reviewId } = msg.payload;
+      return getReview(reviewId, auth);
+    }
     case "GET_RUBRIC_ITEMS": {
       if (!auth) return { success: false, error: "Not authenticated" };
       const { rubricId } = msg.payload;
@@ -401,5 +406,14 @@ async function getAssignments(auth) {
     `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
     auth.access_token
   );
+}
+async function getReview(reviewId, auth) {
+  const resp = await get(
+    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+    auth.access_token
+  );
+  if (!resp.success) return resp;
+  const rows = resp.data;
+  return { success: true, data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null };
 }
 //# sourceMappingURL=background.js.map

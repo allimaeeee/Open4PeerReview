@@ -98,6 +98,12 @@ async function handleMessage(
       if (!auth) return { success: false, error: 'Not authenticated' };
       return getAssignments(auth);
 
+    case 'GET_REVIEW': {
+      if (!auth) return { success: false, error: 'Not authenticated' };
+      const { reviewId } = msg.payload as { reviewId: string };
+      return getReview(reviewId, auth);
+    }
+
     case 'GET_RUBRIC_ITEMS': {
       if (!auth) return { success: false, error: 'Not authenticated' };
       const { rubricId } = msg.payload as { rubricId: string };
@@ -520,6 +526,22 @@ async function getAssignments(auth: StoredAuth): Promise<BackgroundResponse> {
     `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
     auth.access_token,
   );
+}
+
+// Fetch a single review by id, regardless of status. getAssignments() only
+// returns assigned/in_progress reviews, so a deep link to a submitted (or
+// otherwise excluded) review would resolve to nothing and the console would
+// silently open the wrong review. This lets routeToReview() honor the exact
+// oer_review_id it was handed. Scoped to the reviewer's own rows via RLS + the
+// reviewer_id filter, so it can only ever return a review the caller owns.
+async function getReview(reviewId: string, auth: StoredAuth): Promise<BackgroundResponse> {
+  const resp = await get(
+    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+    auth.access_token,
+  );
+  if (!resp.success) return resp;
+  const rows = resp.data as unknown[];
+  return { success: true, data: Array.isArray(rows) && rows.length > 0 ? rows[0] : null };
 }
 
 // Satisfy TypeScript — these types are used only via the payload union above

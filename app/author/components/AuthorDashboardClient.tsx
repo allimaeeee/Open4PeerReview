@@ -30,7 +30,13 @@ interface DocumentRow {
   platform: string | null
   created_at: string
   document_rubrics: { rubric: { id: string; title: string } | null }[]
-  reviews: { id: string; status: string; submitted_at: string | null; rubric_id: string }[]
+  reviews: {
+    id: string
+    status: string
+    submitted_at: string | null
+    rubric_id: string
+    review_rubric_submissions?: { rubric_id: string }[]
+  }[]
 }
 
 interface Props {
@@ -44,14 +50,32 @@ interface Props {
 // 'assigned' status is intentionally unused here — it will be wired in once the
 // coordinator dashboard is in place (coordinator assigns unassigned OER to a reviewer).
 function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
+  const docRubricIds = doc.document_rubrics
+    .map(dr => dr.rubric?.id)
+    .filter((id): id is string => !!id)
+
+  // Per-rubric submission: a rubric is 'feedback-ready' once released to the author.
+  // Legacy fallback: a submitted review with no submission rows predates per-rubric
+  // submission — treat all its rubrics as released.
+  const submittedRubricIds = new Set<string>(
+    doc.reviews.flatMap(rev => {
+      const subs = rev.review_rubric_submissions ?? []
+      if (subs.length > 0) return subs.map(s => s.rubric_id)
+      if (rev.status === 'submitted') return docRubricIds
+      return []
+    })
+  )
+  // The author only ever sees reviews that have started releasing feedback (RLS), so any
+  // review present means a reviewer is actively working the remaining rubrics.
+  const hasActiveReview = doc.reviews.length > 0
+
   const rubrics: RubricReview[] = doc.document_rubrics
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string } => r !== null)
     .map(r => {
-      const review = doc.reviews.find(rev => rev.rubric_id === r.id)
       const status: RubricReview['status'] =
-        review?.status === 'submitted'   ? 'feedback-ready' :
-        review?.status === 'in_progress' ? 'under-review' :
+        submittedRubricIds.has(r.id) ? 'feedback-ready' :
+        hasActiveReview              ? 'under-review' :
         'unassigned'
       return { rubricId: r.id, rubricTitle: r.title, status }
     })

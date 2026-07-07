@@ -59,6 +59,7 @@ interface ReviewRow {
   submitted_at: string | null
   reviewer: { display_name: string | null; email: string } | null
   rubric: { id: string; title: string } | null
+  review_rubric_submissions?: { rubric_id: string; submitted_at: string }[]
   review_scores: ReviewScoreRow[]
   annotations: AnnotationRow[]
   score_comments: ScoreCommentRow[]
@@ -246,18 +247,26 @@ export function FeedbackView({
 
   const allRubrics: { id: string; title: string; itemIds: string[] }[] = allRubricsFromProps ?? []
 
-  // Global submit: one review row covers all rubrics. All pills are accessible whenever
-  // any submitted review exists for this document.
-  const submittedRubricIds = new Set(
-    reviews.length > 0 ? allRubrics.map(r => r.id) : []
+  // Per-rubric submit: a rubric is visible to the author once the reviewer has released
+  // it (a review_rubric_submissions row exists). Legacy fallback: a review with no
+  // submission rows predates per-rubric submission — treat all its rubrics as released.
+  const submittedRubricIds = new Set<string>(
+    reviews.flatMap(rv => {
+      const subs = rv.review_rubric_submissions ?? []
+      if (subs.length > 0) return subs.map(s => s.rubric_id)
+      return allRubrics.map(r => r.id) // legacy whole-review submission
+    })
   )
+
+  const firstSubmittedRubricId =
+    allRubrics.find(r => submittedRubricIds.has(r.id))?.id ?? null
 
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
     if (!reviews.length) return null
-    if (requestedRubricId && allRubrics.some(r => r.id === requestedRubricId)) {
+    if (requestedRubricId && submittedRubricIds.has(requestedRubricId)) {
       return requestedRubricId
     }
-    return allRubrics[0]?.id ?? null
+    return firstSubmittedRubricId
   })
 
   // Prefer the review linked to the selected rubric; fall back to the first submitted review
@@ -275,7 +284,12 @@ export function FeedbackView({
     : []
 
   const reviewerName = review?.reviewer?.display_name ?? review?.reviewer?.email ?? 'Anonymous Reviewer'
-  const submittedDate = formatDate(review?.submitted_at ?? null)
+  // Prefer the selected rubric's own release date; fall back to the review-level date.
+  const selectedRubricSubmittedAt =
+    review?.review_rubric_submissions?.find(s => s.rubric_id === selectedRubricId)?.submitted_at
+    ?? review?.submitted_at
+    ?? null
+  const submittedDate = formatDate(selectedRubricSubmittedAt)
 
   const snapshotSrc = document.content_fingerprint
     ? `/api/snapshot/${document.content_fingerprint}`

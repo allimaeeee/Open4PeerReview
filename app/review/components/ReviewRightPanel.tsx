@@ -18,7 +18,12 @@ interface ReviewRightPanelProps {
   generalAnnotations: FreeNote[]
   activeRubricId: string | null
   onActiveRubricChange: (id: string) => void
+  /** True when the active rubric is locked (submitted, or whole review submitted). */
   isReadOnly: boolean
+  /** True only when the whole review is submitted — gates the whole-review general comment / unlinked annotations. */
+  generalReadOnly: boolean
+  /** Rubric ids already submitted to the author. */
+  submittedRubricIds: Set<string>
   onSubmit: () => void
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
   onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
@@ -45,6 +50,8 @@ export function ReviewRightPanel({
   activeRubricId,
   onActiveRubricChange,
   isReadOnly,
+  generalReadOnly,
+  submittedRubricIds,
   onSubmit,
   onScoreToggle,
   onAddComment,
@@ -78,7 +85,11 @@ export function ReviewRightPanel({
 
   const activeRubricIsReadOnly = isReadOnly
 
-  const allRubricsFullyRated = rubrics.length > 0 && rubrics.every(r => r.rated === r.total && r.total > 0)
+  // Per-rubric submission: the header Submit button acts on the active rubric.
+  const activeRubric = rubrics.find(r => r.id === activeRubricId)
+  const activeRubricSubmitted = activeRubricId ? submittedRubricIds.has(activeRubricId) : false
+  const activeRubricFullyRated =
+    !!activeRubric && activeRubric.total > 0 && activeRubric.rated === activeRubric.total
 
   const activeRubricItems = useMemo(
     () => rubricItems.filter(item => item.rubric_id === activeRubricId),
@@ -126,7 +137,14 @@ export function ReviewRightPanel({
             tabs={rubrics.map(r => ({
               id: r.id,
               label: r.title,
-              badge: (
+              badge: submittedRubricIds.has(r.id) ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label font-semibold bg-success-container text-success border border-success">
+                  <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M13 4L6 11L3 8" />
+                  </svg>
+                  Submitted
+                </span>
+              ) : (
                 <span className={[
                   'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
                   r.rated === r.total && r.total > 0
@@ -145,11 +163,17 @@ export function ReviewRightPanel({
         <div className="shrink-0 flex items-center px-3 bg-surface-card border-l border-b border-border">
           <Button
             variant="primary"
-            disabled={!allRubricsFullyRated || isReadOnly}
-            title={!allRubricsFullyRated ? 'Rate all criteria to submit.' : undefined}
+            disabled={generalReadOnly || activeRubricSubmitted || !activeRubricFullyRated}
+            title={
+              activeRubricSubmitted
+                ? 'This rubric has been submitted to the author.'
+                : !activeRubricFullyRated
+                  ? 'Rate all criteria in this rubric to submit it.'
+                  : undefined
+            }
             onClick={onSubmit}
           >
-            Submit Review
+            {activeRubricSubmitted ? 'Submitted' : 'Submit Rubric'}
           </Button>
         </div>
       </div>
@@ -161,7 +185,7 @@ export function ReviewRightPanel({
           initialNotes={initialNotes}
           onNotesChange={onGeneralCommentChange}
           saveStatus={saveStatus}
-          isReadOnly={activeRubricIsReadOnly}
+          isReadOnly={generalReadOnly}
         />
 
         <UnlinkedAnnotationsCard
@@ -171,7 +195,7 @@ export function ReviewRightPanel({
           onGoToAnnotation={onGoToAnnotation}
           onEdit={onEditAnnotation}
           onDelete={onDeleteAnnotation}
-          isReadOnly={activeRubricIsReadOnly}
+          isReadOnly={generalReadOnly}
           goToLabel={goToLabel}
           annotationIndexMap={annotationIndexMap}
         />
