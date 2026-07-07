@@ -1,4 +1,3 @@
-import { SchemaType } from '@google/generative-ai'
 import { callAI } from './aiService'
 import { checkAllFeedbackSpec } from '../server/outputSpecs'
 import { getCriterionStandardByIndex } from '../rubric-data/criteriaStandards'
@@ -6,34 +5,38 @@ import type { PageRole } from '../server/promptBuilder'
 import type { RubricSlug } from '../rubric-data/rubricNameMap'
 import type { CriterionWithScore, CheckAllFeedbackResult } from './types'
 
+// Schema `type` values are the plain lowercase strings the Gemini API expects
+// (matching @google/generative-ai's SchemaType enum), inlined here so the SDK
+// isn't pulled into the client bundle — this file runs client-side and only
+// forwards the schema as JSON to /api/ai-chat.
 const RESPONSE_SCHEMA = {
-  type: SchemaType.OBJECT,
+  type: 'object',
   properties: {
-    overallImpression: { type: SchemaType.STRING },
+    overallImpression: { type: 'string' },
     topConcerns: {
-      type: SchemaType.ARRAY,
+      type: 'array',
       items: {
-        type: SchemaType.OBJECT,
+        type: 'object',
         properties: {
-          criterionLabel: { type: SchemaType.STRING },
-          excerpt: { type: SchemaType.STRING },
-          suggestion: { type: SchemaType.STRING },
+          criterionLabel: { type: 'string' },
+          excerpt: { type: 'string' },
+          suggestion: { type: 'string' },
         },
         required: ['criterionLabel', 'excerpt', 'suggestion'],
       },
     },
     strongExamples: {
-      type: SchemaType.ARRAY,
+      type: 'array',
       items: {
-        type: SchemaType.OBJECT,
+        type: 'object',
         properties: {
-          criterionLabel: { type: SchemaType.STRING },
-          reason: { type: SchemaType.STRING },
+          criterionLabel: { type: 'string' },
+          reason: { type: 'string' },
         },
         required: ['criterionLabel', 'reason'],
       },
     },
-    followUpQuestion: { type: SchemaType.STRING },
+    followUpQuestion: { type: 'string' },
   },
   required: ['overallImpression', 'topConcerns', 'strongExamples', 'followUpQuestion'],
 }
