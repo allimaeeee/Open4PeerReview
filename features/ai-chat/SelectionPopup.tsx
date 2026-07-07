@@ -68,7 +68,7 @@ export function SelectionPopup() {
       className="ai-popup-enter inline-flex items-center gap-2 bg-[var(--ai-popup-bg)] text-white text-xs font-medium px-3 py-1.5 rounded-md shadow-[0px_4px_16px_rgba(0,0,0,0.18)] cursor-pointer hover:opacity-90 transition-opacity duration-[120ms] select-none"
     >
       <PlusIcon />
-      Add to context
+      Ask AI
     </button>,
     document.body,
   )

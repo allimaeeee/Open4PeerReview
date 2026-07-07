@@ -3,12 +3,19 @@
 // (e.g. ['does_not_meet', 'exceeds'] for a multi-part criterion).
 // Matches DB model: review_scores.criterion_scores is stored as an array.
 
+import type { RubricSlug } from '../rubric-data/rubricNameMap'
+
 export type CriterionScore = 'does_not_meet' | 'exemplifies' | 'exceeds'
 
 export interface RubricCriterion {
   id: string
   label: string
   description: string
+  // Resolved from the parent rubric's title via rubricNameMap.resolveRubricSlug —
+  // null when the DB title doesn't match one of the 6 known rubrics (e.g. a
+  // custom, non-preset rubric). Static rubric-data content (operational
+  // definition, glossary, framing language) is unavailable in that case.
+  rubricSlug: RubricSlug | null
 }
 
 export interface AnnotationInput {
@@ -39,6 +46,7 @@ export interface CriterionWithScore {
 export interface ReviewerData {
   reviewId: string
   documentId: string
+  rubricSlug: RubricSlug | null
   criteria: CriterionWithScore[]
 }
 
@@ -50,32 +58,53 @@ export interface FeedbackData {
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
-export interface SummarizeFeedbackResult {
-  summary: string
-  priorityOrder: string[]
-}
-
 export interface ClarifyAnnotationResult {
   explanation: string
-  revisionDirections: string[]
 }
 
-export interface CheckCoverageResult {
-  uncoveredCriteria: string[]
-  reminder: string
+export interface ExplainCriterionFirstTurnResult {
+  summary: string
+  followUps: string[]
 }
 
-export interface NudgeFeedbackQualityResult {
-  isGood: boolean
-  suggestion: string | null
+// ── v3 overhaul types ─────────────────────────────────────────────────────────
+
+export type CriterionProgressStatus = 'complete' | 'in_progress' | 'not_started'
+
+export interface CriterionProgress {
+  criterionId: string
+  criterionLabel: string
+  status: CriterionProgressStatus
+  missing: string[] // e.g. ["rating", "comment"] — what's still needed to reach "complete"
 }
 
-export interface ExplainCriterionResult {
-  plainExplanation: string
-  highQualityExample: string
-  lowQualityExample: string
+export interface ReviewProgressResult {
+  summary: string
+  criteria: CriterionProgress[]
 }
 
-export interface ScaffoldReviewResult {
-  guidingQuestions: string[]
+// Compact ratings+comments shape used by Summarize Feedback — no rubric content needed.
+export interface RatingSummary {
+  criterionId: string
+  criterionLabel: string
+  ratingLevel: 'does_not_meet' | 'exceeds'
+  comment: string
+}
+
+export interface TopConcernItem {
+  criterionLabel: string
+  excerpt: string
+  suggestion: string
+}
+
+export interface StrongExampleItem {
+  criterionLabel: string
+  reason: string
+}
+
+export interface CheckAllFeedbackResult {
+  overallImpression: string
+  topConcerns: TopConcernItem[]
+  strongExamples: StrongExampleItem[]
+  followUpQuestion: string
 }

@@ -1,14 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useAIChat } from './AIChatContext'
+import { useAIChat, type ChatOption } from './AIChatContext'
 import { useChatContext } from './useChatContext'
+import { explainCriterionFollowUp, type ExplainCriterionFollowUp } from './shortcuts/explainCriterion'
 import { ChatMessages } from './ChatMessages'
+import { ChatHistoryList } from './ChatHistoryList'
 import { ContextBadge } from './ContextBadge'
 import { ShortcutPills } from './ShortcutPills'
 import { AIMascot } from './AIMascot'
 import { useAIChatLogger } from './logging/AIChatLoggerContext'
 import { usePanelResize } from './usePanelResize'
+import { RUBRIC_DISPLAY_NAMES } from './rubric-data/rubricNameMap'
 
 // ── Send icon ─────────────────────────────────────────────────────────────────
 
@@ -47,40 +50,40 @@ function CloseIcon() {
   )
 }
 
-// ── Panel toggle tab ──────────────────────────────────────────────────────────
+// ── History icon ──────────────────────────────────────────────────────────────
 
-function ToggleTab({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) {
+function HistoryIcon() {
   return (
-    <button
-      onClick={onClick}
-      aria-label={isOpen ? 'Close AI panel' : 'Open AI panel'}
-      className={[
-        'absolute top-1/2 -translate-y-1/2 flex items-center justify-center',
-        'bg-surface-card border border-border',
-        'shadow-[0px_4px_12px_rgba(28,28,24,0.06)]',
-        'hover:bg-surface-container-low transition-colors duration-[120ms]',
-        'rounded-l-lg',
-      ].join(' ')}
-      style={{ width: 28, height: 64, left: -28 }}
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+      aria-hidden="true"
     >
-      <span
-        className="text-[11px] font-semibold text-text-muted tracking-widest uppercase"
-        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-      >
-        AI
-      </span>
-    </button>
+      <circle cx="8" cy="8" r="6.5" />
+      <path d="M8 4.5V8l2.5 1.5" />
+    </svg>
   )
 }
 
 // ── AIChatPanel ───────────────────────────────────────────────────────────────
 
+type View = 'chat' | 'history'
+
 export function AIChatPanel() {
-  const { state, togglePanel, closePanel, addMessage, removeContextSnippet, setLoading, clearChat } = useAIChat()
-  const { shortcuts, reviewData } = useChatContext()
+  const {
+    state, closePanel, addMessage, removeContextSnippet, setLoading, setPendingFollowUp, clearChat,
+    setScope, isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
+  } = useAIChat()
+  const { shortcuts, reviewData, pageRole, rubricSlug, isReviewDataLoading, documentId } = useChatContext()
   const log = useAIChatLogger()
 
   const [draft, setDraft] = useState('')
+  const [view, setView] = useState<View>('chat')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { width: panelWidth, isDragging, handleMouseDown: handleResizeMouseDown } = usePanelResize(360)
 
@@ -91,14 +94,40 @@ export function AIChatPanel() {
     return () => { document.body.classList.remove('ai-panel-open') }
   }, [state.isOpen])
 
-  function handleToggle() {
-    log('panel_toggle', { action: state.isOpen ? 'close' : 'open' })
-    togglePanel()
-  }
+  // Keep the persistence layer's scope in sync — it can't derive this itself
+  // (see ChatScope's doc comment in AIChatContext.tsx).
+  useEffect(() => {
+    const reviewId = reviewData && 'reviewId' in reviewData ? reviewData.reviewId : null
+    setScope({
+      documentId,
+      reviewId,
+      pageRole,
+      rubricName: rubricSlug ? RUBRIC_DISPLAY_NAMES[rubricSlug] : null,
+    })
+  }, [documentId, reviewData, pageRole, rubricSlug, setScope])
 
   function handleClose() {
     log('panel_toggle', { action: 'close' })
     closePanel()
+  }
+
+  function handleNewChat() {
+    clearChat()
+    setView('chat')
+  }
+
+  function handleOpenHistory() {
+    setView('history')
+  }
+
+  async function handleSelectSession(sessionId: string) {
+    await openHistorySession(sessionId)
+    setView('chat')
+  }
+
+  function handleBackToCurrent() {
+    resumeActiveSession()
+    setView('chat')
   }
 
   function handleRemoveSnippet(id: string) {
@@ -120,21 +149,52 @@ export function AIChatPanel() {
 
     const startTime = Date.now()
     try {
+      if (!pageRole || !rubricSlug) {
+        addMessage('ai', 'Navigate to a review or feedback page first so I know what rubric to ground my answers in.')
+        return
+      }
+
       const contextBlock = hasContext
         ? `\n\nContext from the reviewer:\n${state.contextSnippets.map(s => `"${s.text}"`).join('\n')}`
         : ''
       const fullPrompt = text + contextBlock
 
       const { callAI } = await import('./shortcuts/aiService')
-      const response = await callAI(fullPrompt)
+      const response = await callAI({ mode: 'freeform', userMessage: fullPrompt, pageRole, rubricSlug })
       addMessage('ai', response)
       log('response_received', {
         response_time_ms: Date.now() - startTime,
         trigger: 'freeform',
         context_source: hasContext ? 'selection_popup' : 'no_context',
       })
-    } catch {
-      addMessage('ai', 'Something went wrong. Please try again.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      addMessage('ai', message)
+    }
+  }
+
+  async function handleSelectOption(option: ChatOption) {
+    const pending = state.pendingFollowUp
+    if (!pending || state.isLoading) return
+
+    addMessage('user', option.label)
+    setLoading(true)
+    setPendingFollowUp(null)
+    const startTime = Date.now()
+
+    try {
+      const result = await explainCriterionFollowUp({
+        criterion: pending.criterion,
+        criterionIndex: pending.criterionIndex,
+        followUp: option.key as ExplainCriterionFollowUp,
+        pageRole: 'reviewer',
+        rubricSlug: pending.rubricSlug,
+      })
+      addMessage('ai', result, undefined, 'explain-criterion')
+      log('response_received', { response_time_ms: Date.now() - startTime, trigger: 'shortcut', context_source: 'picker' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      addMessage('ai', message)
     }
   }
 
@@ -173,20 +233,42 @@ export function AIChatPanel() {
         ].join(' ')}
       />
 
-      {/* Toggle tab */}
-      <ToggleTab isOpen={state.isOpen} onClick={handleToggle} />
-
       {/* ── Header ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3.5 border-b border-[rgba(196,198,205,0.3)]">
         <span className="text-[13px] font-semibold text-text-primary">AI Assistant</span>
         <div className="flex items-center gap-3">
-          {hasMessages && (
+          {view === 'history' ? (
             <button
-              onClick={clearChat}
+              onClick={() => setView('chat')}
               className="text-[12px] text-text-muted hover:text-text-secondary transition-colors duration-[120ms] font-medium"
             >
-              New chat
+              Cancel
             </button>
+          ) : isViewingHistory ? (
+            <button
+              onClick={handleBackToCurrent}
+              className="text-[12px] text-text-muted hover:text-text-secondary transition-colors duration-[120ms] font-medium"
+            >
+              Back to current chat
+            </button>
+          ) : (
+            <>
+              {hasMessages && (
+                <button
+                  onClick={handleNewChat}
+                  className="text-[12px] text-text-muted hover:text-text-secondary transition-colors duration-[120ms] font-medium"
+                >
+                  New chat
+                </button>
+              )}
+              <button
+                onClick={handleOpenHistory}
+                aria-label="View previous conversations"
+                className="text-text-muted hover:text-text-primary transition-colors duration-[120ms]"
+              >
+                <HistoryIcon />
+              </button>
+            </>
           )}
           <button
             onClick={handleClose}
@@ -200,8 +282,10 @@ export function AIChatPanel() {
 
       {/* ── Body ── */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {hasMessages ? (
-          <ChatMessages messages={state.messages} isLoading={state.isLoading} />
+        {view === 'history' ? (
+          <ChatHistoryList loadSessions={loadHistorySessions} onSelectSession={handleSelectSession} />
+        ) : hasMessages ? (
+          <ChatMessages messages={state.messages} isLoading={state.isLoading} onSelectOption={handleSelectOption} />
         ) : (
           <div className="flex flex-col items-center justify-center py-16 px-8 flex-1 h-full">
             <AIMascot state="idle" className="w-16 h-20" />
@@ -213,51 +297,53 @@ export function AIChatPanel() {
       </div>
 
       {/* ── Shortcut pills + input ── */}
-      <div className="flex-shrink-0">
-        <ShortcutPills shortcuts={shortcuts} reviewData={reviewData} />
+      {view === 'chat' && (
+        <div className="flex-shrink-0">
+          <ShortcutPills shortcuts={shortcuts} reviewData={reviewData} isReviewDataLoading={isReviewDataLoading} />
 
-        {/* ── Input area ── */}
-        <div className="px-4 pb-4 pt-1">
-        <div
-          className="rounded-xl bg-[#faf9f6] px-3.5 py-4"
-        >
-          <ContextBadge snippets={state.contextSnippets} onRemove={handleRemoveSnippet} />
+          {/* ── Input area ── */}
+          <div className="px-4 pb-4 pt-1">
+          <div
+            className="rounded-xl bg-[#faf9f6] px-3.5 py-4"
+          >
+            <ContextBadge snippets={state.contextSnippets} onRemove={handleRemoveSnippet} />
 
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              value={draft}
-              onChange={handleTextareaInput}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about this review…"
-              disabled={state.isLoading}
-              className={[
-                'flex-1 resize-none bg-transparent border-none outline-none ring-0',
-                'text-sm text-text-primary placeholder:text-text-muted leading-relaxed',
-                'disabled:opacity-60',
-              ].join(' ')}
-              style={{ minHeight: 22, maxHeight: 120 }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!draft.trim() || state.isLoading}
-              className={[
-                'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-md transition-all duration-[120ms]',
-                draft.trim() && !state.isLoading
-                  ? 'bg-secondary-container text-text-primary hover:opacity-90 active:scale-[0.97]'
-                  : 'bg-surface-card text-border cursor-not-allowed',
-              ].join(' ')}
-              aria-label="Send message"
-            >
-              <SendIcon />
-            </button>
+            <div className="flex items-end gap-2">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={draft}
+                onChange={handleTextareaInput}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about this review…"
+                disabled={state.isLoading}
+                className={[
+                  'flex-1 resize-none bg-transparent border-none outline-none ring-0',
+                  'text-sm text-text-primary placeholder:text-text-muted leading-relaxed',
+                  'disabled:opacity-60',
+                ].join(' ')}
+                style={{ minHeight: 22, maxHeight: 120 }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!draft.trim() || state.isLoading}
+                className={[
+                  'flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-md transition-all duration-[120ms]',
+                  draft.trim() && !state.isLoading
+                    ? 'bg-secondary-container text-text-primary hover:opacity-90 active:scale-[0.97]'
+                    : 'bg-surface-card text-border cursor-not-allowed',
+                ].join(' ')}
+                aria-label="Send message"
+              >
+                <SendIcon />
+              </button>
+            </div>
+
+            <p className="mt-1.5 text-[10px] text-text-muted opacity-60">Cmd+Enter to send</p>
           </div>
-
-          <p className="mt-1.5 text-[10px] text-text-muted opacity-60">Cmd+Enter to send</p>
+          </div>
         </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

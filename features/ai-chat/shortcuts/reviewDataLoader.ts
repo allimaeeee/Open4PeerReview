@@ -3,6 +3,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CriterionWithScore, ReviewerData, FeedbackData } from './types'
+import { resolveRubricSlug } from '../rubric-data/rubricNameMap'
 
 // ── Reviewer console (/review?document=<id>) ──────────────────────────────────
 
@@ -26,7 +27,15 @@ export async function loadReviewerData(
 
   if (!review) return null
 
-  // 2. Rubric items for this review's rubric
+  // 2. Rubric title, to resolve which static rubric-data content applies
+  const { data: rubric } = await supabase
+    .from('rubrics')
+    .select('title')
+    .eq('id', review.rubric_id)
+    .maybeSingle()
+  const rubricSlug = rubric ? resolveRubricSlug(rubric.title) : null
+
+  // 3. Rubric items for this review's rubric
   const { data: items } = await supabase
     .from('rubric_items')
     .select('id, label, description, sort_order')
@@ -58,7 +67,7 @@ export async function loadReviewerData(
   )
 
   const criteria: CriterionWithScore[] = items.map(item => ({
-    criterion: { id: item.id, label: item.label, description: item.description ?? '' },
+    criterion: { id: item.id, label: item.label, description: item.description ?? '', rubricSlug },
     scores: (scoresMap[item.id] ?? []) as CriterionWithScore['scores'],
     scoreComments: (scoreComments ?? [])
       .filter(sc => sc.rubric_item_id === item.id)
@@ -78,7 +87,7 @@ export async function loadReviewerData(
       })),
   }))
 
-  return { reviewId: review.id, documentId, criteria }
+  return { reviewId: review.id, documentId, rubricSlug, criteria }
 }
 
 // ── Feedback view (/author/feedback/<documentId>) ─────────────────────────────
@@ -112,11 +121,22 @@ export async function loadFeedbackData(
 
   const { data: items } = await supabase
     .from('rubric_items')
-    .select('id, label, description, sort_order')
+    .select('id, label, description, sort_order, rubric_id')
     .in('id', itemIds)
     .order('sort_order')
 
   if (!items) return null
+
+  // Each item's rubric may differ across a document's multiple assigned
+  // rubrics — resolve slug per rubric_id, not once for the whole document.
+  const rubricIds = [...new Set(items.map(i => i.rubric_id))]
+  const { data: rubrics } = await supabase
+    .from('rubrics')
+    .select('id, title')
+    .in('id', rubricIds)
+  const rubricSlugById = new Map(
+    (rubrics ?? []).map(r => [r.id, resolveRubricSlug(r.title)]),
+  )
 
   // Merge across all reviews per criterion (union of scores, comments, annotations)
   const criteriaMap = new Map<string, CriterionWithScore>()
@@ -152,7 +172,12 @@ export async function loadFeedbackData(
     }
 
     criteriaMap.set(item.id, {
-      criterion: { id: item.id, label: item.label, description: item.description ?? '' },
+      criterion: {
+        id: item.id,
+        label: item.label,
+        description: item.description ?? '',
+        rubricSlug: rubricSlugById.get(item.rubric_id) ?? null,
+      },
       scores: [...criterionScores],
       scoreComments,
       annotations,

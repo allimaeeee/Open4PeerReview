@@ -1,0 +1,50 @@
+{
+  "id": "disciplinary",
+  "name": "Disciplinary Appropriateness",
+  "description": "Evaluates whether the OER meets disciplinary standards for academic rigor, content accuracy, and college-level intellectual demand.",
+  "preamble": "Disciplinary appropriateness review asks: does this resource reflect the current state of the field and engage students at the intellectual level expected in higher education? Reviewers bring their subject matter expertise to bear, assessing not just factual correctness but the representativeness, depth, and pedagogical alignment of the content.",
+  "criteria": [
+    {
+      "id": "C1", "title": "Content Accuracy & Validity",
+      "standard": "All claims are factually accurate, appropriately qualified, and consistent with current disciplinary consensus.",
+      "needsImprovementPrompt": "Contains factual errors, outdated claims presented as current, or lacks appropriate qualification of contested claims.",
+      "exceedsPrompt": "Content is not only accurate but reflects nuanced understanding of ongoing debates and limitations within the field."
+    },
+    {
+      "id": "C2", "title": "Currency & Contemporaneity",
+      "standard": "Content reflects current knowledge and references recent scholarship where the discipline requires it.",
+      "needsImprovementPrompt": "Key developments from the past 5–10 years are absent. Foundational references only.",
+      "exceedsPrompt": "Resource reflects cutting-edge developments and explicitly situates content within the trajectory of the field."
+    },
+    {
+      "id": "C3", "title": "Disciplinary Completeness & Coverage",
+      "standard": "Core topics of the subject area are addressed comprehensively for the stated scope and level.",
+      "needsImprovementPrompt": "Significant core topics are absent or superficially treated for the declared course level.",
+      "exceedsPrompt": "Coverage is exemplary and thoughtfully scoped, with intentional depth-vs-breadth decisions explained."
+    },
+    {
+      "id": "C4", "title": "Scholarly Rigor & Theoretical Framework",
+      "standard": "Content engages with relevant theoretical frameworks and methodological conventions of the discipline.",
+      "needsImprovementPrompt": "Theory is absent or misapplied. Methodological norms of the discipline are not acknowledged.",
+      "exceedsPrompt": "Multiple competing theoretical frameworks are presented and evaluated, modeling disciplinary thinking for students."
+    },
+    {
+      "id": "C5", "title": "College-Level Appropriateness & Cognitive Demand",
+      "standard": "Content demands higher-order thinking (analysis, synthesis, evaluation) appropriate to the stated course level.",
+      "needsImprovementPrompt": "Content is purely descriptive or recall-based, failing to engage students in disciplinary reasoning.",
+      "exceedsPrompt": "Activities and content consistently require expert-like disciplinary reasoning, modeling how practitioners think."
+    },
+    {
+      "id": "C6", "title": "Source Quality & Documentation",
+      "standard": "Sources are peer-reviewed, authoritative, and cited using appropriate disciplinary conventions.",
+      "needsImprovementPrompt": "Sources are primarily popular, non-peer-reviewed, or lack documentation.",
+      "exceedsPrompt": "Source selection is exemplary, including seminal works and current primary research. All sources are fully cited."
+    },
+    {
+      "id": "C7", "title": "Assessment & Practice Quality",
+      "standard": "Assessments and practice activities align with learning objectives and disciplinary standards of evidence.",
+      "needsImprovementPrompt": "Assessments are misaligned with learning goals or require only surface-level recall.",
+      "exceedsPrompt": "Assessments are authentic, disciplinary-specific, and include exemplary models and scoring criteria."
+    }
+  ]
+}
