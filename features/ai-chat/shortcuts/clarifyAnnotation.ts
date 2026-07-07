@@ -1,38 +1,40 @@
 import { callAI } from './aiService'
-import type { AnnotationInput, RubricCriterion, ClarifyAnnotationResult } from './types'
+import { getCriterionStandardByIndex } from '../rubric-data/criteriaStandards'
+import { explainCommentSpec } from '../server/outputSpecs'
+import type { PageRole } from '../server/promptBuilder'
+import type { RubricSlug } from '../rubric-data/rubricNameMap'
+import type { AnnotationInput, RubricCriterion, ScoreCommentInput, ClarifyAnnotationResult } from './types'
 
 export async function clarifyAnnotation(input: {
   annotation: AnnotationInput
   criterion: RubricCriterion
+  criterionIndex: number
+  overallComment?: ScoreCommentInput
+  pageRole: PageRole
+  rubricSlug: RubricSlug
 }): Promise<ClarifyAnnotationResult> {
-  const tagNote = input.annotation.tag
-    ? `This annotation is tagged as "${input.annotation.tag.replace('_', ' ')}".`
-    : ''
+  const standard = input.criterion.rubricSlug
+    ? getCriterionStandardByIndex(input.criterion.rubricSlug, input.criterionIndex)
+    : null
 
-  const prompt = `You are an academic peer review assistant helping an OER author understand feedback.
+  const userMessage = `The author is looking at this annotation:
+- Criterion: ${input.criterion.label}
+- Tag: ${input.annotation.tag ?? '(untagged)'}
+- Reviewer wrote: "${input.annotation.body}"
+${input.overallComment ? `- Overall comment on this criterion (${input.overallComment.score_level}): "${input.overallComment.body}"` : ''}
 
-Rubric criterion: "${input.criterion.label}"
-Criterion standard: ${input.criterion.description}
+Explain what the reviewer is pointing out and what the author could do about it.`
 
-Reviewer annotation: "${input.annotation.body}"
-${tagNote}
+  const explanation = await callAI({
+    mode: 'shortcut',
+    shortcutId: 'clarify-annotation',
+    userMessage,
+    pageRole: input.pageRole,
+    rubricSlug: input.rubricSlug,
+    includeBlocks: standard ? { criterionStandard: standard, glossaryForCriterion: true } : undefined,
+    outputSpec: explainCommentSpec(),
+    generationConfig: { temperature: 0.5, maxOutputTokens: 256 },
+  })
 
-Provide:
-1. A plain-language explanation of what this feedback means in the context of the rubric criterion.
-2. 2-3 concrete revision directions the author could take. Do NOT generate revised content — only suggest directions.
-
-Output format (JSON):
-{
-  "explanation": "<explanation>",
-  "revisionDirections": ["<direction1>", "<direction2>", "<direction3>"]
-}`
-
-  const raw = await callAI(prompt)
-
-  try {
-    const parsed = JSON.parse(raw) as ClarifyAnnotationResult
-    if (parsed.explanation && Array.isArray(parsed.revisionDirections)) return parsed
-  } catch { /* stub */ }
-
-  return { explanation: raw, revisionDirections: [] }
+  return { explanation }
 }

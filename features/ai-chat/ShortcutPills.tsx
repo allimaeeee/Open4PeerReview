@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useAIChat } from './AIChatContext'
-import type { Shortcut, RunContext } from './useChatContext'
+import { ALL_CRITERIA_PICKER_ID, type Shortcut, type RunContext, type ShortcutResultWithOptions } from './useChatContext'
 import type { ReviewerData, FeedbackData, CriterionWithScore } from './shortcuts/types'
 import { useAIChatLogger } from './logging/AIChatLoggerContext'
 import type { ContextSource } from './logging/types'
@@ -10,6 +10,7 @@ import type { ContextSource } from './logging/types'
 interface Props {
   shortcuts: Shortcut[]
   reviewData: ReviewerData | FeedbackData | null
+  isReviewDataLoading: boolean
 }
 
 type PickerState = {
@@ -17,8 +18,14 @@ type PickerState = {
   criteria: CriterionWithScore[]
 } | null
 
-export function ShortcutPills({ shortcuts, reviewData }: Props) {
-  const { state, addMessage, setLoading, openPanel } = useAIChat()
+function isResultWithOptions(
+  result: string | ShortcutResultWithOptions,
+): result is ShortcutResultWithOptions {
+  return typeof result !== 'string'
+}
+
+export function ShortcutPills({ shortcuts, reviewData, isReviewDataLoading }: Props) {
+  const { state, addMessage, setLoading, openPanel, setPendingFollowUp } = useAIChat()
   const log = useAIChatLogger()
   const [picker, setPicker] = useState<PickerState>(null)
   const [running, setRunning] = useState<string | null>(null)
@@ -32,6 +39,11 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
 
   async function handlePillClick(shortcut: Shortcut) {
     if (running) return
+    if (isReviewDataLoading) {
+      openPanel()
+      addMessage('ai', 'Still loading this review — try again in a moment.')
+      return
+    }
     setRunning(shortcut.id)
     openPanel()
 
@@ -44,7 +56,7 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
 
       if (result === 'NEEDS_PICKER') {
         const criteria = reviewData?.criteria ?? []
-        if (criteria.length === 0) {
+        if (criteria.length === 0 && !shortcut.pickerIncludesAllOption) {
           addMessage('ai', 'No criteria data available to select from.')
           setRunning(null)
           return
@@ -54,10 +66,15 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
         return
       }
 
-      addMessage('user', shortcut.label)
+      addMessage('user', shortcut.label, undefined, shortcut.id)
       setLoading(true)
       await new Promise(r => setTimeout(r, 300))
-      addMessage('ai', result)
+      if (isResultWithOptions(result)) {
+        addMessage('ai', result.text, result.options, shortcut.id)
+        setPendingFollowUp(result.followUpContext)
+      } else {
+        addMessage('ai', result, undefined, shortcut.id)
+      }
 
       // context_source: snippets bypass picker → 'selection_popup' if present, else 'no_context'
       const contextSource: ContextSource = hasContext ? 'selection_popup' : 'no_context'
@@ -78,18 +95,29 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
     if (!picker?.shortcut.runWithPick) return
     const shortcut = picker.shortcut
     const runWithPick = shortcut.runWithPick!
+    const pickedLabel = criterionId === ALL_CRITERIA_PICKER_ID
+      ? 'All criteria'
+      : picker.criteria.find(c => c.criterion.id === criterionId)?.criterion.label ?? criterionId
     setPicker(null)
     setRunning(shortcut.id)
 
     log('picker_used', { shortcut_id: shortcut.id, criterion_id: criterionId })
 
     try {
-      addMessage('user', shortcut.label)
+      // Show which criterion was picked, not just the shortcut's generic
+      // label — otherwise every picker-driven message in history reads
+      // identically ("Explain Criterion") with no way to tell which one.
+      addMessage('user', `${shortcut.label}: ${pickedLabel}`, undefined, shortcut.id)
       setLoading(true)
       await new Promise(r => setTimeout(r, 300))
       const startTime = Date.now()
       const result = await runWithPick(ctx, criterionId)
-      addMessage('ai', result)
+      if (isResultWithOptions(result)) {
+        addMessage('ai', result.text, result.options, shortcut.id)
+        setPendingFollowUp(result.followUpContext)
+      } else {
+        addMessage('ai', result, undefined, shortcut.id)
+      }
 
       log('response_received', {
         response_time_ms: Date.now() - startTime,
@@ -112,12 +140,20 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
           <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">
             Select a criterion
           </p>
-          <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+            {picker.shortcut.pickerIncludesAllOption && (
+              <button
+                onClick={() => handlePickerSelect(ALL_CRITERIA_PICKER_ID)}
+                className="text-left text-[12px] text-text-secondary font-medium px-2.5 py-1.5 rounded-md hover:bg-surface-card hover:text-text-primary transition-all duration-[120ms] leading-snug"
+              >
+                All criteria
+              </button>
+            )}
             {picker.criteria.map(c => (
               <button
                 key={c.criterion.id}
                 onClick={() => handlePickerSelect(c.criterion.id)}
-                className="text-left text-[12px] text-text-secondary font-medium px-2.5 py-1.5 rounded-md hover:bg-surface-card hover:text-text-primary transition-all duration-[120ms] truncate"
+                className="text-left text-[12px] text-text-secondary font-medium px-2.5 py-1.5 rounded-md hover:bg-surface-card hover:text-text-primary transition-all duration-[120ms] leading-snug"
               >
                 {c.criterion.label}
               </button>
@@ -149,6 +185,7 @@ export function ShortcutPills({ shortcuts, reviewData }: Props) {
                 ? 'bg-[rgba(254,214,91,0.2)] text-text-secondary cursor-wait'
                 : 'bg-surface-container-low text-text-muted hover:bg-[#edeae2] hover:text-text-primary cursor-pointer',
               running && running !== shortcut.id ? 'opacity-40' : '',
+              isReviewDataLoading ? 'opacity-60' : '',
             ].join(' ')}
           >
             {running === shortcut.id ? (
