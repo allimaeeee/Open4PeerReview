@@ -71,8 +71,10 @@ const pendingScores = new Map<string, CriterionScore | null>();
 const criterionResizeObservers = new Map<string, ResizeObserver>();
 let gcTimer: ReturnType<typeof setTimeout> | null = null;
 type ScoreCommentEntry = { id: string | null; body: string };
-type ScoreCommentMap = { does_not_meet: ScoreCommentEntry; exceeds: ScoreCommentEntry };
-const EMPTY_SCORE_COMMENTS: ScoreCommentMap = { does_not_meet: { id: null, body: '' }, exceeds: { id: null, body: '' } };
+// Multiple comments are allowed per (criterion, level) — matches the web review
+// console and the DB, so comments authored in either client stay in sync.
+type ScoreCommentMap = { does_not_meet: ScoreCommentEntry[]; exceeds: ScoreCommentEntry[] };
+function emptyScoreComments(): ScoreCommentMap { return { does_not_meet: [], exceeds: [] }; }
 const scoreComments = new Map<string, ScoreCommentMap>();
 
 // ── Shadow DOM refs ───────────────────────────────────────────────────────────
@@ -801,17 +803,17 @@ async function prefetchSiblingCompletions() {
     (scoresResp.data ?? []).forEach(s => sibScores.set(s.rubric_item_id, s));
     const sibComments = new Map<string, ScoreCommentMap>();
     (commentsResp.data ?? []).forEach(c => {
-      const prev = sibComments.get(c.rubric_item_id) ?? EMPTY_SCORE_COMMENTS;
-      if (prev[c.score_level as 'does_not_meet' | 'exceeds'].id) return;
-      sibComments.set(c.rubric_item_id, { ...prev, [c.score_level]: { id: c.id, body: c.body } });
+      const map = sibComments.get(c.rubric_item_id) ?? emptyScoreComments();
+      map[c.score_level as 'does_not_meet' | 'exceeds'].push({ id: c.id, body: c.body });
+      sibComments.set(c.rubric_item_id, map);
     });
     const scored = items.filter(item => {
       const s = sibScores.get(item.id);
       const levels = s?.criterion_scores ?? [];
       if (levels.length === 0) return false;
-      const comments = sibComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
-      if (levels.includes('does_not_meet') && !comments.does_not_meet.body.trim()) return false;
-      if (levels.includes('exceeds') && !comments.exceeds.body.trim()) return false;
+      const comments = sibComments.get(item.id) ?? emptyScoreComments();
+      if (levels.includes('does_not_meet') && !comments.does_not_meet.some(e => e.body.trim())) return false;
+      if (levels.includes('exceeds') && !comments.exceeds.some(e => e.body.trim())) return false;
       return true;
     }).length;
     completionCountCache.set(sib.id, { scored, total });
@@ -831,9 +833,9 @@ function updateCompletion() {
     const s = scores.get(item.id);
     const levels = s?.criterion_scores ?? [];
     if (levels.length === 0) return false;
-    const comments = scoreComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
-    if (levels.includes('does_not_meet') && !comments.does_not_meet.body.trim()) return false;
-    if (levels.includes('exceeds') && !comments.exceeds.body.trim()) return false;
+    const comments = scoreComments.get(item.id) ?? emptyScoreComments();
+    if (levels.includes('does_not_meet') && !comments.does_not_meet.some(e => e.body.trim())) return false;
+    if (levels.includes('exceeds') && !comments.exceeds.some(e => e.body.trim())) return false;
     return true;
   }).length;
   completionCountCache.set(selectedReview.id, { scored, total });
@@ -854,10 +856,8 @@ function toggleScore(rubricItemId: string, level: CriterionScore) {
   let newLevels: CriterionScore[];
   if (currentLevels.includes(level)) {
     newLevels = currentLevels.filter(s => s !== level);
-    if (level === 'does_not_meet' || level === 'exceeds') {
-      const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
-      scoreComments.set(rubricItemId, { ...prev, [level]: { id: prev[level].id, body: '' } });
-    }
+    // Comments are intentionally preserved when a rating is toggled off — matches the
+    // web console and avoids silently deleting reviewer text. Removal is explicit (× button).
   } else {
     newLevels = [...currentLevels, level];
   }
@@ -905,44 +905,49 @@ async function flushScore(rubricItemId: string) {
         criterion_scores: levels,
       },
     }),
-    syncScoreComment(rubricItemId, 'does_not_meet'),
-    syncScoreComment(rubricItemId, 'exceeds'),
+    syncScoreComments(rubricItemId, 'does_not_meet'),
+    syncScoreComments(rubricItemId, 'exceeds'),
   ]);
   setSaveStatus(scoreResp.success && dnmOk && exceedsOk ? 'saved' : 'error');
 }
 
 // Mirrors the web app's handleAddScoreComment/handleEditScoreComment/handleDeleteScoreComment
-// (ReviewerConsole.tsx) so DNM/Exceeds comments made in either client show up in the other —
-// both read/write the same `score_comments` rows keyed by (review_id, rubric_item_id, score_level).
-async function syncScoreComment(rubricItemId: string, level: 'does_not_meet' | 'exceeds'): Promise<boolean> {
+// (ReviewerConsole.tsx): every comment in the (criterion, level) list is inserted/updated/
+// deleted individually against the shared `score_comments` rows, so multi-comment criteria
+// authored in either client stay in sync.
+async function syncScoreComments(rubricItemId: string, level: 'does_not_meet' | 'exceeds'): Promise<boolean> {
   if (!selectedReview) return false;
-  const entry = scoreComments.get(rubricItemId)?.[level] ?? EMPTY_SCORE_COMMENTS[level];
-  const body = entry.body.trim();
+  const entries = (scoreComments.get(rubricItemId) ?? emptyScoreComments())[level];
+  const kept: ScoreCommentEntry[] = [];
+  let ok = true;
 
-  if (!body) {
-    if (!entry.id) return true;
-    const resp = await send({ type: 'DELETE_SCORE_COMMENT', payload: { id: entry.id } });
-    if (resp.success) {
-      const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
-      scoreComments.set(rubricItemId, { ...prev, [level]: { id: null, body: '' } });
+  for (const entry of entries) {
+    const body = entry.body.trim();
+    if (!body) {
+      // Emptied comment — delete its row (if persisted) and drop it from state.
+      if (entry.id) {
+        const resp = await send({ type: 'DELETE_SCORE_COMMENT', payload: { id: entry.id } });
+        ok = ok && resp.success;
+      }
+      continue;
     }
-    return resp.success;
+    if (entry.id) {
+      const resp = await send({ type: 'SAVE_SCORE_COMMENT', payload: { id: entry.id, body } });
+      ok = ok && resp.success;
+      kept.push({ id: entry.id, body });
+    } else {
+      const resp = await send<ScoreCommentRecord>({
+        type: 'SAVE_SCORE_COMMENT',
+        payload: { review_id: selectedReview.id, rubric_item_id: rubricItemId, score_level: level, body },
+      });
+      ok = ok && resp.success;
+      kept.push({ id: resp.success && resp.data ? resp.data.id : null, body });
+    }
   }
 
-  if (entry.id) {
-    const resp = await send({ type: 'SAVE_SCORE_COMMENT', payload: { id: entry.id, body } });
-    return resp.success;
-  }
-
-  const resp = await send<ScoreCommentRecord>({
-    type: 'SAVE_SCORE_COMMENT',
-    payload: { review_id: selectedReview.id, rubric_item_id: rubricItemId, score_level: level, body },
-  });
-  if (resp.success && resp.data) {
-    const prev = scoreComments.get(rubricItemId) ?? EMPTY_SCORE_COMMENTS;
-    scoreComments.set(rubricItemId, { ...prev, [level]: { id: resp.data.id, body } });
-  }
-  return resp.success;
+  const cur = scoreComments.get(rubricItemId) ?? emptyScoreComments();
+  scoreComments.set(rubricItemId, { ...cur, [level]: kept });
+  return ok;
 }
 
 function refreshScoreButtons(rubricItemId: string) {
@@ -2418,6 +2423,32 @@ function renderReviewInterface() {
   refreshAnnotationList(FREE_LIST_KEY);
 }
 
+// Renders the list of comment inputs for one (criterion, level), plus an "Add comment"
+// button — mirrors the web console's multi-comment support. Always renders at least one
+// input row so a reviewer can type to activate the rating (matching prior UX).
+function renderCommentList(
+  itemId: string,
+  level: 'does_not_meet' | 'exceeds',
+  entries: ScoreCommentEntry[],
+  placeholder: string,
+): string {
+  const rows = entries.length > 0 ? entries : [{ id: null, body: '' } as ScoreCommentEntry];
+  const rowsHtml = rows.map((entry, i) => {
+    const isLoneEmptyStarter = rows.length === 1 && !entry.id && !entry.body.trim();
+    const del = isLoneEmptyStarter
+      ? ''
+      : `<button type="button" class="score-comment-del" data-item="${itemId}" data-level="${level}" data-index="${i}" title="Remove comment" aria-label="Remove comment">&times;</button>`;
+    return `
+      <div class="score-comment-row" data-index="${i}">
+        <textarea class="score-comment-input" data-item="${itemId}" data-level="${level}" data-index="${i}" rows="3" placeholder="${i === 0 ? escHtml(placeholder) : 'Add another comment...'}">${escHtml(entry.body)}</textarea>
+        ${del}
+      </div>`;
+  }).join('');
+  return `
+    <div class="score-comment-list" data-item="${itemId}" data-level="${level}">${rowsHtml}</div>
+    <button type="button" class="score-comment-add" data-item="${itemId}" data-level="${level}">+ Add comment</button>`;
+}
+
 function renderRubricCriteria() {
   const list = shadow.getElementById('criterion-list');
   if (!list) return;
@@ -2430,7 +2461,7 @@ function renderRubricCriteria() {
     const score = scores.get(item.id);
     const selectedLevels = score?.criterion_scores ?? [];
     const annCount = annotations.filter(a => a.rubric_item_id === item.id).length;
-    const savedComments = scoreComments.get(item.id) ?? EMPTY_SCORE_COMMENTS;
+    const savedComments = scoreComments.get(item.id) ?? emptyScoreComments();
 
     return `
       <div class="criterion-item" id="criterion-item-${item.id}">
@@ -2450,7 +2481,7 @@ function renderRubricCriteria() {
           <div class="rating-row">
             <div class="rating-box rating-box-exceeds${selectedLevels.includes('exceeds') ? ' active' : ''}" id="rbox-exceeds-${item.id}" data-variant="exceeds" data-item="${item.id}">
               <div class="rbox-label rbox-label-exceeds">Exceeds</div>
-              <textarea class="score-comment-input" data-item="${item.id}" data-level="exceeds" rows="4" placeholder="Note what exceeds the standard...">${escHtml(savedComments.exceeds.body)}</textarea>
+              ${renderCommentList(item.id, 'exceeds', savedComments.exceeds, 'Note what exceeds the standard...')}
             </div>
             <div class="rating-box rating-box-exemplifies${selectedLevels.includes('exemplifies') ? ' active' : ''}" id="rbox-exemplifies-${item.id}" data-variant="exemplifies" data-item="${item.id}">
               <div class="rbox-label rbox-label-exemplifies">Exemplifies</div>
@@ -2458,7 +2489,7 @@ function renderRubricCriteria() {
             </div>
             <div class="rating-box rating-box-dnm${selectedLevels.includes('does_not_meet') ? ' active' : ''}" id="rbox-dnm-${item.id}" data-variant="does_not_meet" data-item="${item.id}">
               <div class="rbox-label rbox-label-dnm">Does Not Meet</div>
-              <textarea class="score-comment-input" data-item="${item.id}" data-level="does_not_meet" rows="4" placeholder="Note what does not meet the standard...">${escHtml(savedComments.does_not_meet.body)}</textarea>
+              ${renderCommentList(item.id, 'does_not_meet', savedComments.does_not_meet, 'Note what does not meet the standard...')}
             </div>
           </div>
           <div class="ann-section-label" id="evidence-label-${item.id}">Evidence (${annCount})</div>
@@ -2527,28 +2558,74 @@ function renderRubricCriteria() {
     ta.addEventListener('input', () => {
       const itemId = ta.dataset.item!;
       const level = ta.dataset.level as 'does_not_meet' | 'exceeds';
-      // Update in-memory body first so toggleScore → flushScore → syncScoreComment sees the new value.
-      const prev = scoreComments.get(itemId) ?? EMPTY_SCORE_COMMENTS;
-      scoreComments.set(itemId, { ...prev, [level]: { id: prev[level].id, body: ta.value } });
+      const index = Number(ta.dataset.index ?? '0');
+      // Update in-memory body first so toggleScore → flushScore → syncScoreComments sees the new value.
+      const map = scoreComments.get(itemId) ?? emptyScoreComments();
+      const arr = map[level].slice();
+      arr[index] = { id: arr[index]?.id ?? null, body: ta.value };
+      scoreComments.set(itemId, { ...map, [level]: arr });
 
-      const trimmed = ta.value.trim();
+      const anyNonEmpty = arr.some(e => e.body.trim());
       const currentLevels = scores.get(itemId)?.criterion_scores ?? [];
-      if (trimmed && !currentLevels.includes(level)) {
-        // Typing into an unselected box — activate it exclusively; toggleScore handles UI + scheduling.
+      if (anyNonEmpty && !currentLevels.includes(level)) {
+        // First non-empty comment in this level — activate the rating; toggleScore handles UI + scheduling.
         toggleScore(itemId, level);
         return;
       }
-      if (!trimmed && currentLevels.includes(level)) {
-        // Clearing the box — deactivate this rating.
+      if (!anyNonEmpty && currentLevels.includes(level)) {
+        // All comments cleared — deactivate this rating.
         toggleScore(itemId, level);
         return;
       }
-      // Score unchanged (already active or already inactive) — just persist the updated comment text.
+      // Score unchanged — just persist the updated comment text.
       updateCompletion();
       setSaveStatus('saving');
       const existing = scoreTimers.get(itemId);
       if (existing) clearTimeout(existing);
       scoreTimers.set(itemId, setTimeout(() => flushScore(itemId), SCORE_DEBOUNCE_MS));
+    });
+  });
+
+  // "+ Add comment" — append an empty comment row for this (criterion, level) and re-render.
+  list.querySelectorAll<HTMLButtonElement>('.score-comment-add').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.item!;
+      const level = btn.dataset.level as 'does_not_meet' | 'exceeds';
+      const map = scoreComments.get(itemId) ?? emptyScoreComments();
+      const arr = map[level].slice();
+      // Avoid stacking blank rows.
+      if (arr.length === 0 || arr[arr.length - 1].body.trim()) arr.push({ id: null, body: '' });
+      scoreComments.set(itemId, { ...map, [level]: arr });
+      renderRubricCriteria();
+      const inputs = shadow.querySelectorAll<HTMLTextAreaElement>(
+        `.score-comment-input[data-item="${itemId}"][data-level="${level}"]`
+      );
+      inputs[inputs.length - 1]?.focus();
+    });
+  });
+
+  // "×" — remove a single comment (deleting its row if persisted).
+  list.querySelectorAll<HTMLButtonElement>('.score-comment-del').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const itemId = btn.dataset.item!;
+      const level = btn.dataset.level as 'does_not_meet' | 'exceeds';
+      const index = Number(btn.dataset.index ?? '0');
+      const map = scoreComments.get(itemId) ?? emptyScoreComments();
+      const arr = map[level].slice();
+      const entry = arr[index];
+      if (!entry) return;
+      if (entry.id) {
+        setSaveStatus('saving');
+        const resp = await send({ type: 'DELETE_SCORE_COMMENT', payload: { id: entry.id } });
+        if (!resp.success) { setSaveStatus('error'); return; }
+      }
+      arr.splice(index, 1);
+      scoreComments.set(itemId, { ...map, [level]: arr });
+      renderRubricCriteria();
+      updateCompletion();
+      if (entry.id) setSaveStatus('saved');
     });
   });
 
@@ -2981,6 +3058,16 @@ function createPanel() {
       .rating-box-dnm .score-comment-input { border-bottom-color: rgba(186,26,26,0.4); }
       .rating-box-dnm .score-comment-input:focus { border-bottom-color: ${tokens.color.error}; }
 
+      .score-comment-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+      .score-comment-row { display: flex; align-items: flex-start; gap: 4px; }
+      .score-comment-row .score-comment-input { flex: 1; }
+      .score-comment-del { flex-shrink: 0; border: none; background: transparent; color: ${tokens.color.textMuted}; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; border-radius: 4px; font-family: inherit; }
+      .score-comment-del:hover { color: ${tokens.color.error}; background: rgba(186,26,26,0.08); }
+      .score-comment-add { align-self: flex-start; margin-top: 6px; border: none; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 0; font-family: inherit; }
+      .score-comment-add:hover { text-decoration: underline; }
+      .rating-box-exceeds .score-comment-add { color: ${tokens.color.secondary}; }
+      .rating-box-dnm .score-comment-add { color: ${tokens.color.error}; }
+
       .btn-open-console { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.primary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; text-decoration: none; flex-shrink: 0; }
       .btn-open-console:hover { background: ${tokens.color.surface}; border-color: ${tokens.color.primary}; }
 
@@ -3220,12 +3307,12 @@ async function selectReview(reviewId: string) {
   scores.clear();
   scoreComments.clear();
   (scoresResp.data ?? []).forEach(s => scores.set(s.rubric_item_id, s));
-  // One comment per (item, level) surfaced here, same simplification the web app's
-  // RatingBox uses (comments?.[0]) — first by created_at wins if more than one exists.
+  // All comments per (item, level) are surfaced (ordered by created_at.asc), matching
+  // the web console — nothing is dropped, so multi-comment criteria stay in sync.
   (scoreCommentsResp.data ?? []).forEach(c => {
-    const prev = scoreComments.get(c.rubric_item_id) ?? EMPTY_SCORE_COMMENTS;
-    if (prev[c.score_level].id) return;
-    scoreComments.set(c.rubric_item_id, { ...prev, [c.score_level]: { id: c.id, body: c.body } });
+    const map = scoreComments.get(c.rubric_item_id) ?? emptyScoreComments();
+    map[c.score_level].push({ id: c.id, body: c.body });
+    scoreComments.set(c.rubric_item_id, map);
   });
 
   renderContent('review');
@@ -3233,6 +3320,64 @@ async function selectReview(reviewId: string) {
   applyHighlights();
   scheduleHighlightRetries();
   checkPendingAnnotationNavigation();
+}
+
+// ── Live refresh ────────────────────────────────────────────────────────────────
+// Re-pull scores, score comments, and the general comment when the reviewer returns
+// to this tab, so edits made in the web review console (or another session) show up
+// without a manual reload. Guards skip the refresh whenever a save is pending or the
+// reviewer is actively editing, so in-progress text is never clobbered.
+
+let focusRefreshInFlight = false;
+
+function isEditingReview(): boolean {
+  if (scoreTimers.size > 0 || gcTimer) return true;
+  const active = shadow.activeElement as HTMLElement | null;
+  return !!active && (active.classList.contains('score-comment-input') || active.id === 'general-comment-ta');
+}
+
+async function refreshSelectedReviewFromServer() {
+  if (!selectedReview || focusRefreshInFlight || isEditingReview()) return;
+  const reviewId = selectedReview.id;
+  focusRefreshInFlight = true;
+  try {
+    const [scoresResp, commentsResp, assignmentsResp] = await Promise.all([
+      send<ReviewScoreRecord[]>({ type: 'GET_SCORES', payload: { reviewId } }),
+      send<ScoreCommentRecord[]>({ type: 'GET_SCORE_COMMENTS', payload: { reviewId } }),
+      send<ReviewAssignment[]>({ type: 'GET_ASSIGNMENTS' }),
+    ]);
+    // Re-check guards: the reviewer may have started editing during the fetch, or
+    // switched reviews. Abandon rather than overwrite their in-flight work.
+    if (!selectedReview || selectedReview.id !== reviewId || isEditingReview()) return;
+
+    if (scoresResp.success) {
+      scores.clear();
+      (scoresResp.data ?? []).forEach(s => scores.set(s.rubric_item_id, s));
+    }
+    if (commentsResp.success) {
+      scoreComments.clear();
+      (commentsResp.data ?? []).forEach(c => {
+        const map = scoreComments.get(c.rubric_item_id) ?? emptyScoreComments();
+        map[c.score_level].push({ id: c.id, body: c.body });
+        scoreComments.set(c.rubric_item_id, map);
+      });
+    }
+    if (assignmentsResp.success) {
+      const fresh = (assignmentsResp.data ?? []).find(a => a.id === reviewId);
+      if (fresh) {
+        selectedReview.notes = fresh.notes ?? '';
+        const gcTa = shadow.getElementById('general-comment-ta') as HTMLTextAreaElement | null;
+        if (gcTa && shadow.activeElement !== gcTa) gcTa.value = selectedReview.notes;
+      }
+    }
+
+    if (scoresResp.success || commentsResp.success) {
+      renderRubricCriteria();
+      updateCompletion();
+    }
+  } finally {
+    focusRefreshInFlight = false;
+  }
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -3313,6 +3458,19 @@ async function init() {
   // Re-anchor when the viewport reflows — element-scoped hotspots depend on live
   // element geometry, which changes on resize/orientation change.
   window.addEventListener('resize', () => { if (selectedReview) applyHotspotMarkers(); });
+
+  // Live refresh: when the reviewer returns to this tab, pull the latest scores/comments
+  // so edits made in the web console show up without a manual reload. A short debounce
+  // collapses the visibilitychange+focus pair that fires on a single tab switch.
+  let refreshDebounce: ReturnType<typeof setTimeout> | null = null;
+  const scheduleFocusRefresh = () => {
+    if (refreshDebounce) clearTimeout(refreshDebounce);
+    refreshDebounce = setTimeout(() => { refreshDebounce = null; refreshSelectedReviewFromServer(); }, 250);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleFocusRefresh();
+  });
+  window.addEventListener('focus', scheduleFocusRefresh);
 
   // Let the popup query current state
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
