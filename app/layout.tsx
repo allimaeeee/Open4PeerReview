@@ -34,7 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Navbar />
           </Suspense>
           {children}
-          <AIChatWidget />
+          <Suspense fallback={null}>
+            <AIChatWidget />
+          </Suspense>
         </ReviewSaveStatusProvider>
       </body>
     </html>
