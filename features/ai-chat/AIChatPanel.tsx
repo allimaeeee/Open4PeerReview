@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useAIChat, type ChatOption } from './AIChatContext'
 import { useChatContext } from './useChatContext'
 import { explainCriterionFollowUp, type ExplainCriterionFollowUp } from './shortcuts/explainCriterion'
+import { isAbortError } from './shortcuts/aiService'
 import { ChatMessages } from './ChatMessages'
 import { ChatHistoryList } from './ChatHistoryList'
 import { ContextBadge } from './ContextBadge'
@@ -77,9 +78,9 @@ type View = 'chat' | 'history'
 export function AIChatPanel() {
   const {
     state, closePanel, addMessage, removeContextSnippet, setLoading, setPendingFollowUp, clearChat,
-    setScope, isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
+    setScope, beginRequest, isCurrentRequest, isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
   } = useAIChat()
-  const { shortcuts, reviewData, pageRole, rubricSlug, isReviewDataLoading, documentId } = useChatContext()
+  const { shortcuts, reviewData, pageRole, rubricSlug, isReviewDataLoading, reviewDataError, documentId, fetchReviewData } = useChatContext()
   const log = useAIChatLogger()
 
   const [draft, setDraft] = useState('')
@@ -145,12 +146,13 @@ export function AIChatPanel() {
     setDraft('')
     addMessage('user', text)
     setLoading(true)
+    const requestId = beginRequest()
     log('message_sent', { has_context: hasContext, context_count: contextCount })
 
     const startTime = Date.now()
     try {
       if (!pageRole || !rubricSlug) {
-        addMessage('ai', 'Navigate to a review or feedback page first so I know what rubric to ground my answers in.')
+        addMessage('ai', reviewDataError ?? 'Navigate to a review or feedback page first so I know what rubric to ground my answers in.')
         return
       }
 
@@ -161,6 +163,7 @@ export function AIChatPanel() {
 
       const { callAI } = await import('./shortcuts/aiService')
       const response = await callAI({ mode: 'freeform', userMessage: fullPrompt, pageRole, rubricSlug })
+      if (!isCurrentRequest(requestId)) return
       addMessage('ai', response)
       log('response_received', {
         response_time_ms: Date.now() - startTime,
@@ -168,6 +171,7 @@ export function AIChatPanel() {
         context_source: hasContext ? 'selection_popup' : 'no_context',
       })
     } catch (err) {
+      if (isAbortError(err) || !isCurrentRequest(requestId)) return
       const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
       addMessage('ai', message)
     }
@@ -180,6 +184,7 @@ export function AIChatPanel() {
     addMessage('user', option.label)
     setLoading(true)
     setPendingFollowUp(null)
+    const requestId = beginRequest()
     const startTime = Date.now()
 
     try {
@@ -190,9 +195,11 @@ export function AIChatPanel() {
         pageRole: 'reviewer',
         rubricSlug: pending.rubricSlug,
       })
+      if (!isCurrentRequest(requestId)) return
       addMessage('ai', result, undefined, 'explain-criterion')
       log('response_received', { response_time_ms: Date.now() - startTime, trigger: 'shortcut', context_source: 'picker' })
     } catch (err) {
+      if (isAbortError(err) || !isCurrentRequest(requestId)) return
       const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
       addMessage('ai', message)
     }
@@ -299,7 +306,7 @@ export function AIChatPanel() {
       {/* ── Shortcut pills + input ── */}
       {view === 'chat' && (
         <div className="flex-shrink-0">
-          <ShortcutPills shortcuts={shortcuts} reviewData={reviewData} isReviewDataLoading={isReviewDataLoading} />
+          <ShortcutPills shortcuts={shortcuts} isReviewDataLoading={isReviewDataLoading} reviewDataError={reviewDataError} fetchReviewData={fetchReviewData} />
 
           {/* ── Input area ── */}
           <div className="px-4 pb-4 pt-1">

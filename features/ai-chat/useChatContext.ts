@@ -3,7 +3,7 @@
 // Reads the current route and extracts page role + document IDs.
 // Preloads review data from Supabase so shortcuts can run without an extra fetch.
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { loadReviewerData, loadFeedbackData } from './shortcuts/reviewDataLoader'
@@ -170,6 +170,9 @@ export function useChatContext(): {
   reviewData: ReviewerData | FeedbackData | null
   rubricSlug: RubricSlug | null
   isReviewDataLoading: boolean
+  /** Set when the query itself failed (RLS denial, network issue, etc.) — distinct from reviewData being null because there's legitimately nothing there yet. */
+  reviewDataError: string | null
+  fetchReviewData: () => Promise<ReviewerData | FeedbackData | null>
 } {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
@@ -179,6 +182,7 @@ export function useChatContext(): {
   // makes the load itself the thing that triggers the update.
   const [reviewData, setReviewData] = useState<ReviewerData | FeedbackData | null>(null)
   const [isReviewDataLoading, setIsReviewDataLoading] = useState(false)
+  const [reviewDataError, setReviewDataError] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
   // Determine page role and document ID
@@ -195,6 +199,7 @@ export function useChatContext(): {
   // Preload review data when page role + documentId are known
   useEffect(() => {
     setReviewData(null)
+    setReviewDataError(null)
     if (!documentId) {
       setIsReviewDataLoading(false)
       return
@@ -210,14 +215,40 @@ export function useChatContext(): {
     if (!load) {
       setIsReviewDataLoading(false)
     } else {
-      load.then(data => {
+      load.then(result => {
         if (cancelled) return
-        setReviewData(data)
+        if (result.ok) {
+          setReviewData(result.data)
+        } else {
+          setReviewData(null)
+          setReviewDataError(result.error)
+        }
         setIsReviewDataLoading(false)
       })
     }
 
     return () => { cancelled = true }
+  }, [pageRole, documentId, supabase])
+
+  // On-demand refetch for shortcut invocation — the preload above only runs
+  // once per [pageRole, documentId], so it goes stale the moment a rating
+  // comment is saved elsewhere (e.g. the report panel) after that. Shortcuts
+  // call this right before they run so they see the latest saved data instead
+  // of the cached snapshot.
+  const fetchReviewData = useCallback(async (): Promise<ReviewerData | FeedbackData | null> => {
+    if (!documentId) return null
+    const load = pageRole === 'reviewer' ? loadReviewerData(supabase, documentId)
+      : pageRole === 'author' ? loadFeedbackData(supabase, documentId)
+      : null
+    if (!load) return null
+    const result = await load
+    if (!result.ok) {
+      setReviewDataError(result.error)
+      return null
+    }
+    setReviewData(result.data)
+    setReviewDataError(null)
+    return result.data
   }, [pageRole, documentId, supabase])
 
   // ── Reviewer shortcuts ────────────────────────────────────────────────────
@@ -389,5 +420,7 @@ export function useChatContext(): {
     reviewData,
     rubricSlug: getPrimaryRubricSlug(reviewData),
     isReviewDataLoading,
+    reviewDataError,
+    fetchReviewData,
   }
 }
