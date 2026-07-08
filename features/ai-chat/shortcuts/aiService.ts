@@ -25,11 +25,26 @@ export interface ShortcutAIRequest {
 
 export type AIChatRequest = FreeformAIRequest | ShortcutAIRequest
 
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
+// Every freeform send and every shortcut (see shortcuts/*.ts) funnels through
+// this single function, so a module-level controller is enough to guarantee
+// only one AI Chat request is ever in flight — starting a new one cancels
+// whatever the previous call was, rather than letting both race to resolve.
+let activeController: AbortController | null = null
+
 export async function callAI(request: AIChatRequest): Promise<string> {
+  activeController?.abort()
+  const controller = new AbortController()
+  activeController = controller
+
   const res = await fetch('/api/ai-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
+    signal: controller.signal,
   })
 
   if (!res.ok) {

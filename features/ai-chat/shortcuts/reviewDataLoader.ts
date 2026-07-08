@@ -5,17 +5,31 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CriterionWithScore, ReviewerData, FeedbackData } from './types'
 import { resolveRubricSlug } from '../rubric-data/rubricNameMap'
 
+// Distinguishes "query failed" (RLS denial, network issue, etc.) from
+// "query succeeded but there's legitimately nothing there yet" (data: null) —
+// callers need to tell these apart to show an accurate loading/error state
+// instead of a misleading "no review data" message.
+export type LoadResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string }
+
+function fail<T>(context: string, error: { message: string }): LoadResult<T> {
+  console.error(`[reviewDataLoader] ${context} failed:`, error.message)
+  return { ok: false, error: "Couldn't load review data. Please try again." }
+}
+
 // ── Reviewer console (/review?document=<id>) ──────────────────────────────────
 
 export async function loadReviewerData(
   supabase: SupabaseClient,
   documentId: string,
-): Promise<ReviewerData | null> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
+): Promise<LoadResult<ReviewerData | null>> {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError) return fail('auth.getUser', userError)
+  if (!user) return { ok: true, data: null }
 
   // 1. Find the reviewer's active review for this document
-  const { data: review } = await supabase
+  const { data: review, error: reviewError } = await supabase
     .from('reviews')
     .select('id, rubric_id')
     .eq('document_id', documentId)
@@ -25,42 +39,48 @@ export async function loadReviewerData(
     .limit(1)
     .maybeSingle()
 
-  if (!review) return null
+  if (reviewError) return fail('reviews query', reviewError)
+  if (!review) return { ok: true, data: null }
 
   // 2. Rubric title, to resolve which static rubric-data content applies
-  const { data: rubric } = await supabase
+  const { data: rubric, error: rubricError } = await supabase
     .from('rubrics')
     .select('title')
     .eq('id', review.rubric_id)
     .maybeSingle()
+  if (rubricError) return fail('rubrics query', rubricError)
   const rubricSlug = rubric ? resolveRubricSlug(rubric.title) : null
 
   // 3. Rubric items for this review's rubric
-  const { data: items } = await supabase
+  const { data: items, error: itemsError } = await supabase
     .from('rubric_items')
     .select('id, label, description, sort_order')
     .eq('rubric_id', review.rubric_id)
     .order('sort_order')
 
-  if (!items) return null
+  if (itemsError) return fail('rubric_items query', itemsError)
+  if (!items) return { ok: true, data: null }
 
   // 3. Review scores (criterion_scores array + per-criterion comment)
-  const { data: scores } = await supabase
+  const { data: scores, error: scoresError } = await supabase
     .from('review_scores')
     .select('rubric_item_id, criterion_scores, comment')
     .eq('review_id', review.id)
+  if (scoresError) return fail('review_scores query', scoresError)
 
   // 4. Score comments (NI / Exceeds polarity comments)
-  const { data: scoreComments } = await supabase
+  const { data: scoreComments, error: scoreCommentsError } = await supabase
     .from('score_comments')
     .select('id, rubric_item_id, score_level, body')
     .eq('review_id', review.id)
+  if (scoreCommentsError) return fail('score_comments query', scoreCommentsError)
 
   // 5. Annotations linked to this review
-  const { data: annotations } = await supabase
+  const { data: annotations, error: annotationsError } = await supabase
     .from('annotations')
     .select('id, rubric_item_id, body, tag')
     .eq('review_id', review.id)
+  if (annotationsError) return fail('annotations query', annotationsError)
 
   const scoresMap = Object.fromEntries(
     (scores ?? []).map(s => [s.rubric_item_id, s.criterion_scores as string[]])
@@ -87,7 +107,7 @@ export async function loadReviewerData(
       })),
   }))
 
-  return { reviewId: review.id, documentId, rubricSlug, criteria }
+  return { ok: true, data: { reviewId: review.id, documentId, rubricSlug, criteria } }
 }
 
 // ── Feedback view (/author/feedback/<documentId>) ─────────────────────────────
@@ -95,9 +115,9 @@ export async function loadReviewerData(
 export async function loadFeedbackData(
   supabase: SupabaseClient,
   documentId: string,
-): Promise<FeedbackData | null> {
+): Promise<LoadResult<FeedbackData | null>> {
   // Load all submitted reviews for this document
-  const { data: reviews } = await supabase
+  const { data: reviews, error: reviewsError } = await supabase
     .from('reviews')
     .select(`
       id,
@@ -108,7 +128,8 @@ export async function loadFeedbackData(
     .eq('document_id', documentId)
     .eq('status', 'submitted')
 
-  if (!reviews || reviews.length === 0) return null
+  if (reviewsError) return fail('reviews query', reviewsError)
+  if (!reviews || reviews.length === 0) return { ok: true, data: null }
 
   // Gather all rubric_item_ids to fetch labels
   const itemIds = [
@@ -119,21 +140,23 @@ export async function loadFeedbackData(
     ),
   ]
 
-  const { data: items } = await supabase
+  const { data: items, error: itemsError } = await supabase
     .from('rubric_items')
     .select('id, label, description, sort_order, rubric_id')
     .in('id', itemIds)
     .order('sort_order')
 
-  if (!items) return null
+  if (itemsError) return fail('rubric_items query', itemsError)
+  if (!items) return { ok: true, data: null }
 
   // Each item's rubric may differ across a document's multiple assigned
   // rubrics — resolve slug per rubric_id, not once for the whole document.
   const rubricIds = [...new Set(items.map(i => i.rubric_id))]
-  const { data: rubrics } = await supabase
+  const { data: rubrics, error: rubricsError } = await supabase
     .from('rubrics')
     .select('id, title')
     .in('id', rubricIds)
+  if (rubricsError) return fail('rubrics query', rubricsError)
   const rubricSlugById = new Map(
     (rubrics ?? []).map(r => [r.id, resolveRubricSlug(r.title)]),
   )
@@ -184,5 +207,5 @@ export async function loadFeedbackData(
     })
   }
 
-  return { documentId, criteria: [...criteriaMap.values()] }
+  return { ok: true, data: { documentId, criteria: [...criteriaMap.values()] } }
 }

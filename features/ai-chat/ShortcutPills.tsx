@@ -4,12 +4,14 @@ import { useState } from 'react'
 import { useAIChat } from './AIChatContext'
 import { ALL_CRITERIA_PICKER_ID, type Shortcut, type RunContext, type ShortcutResultWithOptions } from './useChatContext'
 import type { ReviewerData, FeedbackData, CriterionWithScore } from './shortcuts/types'
+import { isAbortError } from './shortcuts/aiService'
 import { useAIChatLogger } from './logging/AIChatLoggerContext'
 import type { ContextSource } from './logging/types'
 
 interface Props {
   shortcuts: Shortcut[]
   isReviewDataLoading: boolean
+  reviewDataError: string | null
   fetchReviewData: () => Promise<ReviewerData | FeedbackData | null>
 }
 
@@ -25,22 +27,35 @@ function isResultWithOptions(
   return typeof result !== 'string'
 }
 
-export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData }: Props) {
-  const { state, addMessage, setLoading, openPanel, setPendingFollowUp } = useAIChat()
+export function ShortcutPills({ shortcuts, isReviewDataLoading, reviewDataError, fetchReviewData }: Props) {
+  const { state, addMessage, setLoading, openPanel, setPendingFollowUp, beginRequest, isCurrentRequest } = useAIChat()
   const log = useAIChatLogger()
   const [picker, setPicker] = useState<PickerState>(null)
   const [running, setRunning] = useState<string | null>(null)
 
   if (shortcuts.length === 0) return null
 
+  const anyRequestInFlight = !!running || state.isLoading
+
   async function handlePillClick(shortcut: Shortcut) {
-    if (running) return
+    if (anyRequestInFlight) return
     if (isReviewDataLoading) {
       openPanel()
       addMessage('ai', 'Still loading this review — try again in a moment.')
       return
     }
+    if (reviewDataError) {
+      openPanel()
+      addMessage('ai', reviewDataError)
+      return
+    }
     setRunning(shortcut.id)
+    // Set immediately (not after shortcut.run resolves) so state.isLoading
+    // accurately reflects "busy" for the shortcut's entire duration —
+    // otherwise a freeform send could slip through AIChatPanel's own
+    // isLoading guard while a shortcut's actual AI call is still in flight.
+    setLoading(true)
+    const requestId = beginRequest()
     openPanel()
 
     const hasContext = state.contextSnippets.length > 0
@@ -54,21 +69,25 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
       }
       const startTime = Date.now()
       const result = await shortcut.run(ctx)
+      if (!isCurrentRequest(requestId)) return
 
       if (result === 'NEEDS_PICKER') {
         const criteria = freshReviewData?.criteria ?? []
         if (criteria.length === 0 && !shortcut.pickerIncludesAllOption) {
           addMessage('ai', 'No criteria data available to select from.')
           setRunning(null)
+          setLoading(false)
           return
         }
         setPicker({ shortcut, criteria, reviewData: freshReviewData })
         setRunning(null)
+        // Waiting on the user to pick a criterion isn't "AI busy" — the real
+        // request hasn't started yet, so don't leave the shared indicator on.
+        setLoading(false)
         return
       }
 
       addMessage('user', shortcut.label, undefined, shortcut.id)
-      setLoading(true)
       await new Promise(r => setTimeout(r, 300))
       if (isResultWithOptions(result)) {
         addMessage('ai', result.text, result.options, shortcut.id)
@@ -85,6 +104,7 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
         context_source: contextSource,
       })
     } catch (err) {
+      if (isAbortError(err) || !isCurrentRequest(requestId)) return
       addMessage('ai', 'Something went wrong. Please try again.')
       console.error('[AI shortcut error]', err)
     } finally {
@@ -94,6 +114,7 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
 
   async function handlePickerSelect(criterionId: string) {
     if (!picker?.shortcut.runWithPick) return
+    if (anyRequestInFlight) return
     const shortcut = picker.shortcut
     const runWithPick = shortcut.runWithPick!
     const pickedLabel = criterionId === ALL_CRITERIA_PICKER_ID
@@ -101,6 +122,8 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
       : picker.criteria.find(c => c.criterion.id === criterionId)?.criterion.label ?? criterionId
     setPicker(null)
     setRunning(shortcut.id)
+    setLoading(true)
+    const requestId = beginRequest()
 
     log('picker_used', { shortcut_id: shortcut.id, criterion_id: criterionId })
 
@@ -109,7 +132,6 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
       // label — otherwise every picker-driven message in history reads
       // identically ("Explain Criterion") with no way to tell which one.
       addMessage('user', `${shortcut.label}: ${pickedLabel}`, undefined, shortcut.id)
-      setLoading(true)
       await new Promise(r => setTimeout(r, 300))
       const startTime = Date.now()
       const ctx: RunContext = {
@@ -117,6 +139,7 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
         reviewData: picker.reviewData,
       }
       const result = await runWithPick(ctx, criterionId)
+      if (!isCurrentRequest(requestId)) return
       if (isResultWithOptions(result)) {
         addMessage('ai', result.text, result.options, shortcut.id)
         setPendingFollowUp(result.followUpContext)
@@ -130,6 +153,7 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
         context_source: 'picker',
       })
     } catch (err) {
+      if (isAbortError(err) || !isCurrentRequest(requestId)) return
       addMessage('ai', 'Something went wrong. Please try again.')
       console.error('[AI shortcut picker error]', err)
     } finally {
@@ -182,14 +206,14 @@ export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData 
           <button
             key={shortcut.id}
             onClick={() => handlePillClick(shortcut)}
-            disabled={!!running}
+            disabled={anyRequestInFlight}
             className={[
               'inline-flex items-center rounded-full px-3 py-1.5 text-[13px] font-medium transition-all duration-[120ms] flex-shrink-0',
               'active:scale-[0.97]',
               running === shortcut.id
                 ? 'bg-[rgba(254,214,91,0.2)] text-text-secondary cursor-wait'
                 : 'bg-surface-container-low text-text-muted hover:bg-[#edeae2] hover:text-text-primary cursor-pointer',
-              running && running !== shortcut.id ? 'opacity-40' : '',
+              anyRequestInFlight && running !== shortcut.id ? 'opacity-40' : '',
               isReviewDataLoading ? 'opacity-60' : '',
             ].join(' ')}
           >
