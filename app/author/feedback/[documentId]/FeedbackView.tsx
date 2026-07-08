@@ -13,6 +13,8 @@ import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import {
   setFeedbackResponse,
   clearFeedbackResponse,
+  setFeedbackComment,
+  clearFeedbackComment,
   addRevisionNote,
   updateRevisionNote,
   deleteRevisionNote,
@@ -81,6 +83,14 @@ interface RevisionNoteRow {
   updated_at: string
 }
 
+interface FeedbackCommentRow {
+  id: string
+  target_type: FeedbackTargetType
+  target_id: string
+  body: string
+  review_id: string
+}
+
 interface Props {
   document: {
     id: string
@@ -98,6 +108,7 @@ interface Props {
   isAuthor?: boolean
   initialResponses?: FeedbackResponseRow[]
   initialRevisionNotes?: RevisionNoteRow[]
+  initialFeedbackComments?: FeedbackCommentRow[]
 }
 
 function responseKey(targetType: FeedbackTargetType, targetId: string) {
@@ -135,6 +146,7 @@ export function FeedbackView({
   isAuthor = false,
   initialResponses = [],
   initialRevisionNotes = [],
+  initialFeedbackComments = [],
 }: Props) {
   const router = useRouter()
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
@@ -148,6 +160,10 @@ export function FeedbackView({
   )
   const [revisionNotes, setRevisionNotes] = useState<RevisionNoteItem[]>(
     () => initialRevisionNotes.map(n => ({ id: n.id, body: n.body, created_at: n.created_at }))
+  )
+  // Per-item author comments (annotations + rubric criteria), keyed by target.
+  const [comments, setComments] = useState<Map<string, string>>(
+    () => new Map(initialFeedbackComments.map(c => [responseKey(c.target_type, c.target_id), c.body]))
   )
 
   const statusFor = useCallback(
@@ -190,6 +206,49 @@ export function FeedbackView({
       }
     },
     [responses, document.id]
+  )
+
+  const commentFor = useCallback(
+    (targetType: FeedbackTargetType, targetId: string): string =>
+      comments.get(responseKey(targetType, targetId)) ?? '',
+    [comments]
+  )
+
+  const handleCommentChange = useCallback(
+    async (
+      targetType: FeedbackTargetType,
+      targetId: string,
+      reviewId: string,
+      body: string
+    ) => {
+      const key = responseKey(targetType, targetId)
+      const prev = comments.get(key) ?? ''
+      const trimmed = body.trim()
+      // Optimistic update
+      setComments(m => {
+        const copy = new Map(m)
+        if (trimmed === '') copy.delete(key)
+        else copy.set(key, trimmed)
+        return copy
+      })
+      try {
+        if (trimmed === '') {
+          await clearFeedbackComment({ targetType, targetId })
+        } else {
+          await setFeedbackComment({ documentId: document.id, reviewId, targetType, targetId, body: trimmed })
+        }
+      } catch (err) {
+        console.error('Failed to save feedback comment', err)
+        // Revert
+        setComments(m => {
+          const copy = new Map(m)
+          if (prev === '') copy.delete(key)
+          else copy.set(key, prev)
+          return copy
+        })
+      }
+    },
+    [comments, document.id]
   )
 
   const handleAddNote = useCallback(
@@ -562,6 +621,9 @@ export function FeedbackView({
                         showStatusControl={isAuthor}
                         status={statusFor('annotation', ann.id)}
                         onStatusChange={s => handleStatusChange('annotation', ann.id, review.id, s)}
+                        showComment={isAuthor}
+                        comment={commentFor('annotation', ann.id)}
+                        onCommentChange={body => handleCommentChange('annotation', ann.id, review.id, body)}
                       />
                     ))}
                   </div>
@@ -603,6 +665,8 @@ export function FeedbackView({
                   showStatusControls={isAuthor}
                   statusFor={statusFor}
                   onStatusChange={(targetType, targetId, s) => handleStatusChange(targetType, targetId, review.id, s)}
+                  commentFor={commentFor}
+                  onCommentChange={(targetType, targetId, body) => handleCommentChange(targetType, targetId, review.id, body)}
                 />
               ))}
             </div>

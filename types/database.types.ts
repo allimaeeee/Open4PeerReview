@@ -189,6 +189,64 @@ export type Database = {
           },
         ]
       }
+      author_feedback_comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          document_id: string
+          id: string
+          review_id: string
+          target_id: string
+          target_type: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          document_id: string
+          id?: string
+          review_id: string
+          target_id: string
+          target_type: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          review_id?: string
+          target_id?: string
+          target_type?: Database["public"]["Enums"]["feedback_target_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "author_feedback_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "author_feedback_comments_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "author_feedback_comments_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       author_feedback_responses: {
         Row: {
           author_id: string
@@ -907,6 +965,11 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      review_has_submission: { Args: { p_review_id: string }; Returns: boolean }
+      rubric_submitted_for_review: {
+        Args: { p_review_id: string; p_rubric_id: string }
+        Returns: boolean
+      }
       update_torus_document_pages: {
         Args: {
           p_document_id: string
@@ -950,7 +1013,8 @@ export type Database = {
         | "score_comment"
         | "general_comment"
         | "overall_comment"
-      file_type: "pdf" | "html" | "image" | "audio"
+        | "criterion"
+      file_type: "pdf" | "html" | "image" | "audio" | "pptx"
       review_status: "in_progress" | "submitted" | "unassigned" | "assigned"
       user_role: "reviewer" | "author" | "admin"
     }
@@ -1115,8 +1179,9 @@ export const Constants = {
         "score_comment",
         "general_comment",
         "overall_comment",
+        "criterion",
       ],
-      file_type: ["pdf", "html", "image", "audio"],
+      file_type: ["pdf", "html", "image", "audio", "pptx"],
       review_status: ["in_progress", "submitted", "unassigned", "assigned"],
       user_role: ["reviewer", "author", "admin"],
     },

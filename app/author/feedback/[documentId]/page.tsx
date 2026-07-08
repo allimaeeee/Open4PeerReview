@@ -33,6 +33,7 @@ export default async function FeedbackPage({
             isAuthor={data.isAuthor}
             initialResponses={data.feedbackResponses}
             initialRevisionNotes={data.revisionNotes}
+            initialFeedbackComments={data.feedbackComments}
           />
         </Suspense>
       </main>

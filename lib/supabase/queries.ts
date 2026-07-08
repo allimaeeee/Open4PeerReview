@@ -492,6 +492,11 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     .eq('document_id', documentId)
     .order('created_at', { ascending: true })
 
+  const { data: feedbackComments } = await supabase
+    .from('author_feedback_comments')
+    .select('id, target_type, target_id, body, review_id')
+    .eq('document_id', documentId)
+
   const allRubrics = ((doc as { document_rubrics?: { rubric: { id: string; title: string; rubric_items?: { id: string }[] } | null }[] }).document_rubrics ?? [])
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string; rubric_items?: { id: string }[] } => r !== null)
@@ -503,6 +508,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     allRubrics,
     feedbackResponses: feedbackResponses ?? [],
     revisionNotes: revisionNotes ?? [],
+    feedbackComments: feedbackComments ?? [],
   }
 }
 

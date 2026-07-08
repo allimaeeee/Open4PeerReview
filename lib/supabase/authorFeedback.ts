@@ -24,6 +24,14 @@ export interface RevisionNoteRow {
   updated_at: string
 }
 
+export interface FeedbackCommentRow {
+  id: string
+  target_type: FeedbackTargetType
+  target_id: string
+  body: string
+  review_id: string
+}
+
 /** Set (or change) the author's status on a single feedback item. Upserts on (target_type, target_id). */
 export async function setFeedbackResponse(params: {
   documentId: string
@@ -65,6 +73,58 @@ export async function clearFeedbackResponse(params: {
   const supabase = createClient()
   const { error } = await supabase
     .from('author_feedback_responses')
+    .delete()
+    .eq('target_type', params.targetType)
+    .eq('target_id', params.targetId)
+
+  if (error) throw error
+}
+
+/**
+ * Set (or update) the author's free-text comment on a single feedback item
+ * (an annotation or a rubric criterion). Author-private. Upserts on
+ * (target_type, target_id), so re-saving replaces the existing comment.
+ */
+export async function setFeedbackComment(params: {
+  documentId: string
+  reviewId: string
+  targetType: FeedbackTargetType
+  targetId: string
+  body: string
+}): Promise<FeedbackCommentRow> {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('author_feedback_comments')
+    .upsert(
+      {
+        document_id: params.documentId,
+        review_id: params.reviewId,
+        target_type: params.targetType,
+        target_id: params.targetId,
+        body: params.body,
+        author_id: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'target_type,target_id' }
+    )
+    .select('id, target_type, target_id, body, review_id')
+    .single()
+
+  if (error) throw error
+  return data as FeedbackCommentRow
+}
+
+/** Remove the author's comment on a feedback item (e.g. when cleared to empty). */
+export async function clearFeedbackComment(params: {
+  targetType: FeedbackTargetType
+  targetId: string
+}): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('author_feedback_comments')
     .delete()
     .eq('target_type', params.targetType)
     .eq('target_id', params.targetId)
