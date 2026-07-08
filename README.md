@@ -6,6 +6,22 @@
 npm run dev
 
 
+**BUILDING THE BROWSER EXTENSION**
+
+To build and zip the extension for distribution:
+
+npm run package:ext
+
+This produces `extension/dist.zip`. It is not committed to the repo — it's regenerated fresh each time, so always run the command yourself rather than looking for a pre-built zip in git history. Share the resulting `extension/dist.zip` directly (e.g. via Slack) with anyone who needs to install it.
+
+For local development/testing without packaging:
+
+npm run build:ext
+
+Then load `extension/dist/` as an unpacked extension via `chrome://extensions` (Developer Mode → "Load unpacked").
+
+
+
 **COMMIT TO GIT**
 
 git add .
