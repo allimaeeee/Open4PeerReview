@@ -1,13 +1,22 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import type { CriterionScore } from '@/types'
+import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
+import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
+import { RevisionNotes, type RevisionNoteItem } from '@/components/ui/RevisionNotes'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
+import {
+  setFeedbackResponse,
+  clearFeedbackResponse,
+  addRevisionNote,
+  updateRevisionNote,
+  deleteRevisionNote,
+} from '@/lib/supabase/authorFeedback'
 import { OerReadOnlyViewer } from './OerReadOnlyViewer'
 import { TorusReadOnlyViewer } from './TorusReadOnlyViewer'
 
@@ -55,6 +64,22 @@ interface ReviewRow {
   score_comments: ScoreCommentRow[]
 }
 
+interface FeedbackResponseRow {
+  id: string
+  target_type: FeedbackTargetType
+  target_id: string
+  status: FeedbackResponseStatus
+  review_id: string
+}
+
+interface RevisionNoteRow {
+  id: string
+  body: string
+  review_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface Props {
   document: {
     id: string
@@ -69,6 +94,13 @@ interface Props {
   allRubrics?: { id: string; title: string; itemIds: string[] }[]
   pdfUrl?: string | null
   includeAuthorNotes?: boolean
+  isAuthor?: boolean
+  initialResponses?: FeedbackResponseRow[]
+  initialRevisionNotes?: RevisionNoteRow[]
+}
+
+function responseKey(targetType: FeedbackTargetType, targetId: string) {
+  return `${targetType}:${targetId}`
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,12 +127,103 @@ function PrintIcon() {
 
 // ── FeedbackView ─────────────────────────────────────────────────────────────
 
-export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProps }: Props) {
+export function FeedbackView({
+  document,
+  reviews,
+  allRubrics: allRubricsFromProps,
+  isAuthor = false,
+  initialResponses = [],
+  initialRevisionNotes = [],
+}: Props) {
   const router = useRouter()
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(true)
   const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
+
+  // ── Author-side feedback state (statuses + revision notes) ──
+  const [responses, setResponses] = useState<Map<string, FeedbackResponseStatus>>(
+    () => new Map(initialResponses.map(r => [responseKey(r.target_type, r.target_id), r.status]))
+  )
+  const [revisionNotes, setRevisionNotes] = useState<RevisionNoteItem[]>(
+    () => initialRevisionNotes.map(n => ({ id: n.id, body: n.body, created_at: n.created_at }))
+  )
+
+  const statusFor = useCallback(
+    (targetType: FeedbackTargetType, targetId: string): FeedbackResponseStatus | null =>
+      responses.get(responseKey(targetType, targetId)) ?? null,
+    [responses]
+  )
+
+  const handleStatusChange = useCallback(
+    async (
+      targetType: FeedbackTargetType,
+      targetId: string,
+      reviewId: string,
+      next: FeedbackResponseStatus | null
+    ) => {
+      const key = responseKey(targetType, targetId)
+      const prev = responses.get(key) ?? null
+      // Optimistic update
+      setResponses(m => {
+        const copy = new Map(m)
+        if (next === null) copy.delete(key)
+        else copy.set(key, next)
+        return copy
+      })
+      try {
+        if (next === null) {
+          await clearFeedbackResponse({ targetType, targetId })
+        } else {
+          await setFeedbackResponse({ documentId: document.id, reviewId, targetType, targetId, status: next })
+        }
+      } catch (err) {
+        console.error('Failed to save feedback status', err)
+        // Revert
+        setResponses(m => {
+          const copy = new Map(m)
+          if (prev === null) copy.delete(key)
+          else copy.set(key, prev)
+          return copy
+        })
+      }
+    },
+    [responses, document.id]
+  )
+
+  const handleAddNote = useCallback(
+    async (body: string, reviewId: string | null) => {
+      try {
+        const row = await addRevisionNote({ documentId: document.id, reviewId, body })
+        setRevisionNotes(list => [...list, { id: row.id, body: row.body, created_at: row.created_at }])
+      } catch (err) {
+        console.error('Failed to add revision note', err)
+      }
+    },
+    [document.id]
+  )
+
+  const handleUpdateNote = useCallback(async (id: string, body: string) => {
+    const prev = revisionNotes
+    setRevisionNotes(list => list.map(n => (n.id === id ? { ...n, body } : n)))
+    try {
+      await updateRevisionNote({ id, body })
+    } catch (err) {
+      console.error('Failed to update revision note', err)
+      setRevisionNotes(prev)
+    }
+  }, [revisionNotes])
+
+  const handleDeleteNote = useCallback(async (id: string) => {
+    const prev = revisionNotes
+    setRevisionNotes(list => list.filter(n => n.id !== id))
+    try {
+      await deleteRevisionNote({ id })
+    } catch (err) {
+      console.error('Failed to delete revision note', err)
+      setRevisionNotes(prev)
+    }
+  }, [revisionNotes])
 
   const handleCriterionClick = (rubricItemId: string) => {
     setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
@@ -352,6 +475,14 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                 <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
                   {review.overall_comment}
                 </p>
+                {isAuthor && (
+                  <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
+                    <AddressStatusControl
+                      status={statusFor('overall_comment', review.id)}
+                      onChange={s => handleStatusChange('overall_comment', review.id, review.id, s)}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -385,6 +516,14 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                   <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
                     {review.notes}
                   </p>
+                  {isAuthor && (
+                    <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
+                      <AddressStatusControl
+                        status={statusFor('general_comment', review.id)}
+                        onChange={s => handleStatusChange('general_comment', review.id, review.id, s)}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -406,6 +545,9 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                         }}
                         goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                         screenshotNumber={annotationIndexMap.get(ann.id)}
+                        showStatusControl={isAuthor}
+                        status={statusFor('annotation', ann.id)}
+                        onStatusChange={s => handleStatusChange('annotation', ann.id, review.id, s)}
                       />
                     ))}
                   </div>
@@ -444,9 +586,24 @@ export function FeedbackView({ document, reviews, allRubrics: allRubricsFromProp
                   }}
                   goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                   annotationIndexMap={annotationIndexMap}
+                  showStatusControls={isAuthor}
+                  statusFor={statusFor}
+                  onStatusChange={(targetType, targetId, s) => handleStatusChange(targetType, targetId, review.id, s)}
                 />
               ))}
             </div>
+
+            {/* Revision Notes — author-only */}
+            {isAuthor && (
+              <div className="mt-6">
+                <RevisionNotes
+                  notes={revisionNotes}
+                  onAdd={body => handleAddNote(body, null)}
+                  onUpdate={handleUpdateNote}
+                  onDelete={handleDeleteNote}
+                />
+              </div>
+            )}
           </>
         )}
 

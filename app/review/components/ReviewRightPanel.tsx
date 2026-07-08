@@ -34,6 +34,8 @@ interface ReviewRightPanelProps {
   saveStatus: SaveStatus
   goToLabel?: string
   annotationIndexMap?: Map<string, number>
+  /** Bump to remount the general-comment field with fresh initialNotes (live refresh). */
+  notesKey?: string | number
 }
 
 export function ReviewRightPanel({
@@ -58,6 +60,7 @@ export function ReviewRightPanel({
   saveStatus,
   goToLabel,
   annotationIndexMap,
+  notesKey,
 }: ReviewRightPanelProps) {
   const rubrics = useMemo(() => {
     const seen = new Set<string>()
@@ -154,6 +157,7 @@ export function ReviewRightPanel({
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         <FreeNotesSection
+          key={notesKey}
           initialNotes={initialNotes}
           onNotesChange={onGeneralCommentChange}
           saveStatus={saveStatus}

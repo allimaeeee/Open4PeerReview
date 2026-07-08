@@ -1,3 +1,6 @@
+import type { FeedbackResponseStatus } from '@/types'
+import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
+
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
 }
@@ -16,6 +19,10 @@ interface EvidenceCardProps {
   onGoToAnnotation?: () => void
   goToLabel?: string
   screenshotNumber?: number
+  /** When true, show the author-only "addressed / will address later" control. */
+  showStatusControl?: boolean
+  status?: FeedbackResponseStatus | null
+  onStatusChange?: (status: FeedbackResponseStatus | null) => void
 }
 
 function getAnchorType(anchor: Record<string, unknown>): 'html' | 'pdf' | 'torus' | 'free-note' {
@@ -41,7 +48,7 @@ const TAG_CONFIG: Record<'action_item' | 'quick_fix', { label: string; bg: strin
   },
 }
 
-export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabel, screenshotNumber }: EvidenceCardProps) {
+export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabel, screenshotNumber, showStatusControl, status, onStatusChange }: EvidenceCardProps) {
   const anchorType        = getAnchorType(annotation.anchor)
   const isLinkedHighlight = anchorType !== 'free-note'
   const rawType           = annotation.anchor.type as string | undefined
@@ -187,6 +194,13 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
           >
             {TAG_CONFIG[tag].label}
           </span>
+        </div>
+      )}
+
+      {/* Author-only status control */}
+      {showStatusControl && onStatusChange && (
+        <div className="pt-2 mt-1 border-t border-[var(--color-border)]">
+          <AddressStatusControl status={status ?? null} onChange={onStatusChange} />
         </div>
       )}
     </div>

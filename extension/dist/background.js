@@ -230,7 +230,7 @@ chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
   } catch {
   }
   const existingTabAuth = (await chrome.storage.local.get("auth")).auth;
-  const cookieAuth = await readSessionFromCookies("https://annotation-platform-seven.vercel.app");
+  const cookieAuth = await readSessionFromCookies("https://open4peerreview-olitorus.vercel.app");
   if (cookieAuth) {
     const stored = { ...cookieAuth, platformUrl: existingTabAuth?.platformUrl };
     await chrome.storage.local.set({ auth: stored });

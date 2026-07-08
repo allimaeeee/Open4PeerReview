@@ -90,7 +90,7 @@ function syncAuth() {
 
 // Runtime guard: *.vercel.app is necessarily broad in the manifest, so narrow it
 // here. Only sync auth if we're actually on a known OER platform origin.
-const ALLOWED_PLATFORM_HOSTNAMES = ['annotation-platform-seven.vercel.app', 'localhost'];
+const ALLOWED_PLATFORM_HOSTNAMES = ['open4peerreview-olitorus.vercel.app', 'localhost'];
 const PREVIEW_PLATFORM_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
 const hn = window.location.hostname;
 const isAllowedPlatform = ALLOWED_PLATFORM_HOSTNAMES.includes(hn) || PREVIEW_PLATFORM_RE.test(hn);

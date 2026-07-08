@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useReviewAutoSave, type CriterionScore } from '../../../hooks/useReviewAutoSave'
+import { useReviewAutoSave, type CriterionScore, type SaveStatus } from '../../../hooks/useReviewAutoSave'
 import { useReviewTracking } from '../../../hooks/useReviewTracking'
 import { useRouter } from 'next/navigation'
 import type { HighlightTag } from '@/types'
@@ -81,6 +81,9 @@ export function ReviewerConsole({
     (review.annotations ?? []).filter((a) => a.rubric_item_id === null).reverse()
   )
   const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
+  // General-comment live refresh: serverNotes seeds the field; bumping notesKey remounts it.
+  const [serverNotes, setServerNotes] = useState<string | null>(review.notes)
+  const [notesKey, setNotesKey] = useState(0)
 
   const isSubmitted = review.status === 'submitted'
   const router = useRouter()
@@ -180,6 +183,99 @@ export function ReviewerConsole({
   useEffect(() => {
     if (saveStatus === 'saved') refreshLastSaved()
   }, [saveStatus, refreshLastSaved])
+
+  // ── Live refresh on tab refocus ────────────────────────────────────────────
+  // Re-pull score comments + ratings when the reviewer returns to this tab, so
+  // per-criterion comments made in the browser extension (or another session)
+  // appear without a manual reload. Guards prevent clobbering in-progress edits.
+  const saveStatusRef = useRef(saveStatus)
+  useEffect(() => { saveStatusRef.current = saveStatus }, [saveStatus])
+  const refreshInFlight = useRef(false)
+
+  const refreshCommentsFromServer = useCallback(async () => {
+    if (isSubmitted || refreshInFlight.current) return
+    if (saveStatusRef.current === 'saving') return
+    const ae = window.document.activeElement as HTMLElement | null
+    if (ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT')) return
+
+    refreshInFlight.current = true
+    try {
+      const [{ data: sc }, { data: rs }, { data: rev }] = await Promise.all([
+        supabase
+          .from('score_comments')
+          .select('id, rubric_item_id, score_level, body')
+          .eq('review_id', review.id)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('review_scores')
+          .select('rubric_item_id, criterion_scores, score, comment')
+          .eq('review_id', review.id),
+        supabase
+          .from('reviews')
+          .select('notes')
+          .eq('id', review.id)
+          .single(),
+      ])
+      // Re-check guards — the reviewer may have started editing during the fetch.
+      // (cast re-widens the ref: TS narrows it across the await above.)
+      if ((saveStatusRef.current as SaveStatus) === 'saving') return
+      const ae2 = window.document.activeElement as HTMLElement | null
+      if (ae2 && (ae2.tagName === 'TEXTAREA' || ae2.tagName === 'INPUT')) return
+
+      setScores((prev) => {
+        const next: Record<string, LocalScore> = {}
+        for (const itemId of Object.keys(prev)) {
+          const existing = prev[itemId]
+          const itemComments = (sc ?? []).filter((c) => c.rubric_item_id === itemId)
+          const niComments = itemComments.filter((c) => c.score_level === 'does_not_meet').map((c) => ({ id: c.id, body: c.body }))
+          const exceedsComments = itemComments.filter((c) => c.score_level === 'exceeds').map((c) => ({ id: c.id, body: c.body }))
+          const rsRow = (rs ?? []).find((r) => r.rubric_item_id === itemId)
+          const proficientSelected = (rsRow?.criterion_scores ?? []).includes('exemplifies')
+          const derived: CriterionScore[] = [...((rsRow?.criterion_scores ?? []) as CriterionScore[])]
+          if (exceedsComments.length > 0 && !derived.includes('exceeds')) derived.push('exceeds')
+          if (niComments.length > 0 && !derived.includes('does_not_meet')) derived.push('does_not_meet')
+          if (proficientSelected && !derived.includes('exemplifies')) derived.push('exemplifies')
+          next[itemId] = {
+            ...existing,
+            scores: derived,
+            comment: rsRow?.comment ?? existing.comment,
+            proficientSelected,
+            niComments,
+            exceedsComments,
+            // annotations are managed separately — preserve local state
+          }
+        }
+        return next
+      })
+
+      // General comment: if the stored notes changed externally, remount the field
+      // with the fresh value. Safe here — the guards above ensure it isn't focused
+      // and no save is pending, so no in-progress text is lost.
+      const freshNotes = rev?.notes ?? null
+      setServerNotes((prevNotes) => {
+        if (freshNotes !== prevNotes) setNotesKey((k) => k + 1)
+        return freshNotes
+      })
+    } finally {
+      refreshInFlight.current = false
+    }
+  }, [supabase, review.id, isSubmitted])
+
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    const schedule = () => {
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(() => { debounce = null; refreshCommentsFromServer() }, 250)
+    }
+    const onVisibility = () => { if (window.document.visibilityState === 'visible') schedule() }
+    window.addEventListener('focus', schedule)
+    window.document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      if (debounce) clearTimeout(debounce)
+      window.removeEventListener('focus', schedule)
+      window.document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [refreshCommentsFromServer])
 
   // ── Criterion focus / blur ─────────────────────────────────────────────────
   const handleActiveItemChange = useCallback((id: string) => {
@@ -838,9 +934,10 @@ export function ReviewerConsole({
               onEditAnnotation={handleAnnotationEditFromPDF}
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
-              initialNotes={review.notes}
+              initialNotes={serverNotes}
               onGeneralCommentChange={onGeneralCommentChange}
               saveStatus={saveStatus}
+              notesKey={notesKey}
               goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
               annotationIndexMap={annotationIndexMap}
             />
