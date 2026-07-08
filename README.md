@@ -28,7 +28,7 @@ git add .
 
 git commit -m ''
 
-git push origin testing
+git push origin main
 
 
 **DIRECTORY**
