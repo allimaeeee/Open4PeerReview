@@ -11,6 +11,7 @@
     "build:ext:dev": "OERHUB_ENV=dev node extension/build.mjs",
     "watch:ext": "node --watch extension/build.mjs",
     "watch:ext:dev": "OERHUB_ENV=dev node --watch extension/build.mjs",
+    "package:ext": "node extension/build.mjs && node extension/package.mjs",
     "test": "vitest run"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "archiver": "^8.0.0",
     "esbuild": "^0.25.12",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
