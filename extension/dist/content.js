@@ -72,7 +72,7 @@
   var PANEL_WIDTH = 380;
   var CONTEXT = 32;
   var SCORE_DEBOUNCE_MS = 1500;
-  var OERHUB_URL = "https://open4peerreview-olitorus.vercel.app";
+  var OERHUB_URL = "https://annotation-platform-seven.vercel.app";
   var platformUrl = OERHUB_URL;
   var SESSION_KEY = "oer_review_id";
   var PENDING_DEEP_LINK_KEY = "oer_pending_review";
@@ -2893,7 +2893,7 @@
     assignments = assignResp.data ?? [];
     await routeToReview();
   }
-  var ALLOWED_CONSOLE_HOSTNAMES = ["open4peerreview-olitorus.vercel.app", "localhost"];
+  var ALLOWED_CONSOLE_HOSTNAMES = ["annotation-platform-seven.vercel.app", "localhost"];
   var PREVIEW_CONSOLE_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
   function isAllowedPlatformOrigin(origin) {
     try {
