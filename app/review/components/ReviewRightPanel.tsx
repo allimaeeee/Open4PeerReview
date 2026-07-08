@@ -26,9 +26,9 @@ interface ReviewRightPanelProps {
   submittedRubricIds: Set<string>
   onSubmit: () => void
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
-  onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
-  onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
-  onDeleteComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet') => void
+  onAddComment: (rubricItemId: string, level: CriterionScore, body: string) => void
+  onEditComment: (rubricItemId: string, commentId: string, level: CriterionScore, body: string) => void
+  onDeleteComment: (rubricItemId: string, commentId: string, level: CriterionScore) => void
   onEditFreeNote: (noteId: string, changes: { body: string; rubricItemId: string | null; tag?: HighlightTag | null }) => void
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void

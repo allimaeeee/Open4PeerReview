@@ -47,7 +47,14 @@ export interface LocalScore {
   proficientSelected: boolean
   niComments: ScoreCommentItem[]
   exceedsComments: ScoreCommentItem[]
+  exemplifiesComments: ScoreCommentItem[]
   annotations: { id: string; anchor: Record<string, unknown>; body: string; tag: string | null; created_at?: string }[]
+}
+
+const SCORE_COMMENT_KEY: Record<CriterionScore, 'niComments' | 'exceedsComments' | 'exemplifiesComments'> = {
+  does_not_meet: 'niComments',
+  exceeds: 'exceedsComments',
+  exemplifies: 'exemplifiesComments',
 }
 
 function computePrimaryScore(
@@ -133,6 +140,9 @@ export function ReviewerConsole({
           const exceedsComments = itemScoreComments
             .filter((sc) => sc.score_level === 'exceeds')
             .map((sc) => ({ id: sc.id, body: sc.body }))
+          const exemplifiesComments = itemScoreComments
+            .filter((sc) => sc.score_level === 'exemplifies')
+            .map((sc) => ({ id: sc.id, body: sc.body }))
           const proficientSelected = (existingScore?.criterion_scores ?? []).includes('exemplifies')
           // Derive scores from both saved criterion_scores and comment presence.
           // score_comments are persisted immediately; criterion_scores go through a
@@ -142,6 +152,7 @@ export function ReviewerConsole({
           if (exceedsComments.length > 0 && !derivedScores.includes('exceeds')) derivedScores.push('exceeds')
           if (niComments.length > 0 && !derivedScores.includes('does_not_meet')) derivedScores.push('does_not_meet')
           if (proficientSelected && !derivedScores.includes('exemplifies')) derivedScores.push('exemplifies')
+          if (exemplifiesComments.length > 0 && !derivedScores.includes('exemplifies')) derivedScores.push('exemplifies')
           initialScores[item.id] = {
             rubricItemId: item.id,
             scores: derivedScores,
@@ -149,6 +160,7 @@ export function ReviewerConsole({
             proficientSelected,
             niComments,
             exceedsComments,
+            exemplifiesComments,
             annotations: [...existingAnnotations].reverse(),
           }
         })
@@ -247,12 +259,14 @@ export function ReviewerConsole({
           const itemComments = (sc ?? []).filter((c) => c.rubric_item_id === itemId)
           const niComments = itemComments.filter((c) => c.score_level === 'does_not_meet').map((c) => ({ id: c.id, body: c.body }))
           const exceedsComments = itemComments.filter((c) => c.score_level === 'exceeds').map((c) => ({ id: c.id, body: c.body }))
+          const exemplifiesComments = itemComments.filter((c) => c.score_level === 'exemplifies').map((c) => ({ id: c.id, body: c.body }))
           const rsRow = (rs ?? []).find((r) => r.rubric_item_id === itemId)
           const proficientSelected = (rsRow?.criterion_scores ?? []).includes('exemplifies')
           const derived: CriterionScore[] = [...((rsRow?.criterion_scores ?? []) as CriterionScore[])]
           if (exceedsComments.length > 0 && !derived.includes('exceeds')) derived.push('exceeds')
           if (niComments.length > 0 && !derived.includes('does_not_meet')) derived.push('does_not_meet')
           if (proficientSelected && !derived.includes('exemplifies')) derived.push('exemplifies')
+          if (exemplifiesComments.length > 0 && !derived.includes('exemplifies')) derived.push('exemplifies')
           next[itemId] = {
             ...existing,
             scores: derived,
@@ -260,6 +274,7 @@ export function ReviewerConsole({
             proficientSelected,
             niComments,
             exceedsComments,
+            exemplifiesComments,
             // annotations are managed separately — preserve local state
           }
         }
@@ -673,13 +688,13 @@ export function ReviewerConsole({
 
   // ── Score comment edit ────────────────────────────────────────────────────
   const handleEditScoreComment = useCallback(
-    async (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => {
+    async (rubricItemId: string, commentId: string, scoreLevel: CriterionScore, body: string) => {
       track('score_comment_edit', { rubric_item_id: rubricItemId, comment_id: commentId, score_level: scoreLevel, char_count: body.length })
       await updateScoreComment(commentId, body)
       setScores((prev) => {
         const existing = prev[rubricItemId]
         if (!existing) return prev
-        const key = scoreLevel === 'does_not_meet' ? 'niComments' : 'exceedsComments'
+        const key = SCORE_COMMENT_KEY[scoreLevel]
         return {
           ...prev,
           [rubricItemId]: {
@@ -694,7 +709,7 @@ export function ReviewerConsole({
 
   // ── Score comments ────────────────────────────────────────────────────────
   const handleAddScoreComment = useCallback(
-    async (rubricItemId: string, scoreLevel: 'does_not_meet' | 'exceeds', body: string) => {
+    async (rubricItemId: string, scoreLevel: CriterionScore, body: string) => {
       const id = await addScoreComment(review.id, rubricItemId, scoreLevel, body)
       if (!id) return
       track('score_comment_add', { rubric_item_id: rubricItemId, score_level: scoreLevel, char_count: body.length })
@@ -704,13 +719,11 @@ export function ReviewerConsole({
         const updatedScores = existing.scores.includes(scoreLevel)
           ? existing.scores
           : [...existing.scores, scoreLevel]
+        const key = SCORE_COMMENT_KEY[scoreLevel]
         const updated: LocalScore = {
           ...existing,
           scores: updatedScores,
-          ...(scoreLevel === 'does_not_meet'
-            ? { niComments: [...existing.niComments, { id: item.id, body: item.body }] }
-            : { exceedsComments: [...existing.exceedsComments, { id: item.id, body: item.body }] }
-          ),
+          [key]: [...existing[key], { id: item.id, body: item.body }],
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(onScoreChange as any)({ rubricItemId, scores: updatedScores, comment: existing.comment })
@@ -721,12 +734,12 @@ export function ReviewerConsole({
   )
 
   const handleDeleteScoreComment = useCallback(
-    async (rubricItemId: string, commentId: string, scoreLevel: 'does_not_meet' | 'exceeds') => {
+    async (rubricItemId: string, commentId: string, scoreLevel: CriterionScore) => {
       track('score_comment_delete', { rubric_item_id: rubricItemId, comment_id: commentId, score_level: scoreLevel })
       await deleteScoreComment(commentId)
       setScores((prev) => {
         const existing = prev[rubricItemId]
-        const key = scoreLevel === 'does_not_meet' ? 'niComments' : 'exceedsComments'
+        const key = SCORE_COMMENT_KEY[scoreLevel]
         const updatedComments = existing[key].filter((c) => c.id !== commentId)
         const updatedScores = updatedComments.length === 0
           ? existing.scores.filter((s) => s !== scoreLevel)

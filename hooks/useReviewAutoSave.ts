@@ -283,7 +283,7 @@ export function useReviewAutoSave({
     async (
       reviewId: string,
       rubricItemId: string,
-      scoreLevel: 'does_not_meet' | 'exceeds',
+      scoreLevel: CriterionScore,
       body: string,
     ): Promise<string | null> => {
       setSaveStatus('saving')
