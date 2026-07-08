@@ -2645,7 +2645,7 @@ function createPanel() {
   host.id = 'oer-review-host';
   panelHost = host;
   const defaultW = PANEL_WIDTH;
-  const defaultH = 560;
+  const defaultH = Math.round(window.innerHeight * 0.95);
   const initRight = 16;
   const initTop = 16;
 
