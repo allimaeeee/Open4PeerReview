@@ -3436,7 +3436,7 @@ async function handleLogin() {
 
 // Allowed platform origins for the Console button destination and for guard use.
 // The *.vercel.app manifest permission is broad; this regex narrows it at runtime.
-const ALLOWED_CONSOLE_HOSTNAMES = ['open4peerreview-olitorus.vercel.app', 'localhost'];
+const ALLOWED_CONSOLE_HOSTNAMES = ['annotation-platform-seven.vercel.app', 'localhost'];
 const PREVIEW_CONSOLE_RE = /^open4peerreview-[a-z0-9]+-allimaeeees-projects\.vercel\.app$/;
 
 function isAllowedPlatformOrigin(origin: string): boolean {
