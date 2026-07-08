@@ -170,6 +170,8 @@ export function useChatContext(): {
   reviewData: ReviewerData | FeedbackData | null
   rubricSlug: RubricSlug | null
   isReviewDataLoading: boolean
+  /** Set when the query itself failed (RLS denial, network issue, etc.) — distinct from reviewData being null because there's legitimately nothing there yet. */
+  reviewDataError: string | null
   fetchReviewData: () => Promise<ReviewerData | FeedbackData | null>
 } {
   const pathname     = usePathname()
@@ -180,6 +182,7 @@ export function useChatContext(): {
   // makes the load itself the thing that triggers the update.
   const [reviewData, setReviewData] = useState<ReviewerData | FeedbackData | null>(null)
   const [isReviewDataLoading, setIsReviewDataLoading] = useState(false)
+  const [reviewDataError, setReviewDataError] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
   // Determine page role and document ID
@@ -196,6 +199,7 @@ export function useChatContext(): {
   // Preload review data when page role + documentId are known
   useEffect(() => {
     setReviewData(null)
+    setReviewDataError(null)
     if (!documentId) {
       setIsReviewDataLoading(false)
       return
@@ -211,9 +215,14 @@ export function useChatContext(): {
     if (!load) {
       setIsReviewDataLoading(false)
     } else {
-      load.then(data => {
+      load.then(result => {
         if (cancelled) return
-        setReviewData(data)
+        if (result.ok) {
+          setReviewData(result.data)
+        } else {
+          setReviewData(null)
+          setReviewDataError(result.error)
+        }
         setIsReviewDataLoading(false)
       })
     }
@@ -232,9 +241,14 @@ export function useChatContext(): {
       : pageRole === 'author' ? loadFeedbackData(supabase, documentId)
       : null
     if (!load) return null
-    const data = await load
-    setReviewData(data)
-    return data
+    const result = await load
+    if (!result.ok) {
+      setReviewDataError(result.error)
+      return null
+    }
+    setReviewData(result.data)
+    setReviewDataError(null)
+    return result.data
   }, [pageRole, documentId, supabase])
 
   // ── Reviewer shortcuts ────────────────────────────────────────────────────
@@ -406,6 +420,7 @@ export function useChatContext(): {
     reviewData,
     rubricSlug: getPrimaryRubricSlug(reviewData),
     isReviewDataLoading,
+    reviewDataError,
     fetchReviewData,
   }
 }

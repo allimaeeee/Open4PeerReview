@@ -114,6 +114,10 @@ interface AIChatContextValue {
   clearChat: () => void
   /** Called by AIChatPanel whenever pageRole/documentId/rubric are resolved or change. */
   setScope: (scope: ChatScope) => void
+  /** Call before starting any async AI request (freeform send or shortcut run); returns an id to check against later. */
+  beginRequest: () => number
+  /** Whether `id` (from beginRequest) is still the most recent request — false means a newer one has since started and this response should be discarded. */
+  isCurrentRequest: (id: number) => boolean
   isViewingHistory: boolean
   loadHistorySessions: () => Promise<ChatSessionSummary[]>
   /** Stashes the active conversation, loads a past session's messages into view, and points future saves at it. */
@@ -138,6 +142,7 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
   const sessionIdRef = useRef<string | null>(null)
   const sessionCreationRef = useRef<Promise<string | null> | null>(null)
   const scopeRef = useRef<ChatScope>({ documentId: null, reviewId: null, pageRole: null, rubricName: null })
+  const requestIdRef = useRef(0)
   // Snapshot of the active (non-historical) conversation, taken right before
   // browsing into a past session, so "back to current chat" can restore it
   // without re-fetching.
@@ -155,6 +160,8 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
   const setLoading         = useCallback((l: boolean) => dispatch({ type: 'SET_LOADING', payload: l }), [])
   const removeContextSnippet = useCallback((id: string) => dispatch({ type: 'REMOVE_SNIPPET', payload: id }), [])
   const setPendingFollowUp = useCallback((pending: PendingFollowUp | null) => dispatch({ type: 'SET_PENDING_FOLLOWUP', payload: pending }), [])
+  const beginRequest = useCallback(() => ++requestIdRef.current, [])
+  const isCurrentRequest = useCallback((id: number) => id === requestIdRef.current, [])
 
   const clearChat = useCallback(() => {
     // "New chat" — next message lazily creates a fresh session row.
@@ -257,7 +264,8 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
       openPanel, closePanel, togglePanel,
       addMessage, addContextSnippet, removeContextSnippet,
       setLoading, setPendingFollowUp, clearChat,
-      setScope, isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
+      setScope, beginRequest, isCurrentRequest,
+      isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
     }}>
       {children}
     </AIChatCtx.Provider>
