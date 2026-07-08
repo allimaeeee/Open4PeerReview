@@ -79,7 +79,7 @@ export function AIChatPanel() {
     state, closePanel, addMessage, removeContextSnippet, setLoading, setPendingFollowUp, clearChat,
     setScope, isViewingHistory, loadHistorySessions, openHistorySession, resumeActiveSession,
   } = useAIChat()
-  const { shortcuts, reviewData, pageRole, rubricSlug, isReviewDataLoading, documentId } = useChatContext()
+  const { shortcuts, reviewData, pageRole, rubricSlug, isReviewDataLoading, documentId, fetchReviewData } = useChatContext()
   const log = useAIChatLogger()
 
   const [draft, setDraft] = useState('')
@@ -299,7 +299,7 @@ export function AIChatPanel() {
       {/* ── Shortcut pills + input ── */}
       {view === 'chat' && (
         <div className="flex-shrink-0">
-          <ShortcutPills shortcuts={shortcuts} reviewData={reviewData} isReviewDataLoading={isReviewDataLoading} />
+          <ShortcutPills shortcuts={shortcuts} isReviewDataLoading={isReviewDataLoading} fetchReviewData={fetchReviewData} />
 
           {/* ── Input area ── */}
           <div className="px-4 pb-4 pt-1">

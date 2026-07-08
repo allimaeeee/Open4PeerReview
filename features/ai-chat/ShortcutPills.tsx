@@ -9,13 +9,14 @@ import type { ContextSource } from './logging/types'
 
 interface Props {
   shortcuts: Shortcut[]
-  reviewData: ReviewerData | FeedbackData | null
   isReviewDataLoading: boolean
+  fetchReviewData: () => Promise<ReviewerData | FeedbackData | null>
 }
 
 type PickerState = {
   shortcut: Shortcut
   criteria: CriterionWithScore[]
+  reviewData: ReviewerData | FeedbackData | null
 } | null
 
 function isResultWithOptions(
@@ -24,18 +25,13 @@ function isResultWithOptions(
   return typeof result !== 'string'
 }
 
-export function ShortcutPills({ shortcuts, reviewData, isReviewDataLoading }: Props) {
+export function ShortcutPills({ shortcuts, isReviewDataLoading, fetchReviewData }: Props) {
   const { state, addMessage, setLoading, openPanel, setPendingFollowUp } = useAIChat()
   const log = useAIChatLogger()
   const [picker, setPicker] = useState<PickerState>(null)
   const [running, setRunning] = useState<string | null>(null)
 
   if (shortcuts.length === 0) return null
-
-  const ctx: RunContext = {
-    contextSnippets: state.contextSnippets,
-    reviewData,
-  }
 
   async function handlePillClick(shortcut: Shortcut) {
     if (running) return
@@ -51,17 +47,22 @@ export function ShortcutPills({ shortcuts, reviewData, isReviewDataLoading }: Pr
     log('shortcut_clicked', { shortcut_id: shortcut.id, has_context: hasContext })
 
     try {
+      const freshReviewData = await fetchReviewData()
+      const ctx: RunContext = {
+        contextSnippets: state.contextSnippets,
+        reviewData: freshReviewData,
+      }
       const startTime = Date.now()
       const result = await shortcut.run(ctx)
 
       if (result === 'NEEDS_PICKER') {
-        const criteria = reviewData?.criteria ?? []
+        const criteria = freshReviewData?.criteria ?? []
         if (criteria.length === 0 && !shortcut.pickerIncludesAllOption) {
           addMessage('ai', 'No criteria data available to select from.')
           setRunning(null)
           return
         }
-        setPicker({ shortcut, criteria })
+        setPicker({ shortcut, criteria, reviewData: freshReviewData })
         setRunning(null)
         return
       }
@@ -111,6 +112,10 @@ export function ShortcutPills({ shortcuts, reviewData, isReviewDataLoading }: Pr
       setLoading(true)
       await new Promise(r => setTimeout(r, 300))
       const startTime = Date.now()
+      const ctx: RunContext = {
+        contextSnippets: state.contextSnippets,
+        reviewData: picker.reviewData,
+      }
       const result = await runWithPick(ctx, criterionId)
       if (isResultWithOptions(result)) {
         addMessage('ai', result.text, result.options, shortcut.id)

@@ -149,10 +149,6 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const setScope = useCallback((scope: ChatScope) => {
-    scopeRef.current = scope
-  }, [])
-
   const openPanel          = useCallback(() => dispatch({ type: 'OPEN' }), [])
   const closePanel         = useCallback(() => dispatch({ type: 'CLOSE' }), [])
   const togglePanel        = useCallback(() => dispatch({ type: 'TOGGLE' }), [])
@@ -168,6 +164,21 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
     setIsViewingHistory(false)
     dispatch({ type: 'CLEAR' })
   }, [])
+
+  // AIChatPanel calls this whenever pageRole/documentId/rubric resolve or
+  // change. The provider can stay mounted across a document switch within the
+  // same route (e.g. /review?document=A -> ?document=B), so without this the
+  // previous document's messages/session would keep accumulating against the
+  // new document. Only resets on an actual A->B change, not the initial
+  // null->A resolution on first mount. openHistorySession never trips this,
+  // since it only ever loads sessions already scoped to the current document.
+  const setScope = useCallback((scope: ChatScope) => {
+    const previousDocumentId = scopeRef.current.documentId
+    scopeRef.current = scope
+    if (previousDocumentId && scope.documentId && scope.documentId !== previousDocumentId) {
+      clearChat()
+    }
+  }, [clearChat])
 
   // Lazily creates the session row on the first message of a conversation;
   // concurrent calls (e.g. a user message immediately followed by the AI
