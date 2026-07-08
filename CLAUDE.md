@@ -1,4 +1,8 @@
-# CLAUDE.md — Open4PeerReview / OER Certification Hub (Team Mask'd)
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# Open4PeerReview / OER Certification Hub (Team Mask'd)
 
 ## Project Overview
 
@@ -14,6 +18,59 @@ The OER Certification Hub is a peer review platform for Open Educational Resourc
 Our team, in partnership with Maricopa County Community Colleges and the Open Learning Initiative (OLI), will standardize the evaluation of Open Educational Resources (OER) through the development of a structured peer-review platform integrated with AI-assisted moderation, which empowers content creators to iteratively refine their materials.
 
 For the full functional spec, feature roadmap, and rationale behind product decisions, see the team's PRD (revised frequently — check you have the current version rather than trusting a cached one). This file intentionally stays lean and describes only what's actually implemented and how the repo works today.
+
+---
+
+## Commands
+
+Package manager is npm. Node scripts live in `package.json`.
+
+### Next.js app
+- `npm run dev` — start the dev server (http://localhost:3000). This is the "run demo" command.
+- `npm run build` — production build (`next build`).
+- `npm start` — serve the production build.
+- `npm run lint` — ESLint (flat config in `eslint.config.mjs`, extends `eslint-config-next`).
+- There is **no** repo-wide typecheck script; `tsc` runs `--noEmit` via the Next build. `tsconfig.json` **excludes `extension/`** (it has its own build).
+
+### Tests (Vitest)
+- `npm test` — runs `vitest run`. **Test scope is currently narrow:** `vitest.config.ts` only includes `features/ai-chat/__tests__/**/*.test.ts` (Node environment). There is no component/E2E test layer yet.
+- Run a single test file: `npx vitest run features/ai-chat/__tests__/promptBuilder.test.ts`
+- Watch a single test: `npx vitest features/ai-chat/__tests__/promptBuilder.test.ts`
+- The `@` import alias resolves to the repo root (aliased in both `tsconfig.json` and `vitest.config.ts`).
+
+### Browser extension (separate esbuild pipeline)
+- `npm run build:ext` — build the extension against the **production** OER Hub URL → `extension/dist/`.
+- `npm run build:ext:dev` — build against `localhost:3000` (`OERHUB_ENV=dev`).
+- `npm run watch:ext` / `npm run watch:ext:dev` — rebuild on change.
+- Build script: `extension/build.mjs`. The target OER Hub URL is baked in at build time based on `OERHUB_ENV`, so pick the matching command for where the app is running.
+
+### Environment variables
+Required for the app to run (Supabase + AI):
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — used by both browser and server Supabase clients and by `proxy.ts`.
+- `GEMINI_API_KEY` — required by the AI chat route; optional `GEMINI_MODEL` (defaults to `gemini-2.5-flash`).
+
+### Next.js 16 caveat (see `AGENTS.md`)
+This repo is on **Next.js 16**, which has breaking changes vs. earlier versions. Notably, `middleware.ts` is replaced by **`proxy.ts`** at the repo root (Supabase SSR session refresh lives there). Consult `node_modules/next/dist/docs/` before relying on conventions from older Next.js.
+
+---
+
+## Repository Layout & Code-Level Architecture
+
+Path alias `@/*` → repo root. Beyond the product-surface breakdown above, here's where things actually live:
+
+- **`app/`** — Next.js App Router. Route groups mirror the surfaces: `author/`, `reviewer/`, `coordinator/`, `review/` (reviewer console), `dashboard/`, `login/`, `onboard/`, plus `auth/callback/route.ts`. Page-specific components sit in a co-located `components/` subfolder per route.
+- **`app/api/`** — server routes:
+  - `ai-chat/route.ts` — the AI assistant endpoint (Google Gemini via `@google/generative-ai`); auth-gated through Supabase.
+  - `snapshot/route.ts`, `snapshot/page/route.ts`, `snapshot/[fingerprint]/route.ts` — capture/serve screenshots of external OER URLs (OpenStax/Torus submissions that can't be rendered in-platform).
+- **`components/`** — shared UI split by altitude: `ui/` (primitives — Button, Card, Accordion, Chip, …), `patterns/` (compositions), `layout/`, `auth/`. Each file defines its own local `cx()` merge helper (not a shared import).
+- **`features/ai-chat/`** — a self-contained feature module for the in-app AI assistant: client widget/panel/orb (`AIChatWidget`, `AIChatPanel`, `AIOrbButton`, selection detection, context badges), `server/` prompt builders (`promptBuilder.ts`, `outputSpecs.ts`), and `rubric-data/` (the 6 rubrics as paired `.json`/`.md` plus lookup/standards helpers). This is the AI-assisted-moderation piece from the Hunt Statement and is **not** described elsewhere in this file — treat this module as the source of truth for AI behavior.
+- **`lib/`** — non-UI logic: `supabase/` (browser `client.ts`, `server.ts`, `queries.ts`, generated `types.ts`, `useUser.ts`), `anchoring/html.ts` (annotation anchoring), `design-system/token-values.ts` (the extension's flat token mirror — keep in sync with `globals.css`), `oer-platform.ts` (detect OpenStax/Torus URLs), `torus.ts`, `snapshot-utils.ts`, `pdf-coords.ts`, `review-save-context.tsx`.
+- **`hooks/`** — `useReviewAutoSave.ts`, `useReviewTracking.ts`.
+- **`types/`** — `database.types.ts` (Supabase schema types), `index.ts`.
+- **`extension/`** — vanilla-TS Chrome MV3 extension (`src/background.ts`, `content.ts`, `popup.ts`, `dashboard.ts`, `types.ts`, bundled fonts); `manifest.json`; esbuild via `build.mjs`. Separate from the Next.js build — see Commands.
+- **`proxy.ts`** — Next.js 16 middleware equivalent; refreshes the Supabase auth session on every request.
+
+Note: `schema.sql` is currently empty — the DB schema of record is the Supabase project (reflected in `types/database.types.ts`), not this file.
 
 ---
 
