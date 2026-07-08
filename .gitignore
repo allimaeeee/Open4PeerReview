@@ -33,7 +33,6 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 
 .env.local
-
 .env*.local
 
 # vercel
@@ -49,7 +48,11 @@ next-env.d.ts
 .snapshots/
 .gstack/
 
+/extension/dist.zip
+/extension/dist.crx
+
+# Claude testing environments
 .claude/
 
-extension/dist.zip
-extension/dist.crx
+# Supabase CLI internal cache
+/supabase/.temp/
