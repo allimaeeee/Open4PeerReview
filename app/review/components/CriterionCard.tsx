@@ -7,6 +7,7 @@ import type { RubricItem } from './ReviewerApp'
 import { RatingBox } from './RatingBox'
 import { AnnotationListCard } from './AnnotationListCard'
 import { FreeNoteCard } from './FreeNoteCard'
+import { Modal, ModalContent } from '@/components/ui/Modal'
 import type { FreeNote, CriterionOption } from './FreeNotesSection'
 
 interface AnnotationSummary {
@@ -21,9 +22,9 @@ interface CriterionCardProps {
   score: LocalScore
   criterionIndex: number
   onScoreToggle: (rubricItemId: string, level: CriterionScore) => void
-  onAddComment: (rubricItemId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
-  onEditComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet', body: string) => void
-  onDeleteComment: (rubricItemId: string, commentId: string, level: 'exceeds' | 'does_not_meet') => void
+  onAddComment: (rubricItemId: string, level: CriterionScore, body: string) => void
+  onEditComment: (rubricItemId: string, commentId: string, level: CriterionScore, body: string) => void
+  onDeleteComment: (rubricItemId: string, commentId: string, level: CriterionScore) => void
   onGoToAnnotation: (annotationId: string) => void
   onEditAnnotation: (annotationId: string, changes: { body: string; tag: HighlightTag | null }) => void
   onDeleteAnnotation: (annotationId: string) => void
@@ -69,6 +70,16 @@ function BookmarkIcon({ size }: { size: number }) {
   )
 }
 
+function InfoIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25V11.25" />
+      <circle cx="8" cy="5" r="0.1" fill="currentColor" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  )
+}
+
 const STATUS_BADGE_DEFS = [
   {
     level: 'exceeds' as CriterionScore,
@@ -109,7 +120,8 @@ export function CriterionCard({
   annotationIndexMap,
 }: CriterionCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const [focusedBox, setFocusedBox] = useState<'exceeds' | 'does_not_meet' | null>(null)
+  const [focusedBox, setFocusedBox] = useState<'exceeds' | 'exemplifies' | 'does_not_meet' | null>(null)
+  const [showStandardModal, setShowStandardModal] = useState(false)
   const [isNarrow, setIsNarrow] = useState(false)
   const ratingRowRef = useRef<HTMLDivElement>(null)
 
@@ -137,6 +149,13 @@ export function CriterionCard({
     if (focusedBox === null) {
       return { flex: '1 1 0%', transition }
     }
+    if (focusedBox === 'exemplifies') {
+      // Exemplifies sits in the middle, so focusing it shrinks both neighbors
+      // evenly (20/60/20) instead of hiding the "farthest" one.
+      return variant === 'exemplifies'
+        ? { flex: '3 1 0%', transition }
+        : { flex: '1 1 0%', transition }
+    }
     if (variant === 'exemplifies') {
       return { flex: '1 1 0%', transition }
     }
@@ -153,7 +172,13 @@ export function CriterionCard({
     }
   }
 
+  const criterionName = rubricItem.label.replace(/^C\d+\s+/, '')
+  const standards = rubricItem.description
+    ? rubricItem.description.split(/(?=\d+\.\s)/).map(s => s.trim()).filter(Boolean)
+    : []
+
   return (
+    <>
     <div ref={ratingRowRef} className="rounded-lg border border-border bg-surface-card transition-colors min-w-0">
       {/* Header — always visible */}
       <div
@@ -232,6 +257,26 @@ export function CriterionCard({
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-4">
+          {/* Rubric standard — shown once per criterion, above the rating row */}
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary">
+                Standard
+              </span>
+              <p className={rubricItem.description ? 'text-body-sm text-text-secondary mt-1' : 'text-body-sm text-text-muted mt-1'}>
+                {rubricItem.description ? rubricItem.description.replace(/\d+\.\s+/g, '') : 'No standard defined'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowStandardModal(true)}
+              className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-0.5"
+              aria-label="View full rubric standard"
+            >
+              <InfoIcon size={16} />
+            </button>
+          </div>
+
           <div className={`flex gap-3 min-w-0 ${isNarrow ? 'flex-col' : ''}`}>
             <RatingBox
               variant="exceeds"
@@ -251,9 +296,14 @@ export function CriterionCard({
               variant="exemplifies"
               style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('exemplifies')}
               isActive={score.scores.includes('exemplifies')}
-              standardText={rubricItem.description ?? undefined}
-              criterionLabel={`C${criterionIndex} · ${rubricItem.label.replace(/^C\d+\s+/, '')}`}
-              onToggle={() => onScoreToggle(rubricItem.id, 'exemplifies')}
+              comments={score.exemplifiesComments}
+              onAddComment={(body) => onAddComment(rubricItem.id, 'exemplifies', body)}
+              onEditComment={(id, body) => onEditComment(rubricItem.id, id, 'exemplifies', body)}
+              onDeleteComment={(id) => onDeleteComment(rubricItem.id, id, 'exemplifies')}
+              onActivate={() => { if (!score.scores.includes('exemplifies')) onScoreToggle(rubricItem.id, 'exemplifies') }}
+              onDeactivate={() => { if (score.scores.includes('exemplifies')) onScoreToggle(rubricItem.id, 'exemplifies') }}
+              onTextareaFocus={isNarrow ? undefined : () => setFocusedBox('exemplifies')}
+              onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
               isReadOnly={isReadOnly}
             />
             <RatingBox
@@ -314,6 +364,68 @@ export function CriterionCard({
         </div>
       )}
     </div>
+
+    {showStandardModal && (
+      <Modal open={showStandardModal} onClose={() => setShowStandardModal(false)}>
+        <ModalContent className="max-w-xl">
+          <div className="h-full overflow-y-auto p-6 flex flex-col gap-5">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col">
+                <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-secondary mb-1">
+                  C{criterionIndex}
+                </span>
+                <h2 className="text-title-md font-heading font-semibold text-primary leading-snug">
+                  {criterionName}
+                </h2>
+                <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mt-2">
+                  FULL RUBRIC STANDARD
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStandardModal(false)}
+                className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-0.5"
+                aria-label="Close"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M3 3l10 10M13 3L3 13" />
+                </svg>
+              </button>
+            </div>
+            <hr className="border-0 border-t-2 border-border/50" />
+            {/* Standards list */}
+            {standards.length > 0 ? (
+              <div>
+                <div>
+                  {standards.map((item, i) => {
+                    const m = item.match(/^(\d+)\.\s+([\s\S]+)/)
+                    const num = m ? m[1] : String(i + 1)
+                    const text = m ? m[2].trim() : item
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start gap-3 py-3${i < standards.length - 1 ? ' border-b border-border/20' : ''}`}
+                      >
+                        <div className="w-6 h-6 rounded-full bg-surface-container border border-border/60 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-label-sm font-label font-semibold text-text-secondary">{num}</span>
+                        </div>
+                        <p className="flex-1 text-body-md font-body leading-relaxed text-text-primary">{text}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="text-body-md font-body leading-relaxed text-text-primary">
+                {rubricItem.description || 'No standard defined'}
+              </p>
+            )}
+          </div>
+        </ModalContent>
+      </Modal>
+    )}
+    </>
   )
 }
 

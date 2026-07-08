@@ -9,7 +9,7 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   optional?: boolean
   rows?: number
   resize?: 'none' | 'vertical' | 'both'
-  variant?: 'default' | 'exceeds' | 'does-not-meet'
+  variant?: 'default' | 'exceeds' | 'does-not-meet' | 'exemplifies'
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -37,6 +37,7 @@ export function Textarea({
     'default':       'border-border focus:border-primary',
     'exceeds':       'border-secondary/40 focus:border-secondary',
     'does-not-meet': 'border-error/40 focus:border-error',
+    'exemplifies':   'border-primary/40 focus:border-primary',
   }[variant]
 
   return (

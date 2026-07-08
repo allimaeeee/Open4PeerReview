@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import type { ScoreCommentItem } from './ReviewerConsole'
-import { Modal, ModalContent } from '@/components/ui/Modal'
 import { Textarea } from '@/components/ui/Textarea'
 
 interface RatingBoxProps {
@@ -13,10 +12,7 @@ interface RatingBoxProps {
   onDeleteComment?: (commentId: string) => void
   onActivate?: () => void
   onDeactivate?: () => void
-  standardText?: string
-  criterionLabel?: string
   isActive: boolean
-  onToggle?: () => void
   style?: CSSProperties
   onTextareaFocus?: () => void
   onTextareaBlur?: () => void
@@ -43,6 +39,17 @@ const ACTIVE_BORDERS: Record<string, string> = {
 
 const INACTIVE_BORDER = 'border border-border/40'
 
+const TEXTAREA_VARIANTS: Record<string, 'exceeds' | 'does-not-meet' | 'exemplifies'> = {
+  exceeds:       'exceeds',
+  does_not_meet: 'does-not-meet',
+  exemplifies:   'exemplifies',
+}
+
+const PLACEHOLDERS: Record<string, string> = {
+  exceeds:       'Note what exceeds the standard...',
+  does_not_meet: 'Note what does not meet the standard...',
+  exemplifies:   'Note how this exemplifies the standard...',
+}
 
 export function RatingBox({
   variant,
@@ -52,17 +59,13 @@ export function RatingBox({
   onDeleteComment,
   onActivate,
   onDeactivate,
-  standardText,
-  criterionLabel,
   isActive,
-  onToggle,
   style,
   onTextareaFocus,
   onTextareaBlur,
   isReadOnly = false,
 }: RatingBoxProps) {
   const [localText, setLocalText] = useState(comments?.[0]?.body ?? '')
-  const [showModal, setShowModal] = useState(false)
 
   const firstCommentRef = useRef(comments?.[0] ?? null)
   const isActiveRef = useRef(isActive)
@@ -82,7 +85,6 @@ export function RatingBox({
 
   // Badge activation/deactivation — short debounce for snappy visual feedback
   useEffect(() => {
-    if (variant === 'exemplifies') return
     const timer = setTimeout(() => {
       if (localText.trim()) {
         onActivateRef.current?.()
@@ -95,7 +97,6 @@ export function RatingBox({
 
   // DB save — longer debounce to avoid excess writes
   useEffect(() => {
-    if (variant === 'exemplifies') return
     const timer = setTimeout(() => {
       const trimmed = localText.trim()
       const existing = firstCommentRef.current
@@ -116,108 +117,12 @@ export function RatingBox({
   const borderClass = isActive ? ACTIVE_BORDERS[variant] : INACTIVE_BORDER
   const labelClass = `text-label-sm font-label font-semibold uppercase tracking-wide ${LABEL_COLORS[variant]}`
 
-  if (variant === 'exemplifies') {
-    const criterionParts = (criterionLabel ?? '').split(' · ')
-    const criterionCode = criterionParts[0] ?? ''
-    const criterionName = criterionParts.slice(1).join(' · ')
-    const standards = standardText
-      ? standardText.split(/(?=\d+\.\s)/).map(s => s.trim()).filter(Boolean)
-      : []
-
-    return (
-      <>
-        <div
-          className={[
-            containerBase,
-            borderClass,
-            !isReadOnly ? 'cursor-pointer' : '',
-            'text-left w-full transition-colors',
-            !isActive && !isReadOnly ? 'hover:border-primary hover:bg-surface-container' : '',
-          ].join(' ')}
-          style={style}
-          onClick={isReadOnly ? undefined : onToggle}
-        >
-          <div className="flex items-center gap-1">
-            <span className={labelClass}>{LABELS.exemplifies}</span>
-          </div>
-          <div className="overflow-y-auto max-h-[5.5rem] pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-secondary/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-secondary/60">
-            <p className={standardText ? 'text-body-sm text-text-secondary' : 'text-body-sm text-text-muted'}>
-              {standardText ? standardText.replace(/\d+\.\s+/g, '') : 'No standard defined'}
-            </p>
-          </div>
-        </div>
-
-        {/* Info modal — trigger removed, preserved for future use */}
-        {showModal && (
-          <Modal open={showModal} onClose={() => setShowModal(false)}>
-            <ModalContent className="max-w-xl">
-              <div className="h-full overflow-y-auto p-6 flex flex-col gap-5">
-                {/* Header */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col">
-                    <span className="text-label-sm font-label font-semibold uppercase tracking-wide text-secondary mb-1">
-                      {criterionCode}
-                    </span>
-                    <h2 className="text-title-md font-heading font-semibold text-primary leading-snug">
-                      {criterionName}
-                    </h2>
-                    <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-text-secondary mt-2">
-                      EXEMPLIFIES ESTABLISHED STANDARDS OF QUALITY — FULL RUBRIC TEXT
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-0.5"
-                    aria-label="Close"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M3 3l10 10M13 3L3 13" />
-                    </svg>
-                  </button>
-                </div>
-                <hr className="border-0 border-t-2 border-border/50" />
-                {/* Standards list */}
-                {standards.length > 0 ? (
-                  <div>
-                    <div>
-                      {standards.map((item, i) => {
-                        const m = item.match(/^(\d+)\.\s+([\s\S]+)/)
-                        const num = m ? m[1] : String(i + 1)
-                        const text = m ? m[2].trim() : item
-                        return (
-                          <div
-                            key={i}
-                            className={`flex items-start gap-3 py-3${i < standards.length - 1 ? ' border-b border-border/20' : ''}`}
-                          >
-                            <div className="w-6 h-6 rounded-full bg-surface-container border border-border/60 flex items-center justify-center flex-shrink-0 mt-0.5">
-                              <span className="text-label-sm font-label font-semibold text-text-secondary">{num}</span>
-                            </div>
-                            <p className="flex-1 text-body-md font-body leading-relaxed text-text-primary">{text}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-body-md font-body leading-relaxed text-text-primary">
-                    {standardText || 'No standard defined'}
-                  </p>
-                )}
-              </div>
-            </ModalContent>
-          </Modal>
-        )}
-      </>
-    )
-  }
-
   return (
     <div className={`${containerBase} ${borderClass}`} style={style}>
       <span className={labelClass}>{LABELS[variant]}</span>
       <Textarea
-        variant={variant === 'exceeds' ? 'exceeds' : 'does-not-meet'}
-        placeholder={variant === 'exceeds' ? 'Note what exceeds the standard...' : 'Note what does not meet the standard...'}
+        variant={TEXTAREA_VARIANTS[variant]}
+        placeholder={PLACEHOLDERS[variant]}
         value={localText}
         onChange={e => setLocalText(e.target.value)}
         rows={4}
