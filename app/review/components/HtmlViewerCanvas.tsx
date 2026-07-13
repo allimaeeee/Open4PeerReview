@@ -203,9 +203,16 @@ export default function HtmlViewerCanvas({
     return page?.fingerprint || resolvedFingerprints[idx] || null
   }
 
-  // The snapshot URL for the currently active page
+  // The snapshot URL for the currently active page. Additional pages pass their
+  // own source URL as ?src= so the serve route resolves the correct origin/platform.
   const fp = getFingerprint(currentPageIndex)
-  const activeSnapshotSrc = currentPageIndex === 0 ? snapshotSrc : fp ? `/api/snapshot/${fp}` : null
+  const activePageUrl = currentPageIndex === 0 ? undefined : validAdditionalPages[currentPageIndex - 1]?.url
+  const activeSnapshotSrc =
+    currentPageIndex === 0
+      ? snapshotSrc
+      : fp
+        ? `/api/snapshot/${fp}${activePageUrl ? `?src=${encodeURIComponent(activePageUrl)}` : ''}`
+        : null
 
   // ── New-annotation tooltip state ───────────────────────────────────────────
   const [tooltipPos, setTooltipPos] = useState<{ x: number; selectionTop: number; selectionBottom: number } | null>(null)

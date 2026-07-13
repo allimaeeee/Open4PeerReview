@@ -351,7 +351,7 @@ export function FeedbackView({
   const submittedDate = formatDate(selectedRubricSubmittedAt)
 
   const snapshotSrc = document.content_fingerprint
-    ? `/api/snapshot/${document.content_fingerprint}`
+    ? `/api/snapshot/${document.content_fingerprint}${document.source_url ? `?src=${encodeURIComponent(document.source_url)}` : ''}`
     : null
 
   const allAnnotations = useMemo(

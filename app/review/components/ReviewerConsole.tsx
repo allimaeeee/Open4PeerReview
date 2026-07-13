@@ -949,7 +949,7 @@ export function ReviewerConsole({
               />
             ) : document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas
-                snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+                snapshotSrc={`/api/snapshot/${document.content_fingerprint}${document.source_url ? `?src=${encodeURIComponent(document.source_url)}` : ''}`}
                 additionalPages={document.pages ?? undefined}
                 onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
                 rubricItems={activeViewerCriteria}
