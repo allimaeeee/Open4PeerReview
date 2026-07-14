@@ -442,6 +442,9 @@ export type Database = {
           is_draft: boolean
           pages: Json | null
           platform: string | null
+          public_review: boolean
+          report_status: Database["public"]["Enums"]["report_status"] | null
+          revised_link: string | null
           source_url: string | null
           storage_path: string | null
           subject_matter: string
@@ -464,6 +467,9 @@ export type Database = {
           is_draft?: boolean
           pages?: Json | null
           platform?: string | null
+          public_review?: boolean
+          report_status?: Database["public"]["Enums"]["report_status"] | null
+          revised_link?: string | null
           source_url?: string | null
           storage_path?: string | null
           subject_matter?: string
@@ -486,6 +492,9 @@ export type Database = {
           is_draft?: boolean
           pages?: Json | null
           platform?: string | null
+          public_review?: boolean
+          report_status?: Database["public"]["Enums"]["report_status"] | null
+          revised_link?: string | null
           source_url?: string | null
           storage_path?: string | null
           subject_matter?: string
@@ -684,6 +693,9 @@ export type Database = {
       }
       reviews: {
         Row: {
+          coordinator_approval: string | null
+          coordinator_decided_at: string | null
+          coordinator_note: string | null
           created_at: string
           document_id: string
           general_comment: string | null
@@ -699,6 +711,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          coordinator_approval?: string | null
+          coordinator_decided_at?: string | null
+          coordinator_note?: string | null
           created_at?: string
           document_id: string
           general_comment?: string | null
@@ -714,6 +729,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          coordinator_approval?: string | null
+          coordinator_decided_at?: string | null
+          coordinator_note?: string | null
           created_at?: string
           document_id?: string
           general_comment?: string | null
@@ -1007,7 +1025,7 @@ export type Database = {
         | "physics"
         | "social_sciences"
         | "other"
-      feedback_response_status: "addressed" | "will_address_later"
+      feedback_response_status: "addressed" | "will_address_later" | "will_not_address"
       feedback_target_type:
         | "annotation"
         | "score_comment"
@@ -1015,6 +1033,7 @@ export type Database = {
         | "overall_comment"
         | "criterion"
       file_type: "pdf" | "html" | "image" | "audio" | "pptx"
+      report_status: "revising" | "published" | "private"
       review_status: "in_progress" | "submitted" | "unassigned" | "assigned"
       user_role: "reviewer" | "author" | "admin"
     }
@@ -1173,7 +1192,7 @@ export const Constants = {
         "social_sciences",
         "other",
       ],
-      feedback_response_status: ["addressed", "will_address_later"],
+      feedback_response_status: ["addressed", "will_address_later", "will_not_address"],
       feedback_target_type: [
         "annotation",
         "score_comment",
@@ -1182,6 +1201,7 @@ export const Constants = {
         "criterion",
       ],
       file_type: ["pdf", "html", "image", "audio", "pptx"],
+      report_status: ["revising", "published", "private"],
       review_status: ["in_progress", "submitted", "unassigned", "assigned"],
       user_role: ["reviewer", "author", "admin"],
     },

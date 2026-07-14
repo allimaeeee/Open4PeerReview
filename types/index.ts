@@ -15,6 +15,7 @@ export type CreativeCommonsLicense  = Enums<'creative_commons_license'>
 export type HighlightTag   = 'action_item' | 'quick_fix'
 export type FeedbackResponseStatus  = Enums<'feedback_response_status'>
 export type FeedbackTargetType      = Enums<'feedback_target_type'>
+export type ReportStatus            = Enums<'report_status'>
 
 // ─── Table row types ──────────────────────────────────────────────────────────
 
