@@ -24,7 +24,7 @@ export default async function ReviewerPage({
   // Load the requested document, or fall back to the first one
   const docQuery = supabase
     .from('documents')
-    .select('id, title, file_url, storage_path, file_type, platform, source_url, course_access_code, content_fingerprint, pages')
+    .select('id, title, file_url, storage_path, file_type, platform, source_url, course_access_code, content_fingerprint, pages, submission_scope')
 
   const { data: docRow } = documentId
     ? await docQuery.eq('id', documentId).maybeSingle()
@@ -86,7 +86,7 @@ export default async function ReviewerPage({
 
   const reviewSelect = `
     id, status, overall_comment, notes, last_saved_at,
-    rubric_id,
+    rubric_id, coordinator_approval, coordinator_note,
     rubric:rubrics ( id, title, description, operational_definition ),
     review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
     annotations ( id, rubric_item_id, anchor, body, tag ),
@@ -120,12 +120,18 @@ export default async function ReviewerPage({
         : { data: null }
     : { data: null }
 
+  // Org submissions are held for coordinator approval once the review completes;
+  // public submissions go straight to the author.
+  const requiresCoordinatorApproval =
+    ((docRow?.submission_scope ?? []) as string[]).includes('organization')
+
   return (
     <ReviewerApp
       userId={user.id}
       document={document ?? null}
       rubrics={rubrics}
       existingReview={existingReview as Review | null}
+      requiresCoordinatorApproval={requiresCoordinatorApproval}
     />
   )
 }

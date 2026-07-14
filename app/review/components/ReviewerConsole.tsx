@@ -30,6 +30,9 @@ interface ReviewerConsoleProps {
   review: Review
   rubrics: Rubric[]
   onReviewUpdate: (r: Review) => void
+  /** True when this OER was submitted to an organization, so completing the
+   *  review holds it for coordinator approval before the author can see it. */
+  requiresCoordinatorApproval?: boolean
 }
 
 export interface ScoreCommentItem {
@@ -65,6 +68,7 @@ export function ReviewerConsole({
   review,
   rubrics,
   onReviewUpdate,
+  requiresCoordinatorApproval = false,
 }: ReviewerConsoleProps) {
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
   const [scores, setScores] = useState<Record<string, LocalScore>>({})
@@ -777,9 +781,17 @@ export function ReviewerConsole({
         overall_comment: string
         submitted_at?: string
         status?: 'submitted'
+        coordinator_approval?: 'pending'
+        coordinator_note?: null
       } = { overall_comment: finalOverallComment }
       if (isFirstSubmission) reviewUpdate.submitted_at = new Date().toISOString()
       if (willAllBeSubmitted) reviewUpdate.status = 'submitted'
+      // Completing an org submission holds the whole review for coordinator
+      // approval; clear any prior send-back note so it re-enters as "pending".
+      if (willAllBeSubmitted && requiresCoordinatorApproval) {
+        reviewUpdate.coordinator_approval = 'pending'
+        reviewUpdate.coordinator_note = null
+      }
 
       const { error } = await supabase
         .from('reviews')
@@ -805,10 +817,13 @@ export function ReviewerConsole({
         ...review,
         status: willAllBeSubmitted ? 'submitted' : review.status,
         overall_comment: finalOverallComment,
+        ...(willAllBeSubmitted && requiresCoordinatorApproval
+          ? { coordinator_approval: 'pending' as const, coordinator_note: null }
+          : {}),
       })
       return null
     },
-    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds]
+    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval]
   )
 
   const handleConfirmSubmit = useCallback(async () => {
@@ -922,6 +937,19 @@ export function ReviewerConsole({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
+      {review.coordinator_approval === 'changes_requested' && review.coordinator_note && (
+        <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-error-container)] px-6 py-3 print:hidden">
+          <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-error)]">
+            Returned by coordinator
+          </p>
+          <p className="mt-1 text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
+            {review.coordinator_note}
+          </p>
+          <p className="mt-1 text-label-sm font-label text-[var(--color-text-muted)]">
+            Address the requested changes and submit again to send it back for approval.
+          </p>
+        </div>
+      )}
       <ResizablePanelLayout
         defaultLeftPercent={50}
         leftPanel={

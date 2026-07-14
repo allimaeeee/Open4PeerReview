@@ -140,6 +140,7 @@ export async function CoordinatorDashboard() {
     rubrics: rubricsList,
     pending,
     released,
+    readyToRelease,
     assignments,
   } = await getCoordinatorDashboardData(supabase)
 
@@ -166,7 +167,6 @@ export async function CoordinatorDashboard() {
   }
 
   const totalReviews = released.flatMap(d => (d.reviews ?? []) as { status: string }[])
-  const reviewsInProgress = totalReviews.filter(r => r.status === 'assigned' || r.status === 'in_progress').length
   const reviewsSubmitted = totalReviews.filter(r => r.status === 'submitted').length
 
   return (
@@ -187,7 +187,7 @@ export async function CoordinatorDashboard() {
             {[
               { label: 'Members', value: members.length },
               { label: 'Pending Release', value: pending.length },
-              { label: 'Under Review', value: reviewsInProgress },
+              { label: 'Ready to Release', value: readyToRelease.length },
               { label: 'Reviews Submitted', value: reviewsSubmitted },
             ].map(s => (
               <div key={s.label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm text-center">
@@ -196,6 +196,61 @@ export async function CoordinatorDashboard() {
               </div>
             ))}
           </div>
+
+          {/* Completed reviews not yet released to the author */}
+          <section>
+            <div className="flex items-center gap-3 mb-3">
+              <h3 className="text-base font-semibold text-slate-800">Ready to Release to Author</h3>
+              {readyToRelease.length > 0 && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                  {readyToRelease.length}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-slate-500 -mt-1 mb-4">
+              Reviewers have completed these reviews. The author cannot see a review until you
+              release it — open each one to release it to the author or send it back to the reviewer.
+            </p>
+            {readyToRelease.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center">
+                <p className="text-sm text-slate-500">No completed reviews are waiting to be released.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {readyToRelease.map(doc => {
+                  const author = doc.author as { display_name: string | null; email: string } | null
+                  // Null coordinator_approval counts as pending (see readyToRelease in queries.ts).
+                  const unreleasedCount = ((doc.reviews ?? []) as { status: string; coordinator_approval: string | null }[])
+                    .filter(r =>
+                      r.status === 'submitted' &&
+                      r.coordinator_approval !== 'approved' &&
+                      r.coordinator_approval !== 'changes_requested'
+                    ).length
+                  return (
+                    <div key={doc.id} className="rounded-xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-semibold text-slate-900">{doc.title}</h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {author?.display_name ?? author?.email ?? 'Unknown'} · {formatDate(doc.created_at)}
+                          </p>
+                          <p className="text-xs text-amber-700 mt-2 font-medium">
+                            {unreleasedCount} completed review{unreleasedCount === 1 ? '' : 's'} not yet released
+                          </p>
+                        </div>
+                        <Link
+                          href={`/author/feedback/${doc.id}?from=coordinator`}
+                          className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#274b78] transition-colors"
+                        >
+                          Review &amp; release
+                        </Link>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
 
           {/* Pending org submissions from authors */}
           <section>
