@@ -6,7 +6,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import type { FeedbackResponseStatus, FeedbackTargetType } from '@/types'
+import type { FeedbackResponseStatus, FeedbackTargetType, ReportStatus } from '@/types'
 
 export interface FeedbackResponseRow {
   id: string
@@ -181,6 +181,44 @@ export async function deleteRevisionNote(params: { id: string }): Promise<void> 
     .from('revision_notes')
     .delete()
     .eq('id', params.id)
+
+  if (error) throw error
+}
+
+/**
+ * Set the author's decision on the released review report:
+ *  - 'published' — publicly accessible (Adopter surface pending)
+ *  - 'private'   — kept private (Completed Submissions tab)
+ *  - 'revising'  — author is addressing feedback before deciding
+ *  - null        — clear the decision (back to awaiting)
+ * RLS restricts documents UPDATE to the document author, so this is author-only.
+ */
+export async function setReportStatus(params: {
+  documentId: string
+  status: ReportStatus | null
+}): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ report_status: params.status })
+    .eq('id', params.documentId)
+
+  if (error) throw error
+}
+
+/**
+ * Store the author's link to the revised OER, submitted during the revision flow.
+ * Pass null (or empty) to clear it. Author-only via documents RLS.
+ */
+export async function setRevisedLink(params: {
+  documentId: string
+  link: string | null
+}): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ revised_link: params.link || null })
+    .eq('id', params.documentId)
 
   if (error) throw error
 }

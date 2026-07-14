@@ -31,6 +31,7 @@ export default async function FeedbackPage({
             pdfUrl={pdfUrl}
             includeAuthorNotes={data.isAuthor}
             isAuthor={data.isAuthor}
+            isCoordinator={data.isCoordinator}
             initialResponses={data.feedbackResponses}
             initialRevisionNotes={data.revisionNotes}
             initialFeedbackComments={data.feedbackComments}
