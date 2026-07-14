@@ -140,6 +140,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       ccLicense: CC_LICENSE_LABELS[doc.creative_commons_license as CreativeCommonsLicense] ?? doc.creative_commons_license ?? '',
       description: doc.third_party_content_disclosure ?? '',
       submittedAt: doc.created_at,
+      publicReview: doc.public_review ?? false,
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
     }
   })

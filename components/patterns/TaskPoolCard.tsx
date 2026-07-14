@@ -17,17 +17,20 @@ export interface TaskPoolCardProps {
   ccLicense: string
   description: string
   submittedAt: string
+  publicReview?: boolean
   rubrics: { rubricId: string; rubricTitle: string }[]
   onAccept?: (id: string) => void
-  onDecline?: (id: string, reason: string, note: string) => void
+  onDecline?: (id: string, declineNote: string) => void
 }
 
-const DECLINE_REASONS = [
-  { value: 'outside-expertise',    label: 'Outside my area of expertise' },
-  { value: 'conflict-of-interest', label: 'Conflict of interest' },
+const DECLINE_REASONS: { value: string; label: string; publicOnly?: boolean }[] = [
+  { value: 'outside-expertise',     label: 'Outside my area of expertise' },
+  { value: 'conflict-of-interest',  label: 'Conflict of interest' },
   { value: 'insufficient-capacity', label: 'Insufficient capacity at this time' },
-  { value: 'duplicate-assignment', label: 'Duplicate assignment' },
-  { value: 'other',                label: 'Other' },
+  // 'public-submissions' is only offered for documents open to public review (see publicReview prop)
+  { value: 'public-submissions',    label: 'Prefer not to review public submissions', publicOnly: true },
+  { value: 'duplicate-assignment',  label: 'Duplicate assignment' },
+  { value: 'other',                 label: 'Other' },
 ]
 
 export function TaskPoolCard({
@@ -40,6 +43,7 @@ export function TaskPoolCard({
   ccLicense,
   description,
   submittedAt,
+  publicReview = false,
   rubrics,
   onAccept,
   onDecline,
@@ -47,6 +51,9 @@ export function TaskPoolCard({
   const [declineMode, setDeclineMode] = useState(false)
   const [declineReason, setDeclineReason] = useState('')
   const [declineNote, setDeclineNote] = useState('')
+
+  // Only surface the "public submissions" reason when the document is open to public review.
+  const declineReasons = DECLINE_REASONS.filter(r => !r.publicOnly || publicReview)
 
   const formattedDate = new Date(submittedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -158,7 +165,7 @@ export function TaskPoolCard({
               }}
             >
               <option value="" disabled>Select a reason…</option>
-              {DECLINE_REASONS.map(r => (
+              {declineReasons.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </Select>
@@ -175,10 +182,15 @@ export function TaskPoolCard({
                 variant="primary"
                 size="sm"
                 onClick={() => {
-                  onDecline?.(id, declineReason, declineNote)
+                  // Store the human-readable reason; for "Other", use the typed note.
+                  const selected = declineReasons.find(r => r.value === declineReason)
+                  const finalNote = declineReason === 'other'
+                    ? (declineNote.trim() || 'Other')
+                    : (selected?.label ?? declineReason)
+                  onDecline?.(id, finalNote)
                   setDeclineMode(false)
                 }}
-                disabled={!declineReason}
+                disabled={!declineReason || (declineReason === 'other' && !declineNote.trim())}
               >
                 Confirm Decline
               </Button>
