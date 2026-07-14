@@ -648,6 +648,7 @@ export type Database = {
           comment: string | null
           created_at: string
           criterion_scores: Database["public"]["Enums"]["criterion_score"][]
+          document_id: string | null
           id: string
           review_id: string
           rubric_item_id: string
@@ -658,6 +659,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           criterion_scores?: Database["public"]["Enums"]["criterion_score"][]
+          document_id?: string | null
           id?: string
           review_id: string
           rubric_item_id: string
@@ -668,6 +670,7 @@ export type Database = {
           comment?: string | null
           created_at?: string
           criterion_scores?: Database["public"]["Enums"]["criterion_score"][]
+          document_id?: string | null
           id?: string
           review_id?: string
           rubric_item_id?: string
@@ -675,6 +678,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "review_scores_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "review_scores_review_id_fkey"
             columns: ["review_id"]
