@@ -965,7 +965,16 @@
     const saved = savedId ? assignments.find((a) => a.id === savedId) : void 0;
     const pageMatch = resolveAssignmentForCurrentPage(assignments);
     let target;
-    if (urlReviewId) target = assignments.find((a) => a.id === urlReviewId);
+    if (urlReviewId) {
+      target = assignments.find((a) => a.id === urlReviewId);
+      if (!target) {
+        const resp = await send({ type: "GET_REVIEW", payload: { reviewId: urlReviewId } });
+        if (resp.success && resp.data) {
+          target = resp.data;
+          assignments = [...assignments, target];
+        }
+      }
+    }
     if (!target) {
       if (pageMatch) {
         target = saved && saved.document_id === pageMatch.document_id ? saved : pageMatch;
@@ -2894,7 +2903,47 @@
       return false;
     }
   }
+  function isPlatformInitiatedSession(hadDeepLinkParams) {
+    if (hadDeepLinkParams) return true;
+    if (deepLinkReviewId) return true;
+    try {
+      if (sessionStorage.getItem(SESSION_KEY)) return true;
+    } catch {
+    }
+    return false;
+  }
   async function init() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hadDeepLinkParams = urlParams.has("oer_review_id") || urlParams.has("oer_token") || urlParams.has("oer_goto");
+    const rawToken = urlParams.get("oer_token");
+    if (rawToken) {
+      try {
+        const auth = JSON.parse(decodeURIComponent(atob(rawToken)));
+        if (auth.access_token && auth.user_id) {
+          const existingOerAuth = await new Promise(
+            (resolve) => chrome.storage.local.get("auth", (r) => resolve(r.auth))
+          );
+          const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
+          await new Promise((resolve) => chrome.storage.local.set({ auth: authToStore }, resolve));
+          urlParams.delete("oer_token");
+          const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
+          window.history.replaceState({}, "", clean);
+        }
+      } catch {
+      }
+    }
+    const gotoAnnId = urlParams.get("oer_goto");
+    if (gotoAnnId) {
+      try {
+        sessionStorage.setItem(GOTO_ANN_KEY, gotoAnnId);
+      } catch {
+      }
+      urlParams.delete("oer_goto");
+      const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
+      window.history.replaceState({}, "", clean);
+    }
+    await recoverDeepLinkFromStorage();
+    if (!isPlatformInitiatedSession(hadDeepLinkParams)) return;
     createPanel();
     createAnnotationPopupEl();
     createAnnotationTooltip();
@@ -2938,35 +2987,6 @@
       }
       return false;
     });
-    const urlParams = new URLSearchParams(window.location.search);
-    const rawToken = urlParams.get("oer_token");
-    if (rawToken) {
-      try {
-        const auth = JSON.parse(decodeURIComponent(atob(rawToken)));
-        if (auth.access_token && auth.user_id) {
-          const existingOerAuth = await new Promise(
-            (resolve) => chrome.storage.local.get("auth", (r) => resolve(r.auth))
-          );
-          const authToStore = { ...auth, platformUrl: existingOerAuth?.platformUrl };
-          await new Promise((resolve) => chrome.storage.local.set({ auth: authToStore }, resolve));
-          urlParams.delete("oer_token");
-          const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
-          window.history.replaceState({}, "", clean);
-        }
-      } catch {
-      }
-    }
-    const gotoAnnId = urlParams.get("oer_goto");
-    if (gotoAnnId) {
-      try {
-        sessionStorage.setItem(GOTO_ANN_KEY, gotoAnnId);
-      } catch {
-      }
-      urlParams.delete("oer_goto");
-      const clean = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "") + window.location.hash;
-      window.history.replaceState({}, "", clean);
-    }
-    await recoverDeepLinkFromStorage();
     const authResp = await send({ type: "GET_AUTH" });
     if (!authResp.success || !authResp.data) {
       renderContent("login");

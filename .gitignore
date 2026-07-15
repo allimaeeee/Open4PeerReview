@@ -50,3 +50,9 @@ next-env.d.ts
 /extension/dist/
 .archiver_shadow/
 .snapshots/
+.gstack/
+
+.claude/
+
+extension/dist.zip
+extension/dist.crx

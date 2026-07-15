@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
 
-const OPENSTAX_ORIGIN = 'https://openstax.org'
+// Origin used when a snapshot is served without a ?src= hint (legacy snapshots).
+const DEFAULT_ORIGIN = 'https://openstax.org'
 
-// CSS injected into every snapshot to disable navigation links.
-// OpenStax book-page links (Next/Previous chapter) all match /books/…/pages/…
-// so we can target them specifically without touching in-page anchor links.
-const DISABLE_NAV_CSS = `
-<style data-open4pr="nav-disable">
+// Per-platform CSS that disables in-content navigation links, so a reviewer
+// can't click out of the snapshot into the live site inside the iframe.
+// Selectors are additive — each platform's chapter/page-nav markup differs.
+const NAV_DISABLE_RULES: Record<string, string> = {
+  // OpenStax book-page links (Next/Previous chapter) all match /books/…/pages/…
+  OpenStax: `
   a[href^="/books"],
   a[href*="openstax.org/books"],
   a[href^="/l/"],
@@ -15,25 +18,47 @@ const DISABLE_NAV_CSS = `
   .os-raise-nav-btn,
   nav[data-type="chapter-nav"] a,
   [data-type="next-page"],
-  [data-type="prev-page"] {
+  [data-type="prev-page"]`,
+  // Pressbooks (WordPress-based) reader navigation. Verified against the live
+  // Pressbooks reader theme: prev/next chapter links live in <nav class="nav-reading">,
+  // and the chapter table-of-contents dropdown uses .reading-header__toc /
+  // .block-reading-toc. rel/aria selectors are kept as defensive fallbacks.
+  Pressbooks: `
+  .nav-reading a,
+  .reading-header__toc a,
+  .block-reading-toc a,
+  a[rel="next"],
+  a[rel="prev"],
+  a[rel="prev-chapter"],
+  a[rel="next-chapter"]`,
+}
+
+function navDisableStyle(platform: string): string {
+  const rules = NAV_DISABLE_RULES[platform] ?? NAV_DISABLE_RULES.OpenStax
+  return `<style data-open4pr="nav-disable">
+${rules} {
     pointer-events: none !important;
     cursor: not-allowed !important;
     opacity: 0.45 !important;
   }
 </style>`
+}
 
-function rewriteHtml(html: string): string {
-  // Strip all <script> tags — the OpenStax React app boots, hydrates over the
-  // SSR content, and renders blank when it can't initialize in an iframe context.
-  // The SSR'd HTML already contains the full readable content; no JS needed.
+function rewriteHtml(html: string, origin: string, platform: string): string {
+  // Strip all <script> tags — OER platforms (OpenStax's React app, Pressbooks'
+  // WordPress front-end) boot and hydrate over the SSR content, rendering blank
+  // or misbehaving in an iframe context. The SSR'd HTML already contains the
+  // full readable content; no JS needed.
   let out = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
 
-  // Inject <base> tag so relative URLs for CSS/images resolve against openstax.org
-  const baseTag = `<base href="${OPENSTAX_ORIGIN}/">`
+  // Inject <base> tag so relative URLs for CSS/images resolve against the
+  // snapshot's own origin (varies per book on Pressbooks).
+  const baseTag = `<base href="${origin}/">`
+  const navCss = navDisableStyle(platform)
   if (/<head[^>]*>/i.test(out)) {
-    out = out.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${DISABLE_NAV_CSS}`)
+    out = out.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${navCss}`)
   } else {
-    out = baseTag + DISABLE_NAV_CSS + out
+    out = baseTag + navCss + out
   }
 
   return out
@@ -54,6 +79,21 @@ export async function GET(
 
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     return new NextResponse('Invalid fingerprint', { status: 400 })
+  }
+
+  // Resolve the snapshot's origin + platform from the ?src= hint the viewer
+  // passes (the document's source_url). Falls back to OpenStax for legacy
+  // snapshots saved before src threading existed.
+  let origin = DEFAULT_ORIGIN
+  let platform = 'OpenStax'
+  const src = req.nextUrl.searchParams.get('src')
+  if (src && isKnownOerUrl(src)) {
+    try {
+      origin = new URL(src).origin
+      platform = detectPlatform(src)
+    } catch {
+      // keep defaults
+    }
   }
 
   // supabase.storage.download() uses getSession() internally, which reads the local cookie.
@@ -80,7 +120,7 @@ export async function GET(
   }
 
   const html = await fileRes.text()
-  const rewritten = rewriteHtml(html)
+  const rewritten = rewriteHtml(html, origin, platform)
 
   return new NextResponse(rewritten, {
     status: 200,

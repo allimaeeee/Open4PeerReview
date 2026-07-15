@@ -30,6 +30,9 @@ interface ReviewerConsoleProps {
   review: Review
   rubrics: Rubric[]
   onReviewUpdate: (r: Review) => void
+  /** True when this OER was submitted to an organization, so completing the
+   *  review holds it for coordinator approval before the author can see it. */
+  requiresCoordinatorApproval?: boolean
 }
 
 export interface ScoreCommentItem {
@@ -65,6 +68,7 @@ export function ReviewerConsole({
   review,
   rubrics,
   onReviewUpdate,
+  requiresCoordinatorApproval = false,
 }: ReviewerConsoleProps) {
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
   const [scores, setScores] = useState<Record<string, LocalScore>>({})
@@ -72,7 +76,10 @@ export function ReviewerConsole({
   const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
   const [overallComment, setOverallComment] = useState(review.overall_comment ?? '')
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
+  // Per-rubric submission: rubric_ids already released to the author, and the rubric
+  // the confirm modal currently targets (null = closed).
+  const [submittedRubricIds, setSubmittedRubricIds] = useState<Set<string>>(new Set())
+  const [submitRubricId, setSubmitRubricId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [generalAnnotations, setGeneralAnnotations] = useState<
@@ -150,6 +157,17 @@ export function ReviewerConsole({
   // rubrics is stable (set once from server props); review.review_scores seeds initial UI only
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, rubrics])
+
+  // ── Load already-submitted rubrics ─────────────────────────────────────────
+  useEffect(() => {
+    supabase
+      .from('review_rubric_submissions')
+      .select('rubric_id')
+      .eq('review_id', review.id)
+      .then(({ data }) => {
+        if (data) setSubmittedRubricIds(new Set(data.map((r) => r.rubric_id)))
+      })
+  }, [supabase, review.id])
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
   const {
@@ -728,46 +746,110 @@ export function ReviewerConsole({
     [deleteScoreComment, onScoreChange, track]
   )
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = useCallback(
-    async (finalOverallComment: string): Promise<string | null> => {
-      await saveDraft()
-      const { data: updated, error } = await supabase
-        .from('reviews')
-        .update({
-          status: 'submitted',
-          overall_comment: finalOverallComment,
-          submitted_at: new Date().toISOString(),
-        })
-        .eq('id', review.id)
-        .select('id')
-        .single()
+  // Distinct rubric ids in play (used by the submit flow and per-rubric read-only state).
+  const allRubricIds = useMemo(
+    () => Array.from(new Set(rubricItems.map((i) => i.rubric_id))),
+    [rubricItems]
+  )
 
-      if (error || !updated) return error?.message ?? 'Submit failed — please try again'
+  // ── Submit (per rubric) ──────────────────────────────────────────────────────
+  // Release a single rubric's feedback to the author. The review row stays
+  // 'in_progress' (so the reviewer keeps edit access to the remaining rubrics —
+  // RLS write policies require in_progress) until the last rubric is submitted,
+  // at which point the whole review flips to 'submitted'.
+  const handleSubmit = useCallback(
+    async (rubricId: string, finalOverallComment: string): Promise<string | null> => {
+      await saveDraft()
+
+      const isFirstSubmission = submittedRubricIds.size === 0
+      const willAllBeSubmitted = allRubricIds.every(
+        (id) => id === rubricId || submittedRubricIds.has(id)
+      )
+
+      // Record this rubric as released (idempotent on the unique constraint).
+      const { error: subError } = await supabase
+        .from('review_rubric_submissions')
+        .upsert(
+          { review_id: review.id, rubric_id: rubricId },
+          { onConflict: 'review_id,rubric_id', ignoreDuplicates: true }
+        )
+      if (subError) return subError.message ?? 'Submit failed — please try again'
+
+      // Update the review row. Keep status='in_progress' unless this completes the
+      // review; stamp submitted_at on the first release.
+      const reviewUpdate: {
+        overall_comment: string
+        submitted_at?: string
+        status?: 'submitted'
+        coordinator_approval?: 'pending'
+        coordinator_note?: null
+      } = { overall_comment: finalOverallComment }
+      if (isFirstSubmission) reviewUpdate.submitted_at = new Date().toISOString()
+      if (willAllBeSubmitted) reviewUpdate.status = 'submitted'
+      // Completing an org submission holds the whole review for coordinator
+      // approval; clear any prior send-back note so it re-enters as "pending".
+      if (willAllBeSubmitted && requiresCoordinatorApproval) {
+        reviewUpdate.coordinator_approval = 'pending'
+        reviewUpdate.coordinator_note = null
+      }
+
+      const { error } = await supabase
+        .from('reviews')
+        .update(reviewUpdate)
+        .eq('id', review.id)
+      if (error) return error.message ?? 'Submit failed — please try again'
+
+      const rubricScoredCount = rubricItems.filter(
+        (i) => i.rubric_id === rubricId && (scores[i.id]?.scores.length ?? 0) > 0
+      ).length
+      const rubricTotal = rubricItems.filter((i) => i.rubric_id === rubricId).length
       track('submit', {
-        scored_criteria: Object.values(scores).filter((s) => s.scores.length > 0).length,
-        total_criteria: rubricItems.length,
+        rubric_id: rubricId,
+        all_submitted: willAllBeSubmitted,
+        scored_criteria: rubricScoredCount,
+        total_criteria: rubricTotal,
         overall_comment_length: finalOverallComment.length,
       })
       await flush()
-      onReviewUpdate({ ...review, status: 'submitted', overall_comment: finalOverallComment })
+
+      setSubmittedRubricIds((prev) => new Set(prev).add(rubricId))
+      onReviewUpdate({
+        ...review,
+        status: willAllBeSubmitted ? 'submitted' : review.status,
+        overall_comment: finalOverallComment,
+        ...(willAllBeSubmitted && requiresCoordinatorApproval
+          ? { coordinator_approval: 'pending' as const, coordinator_note: null }
+          : {}),
+      })
       return null
     },
-    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems.length]
+    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval]
   )
 
   const handleConfirmSubmit = useCallback(async () => {
+    if (!submitRubricId) return
+    const rubricId = submitRubricId
+    const willAllBeSubmitted = allRubricIds.every(
+      (id) => id === rubricId || submittedRubricIds.has(id)
+    )
     setIsSubmitting(true)
     setSubmitError(null)
-    const error = await handleSubmit(overallComment)
+    const error = await handleSubmit(rubricId, overallComment)
     setIsSubmitting(false)
     if (error) {
       setSubmitError(error)
       return
     }
-    setShowSubmitConfirm(false)
-    router.push('/reviewer?tab=completed')
-  }, [handleSubmit, overallComment, router])
+    setSubmitRubricId(null)
+    // Only leave the console once every rubric has been released.
+    if (willAllBeSubmitted) {
+      router.push('/reviewer?tab=completed')
+      // The Router Cache is keyed by pathname, not search params, so the
+      // already-visited /reviewer segment would otherwise serve stale RSC and
+      // keep showing the doc under "My Reviews" instead of "Completed".
+      router.refresh()
+    }
+  }, [handleSubmit, overallComment, router, submitRubricId, allRubricIds, submittedRubricIds])
 
   const firstRubricId = useMemo(() => {
     for (const item of rubricItems) {
@@ -777,6 +859,18 @@ export function ReviewerConsole({
   }, [rubricItems])
 
   const [activeRubricId, setActiveRubricId] = useState<string | null>(firstRubricId)
+
+  // Per-rubric submission derived state (allRubricIds is declared above, near the submit handler).
+  const activeRubricSubmitted = activeRubricId ? submittedRubricIds.has(activeRubricId) : false
+  // The active rubric is read-only if it's been submitted, or the whole review is done.
+  const activeRubricIsReadOnly = isSubmitted || activeRubricSubmitted
+  // Confirm-modal target rubric.
+  const submitRubricTitle = submitRubricId
+    ? rubricItems.find((i) => i.rubric_id === submitRubricId)?.rubric_title ?? 'this rubric'
+    : ''
+  const submitIsLastRubric =
+    !!submitRubricId &&
+    allRubricIds.every((id) => id === submitRubricId || submittedRubricIds.has(id))
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [pulseAnnotationId, setPulseAnnotationId] = useState<string | null>(null)
   const [panelScrollAnnotationId, setPanelScrollAnnotationId] = useState<string | null>(null)
@@ -843,6 +937,19 @@ export function ReviewerConsole({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden print:h-auto print:overflow-visible print:block">
+      {review.coordinator_approval === 'changes_requested' && review.coordinator_note && (
+        <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-error-container)] px-6 py-3 print:hidden">
+          <p className="text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-error)]">
+            Returned by coordinator
+          </p>
+          <p className="mt-1 text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
+            {review.coordinator_note}
+          </p>
+          <p className="mt-1 text-label-sm font-label text-[var(--color-text-muted)]">
+            Address the requested changes and submit again to send it back for approval.
+          </p>
+        </div>
+      )}
       <ResizablePanelLayout
         defaultLeftPercent={50}
         leftPanel={
@@ -856,7 +963,7 @@ export function ReviewerConsole({
                 savedAnnotations={savedAnnotations}
                 rubricItems={activeViewerCriteria}
                 onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
-                disabled={isSubmitted}
+                disabled={activeRubricIsReadOnly}
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
                 onAnnotationViewFull={handleViewFullComment}
@@ -870,7 +977,7 @@ export function ReviewerConsole({
               />
             ) : document.file_type === 'html' && document.content_fingerprint ? (
               <HtmlViewerCanvas
-                snapshotSrc={`/api/snapshot/${document.content_fingerprint}`}
+                snapshotSrc={`/api/snapshot/${document.content_fingerprint}${document.source_url ? `?src=${encodeURIComponent(document.source_url)}` : ''}`}
                 additionalPages={document.pages ?? undefined}
                 onBack={() => { saveDraft().then(() => router.push('/reviewer?tab=my-reviews')) }}
                 rubricItems={activeViewerCriteria}
@@ -884,7 +991,7 @@ export function ReviewerConsole({
                 onAnnotationDelete={handleAnnotationDeleteFromPDF}
                 onAnnotationRelink={handleAnnotationRelink}
                 onTrackEvent={track}
-                disabled={isSubmitted}
+                disabled={activeRubricIsReadOnly}
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
                 pulseAnnotationId={pulseAnnotationId}
@@ -907,7 +1014,7 @@ export function ReviewerConsole({
                 onAnnotationDelete={handleAnnotationDeleteFromPDF}
                 onAnnotationRelink={handleAnnotationRelink}
                 onTrackEvent={track}
-                disabled={isSubmitted}
+                disabled={activeRubricIsReadOnly}
                 scrollToAnnotationId={scrollToAnnotationId}
                 onGoToAnnotation={() => setScrollToAnnotationId(null)}
                 onAnnotationViewFull={handleViewFullComment}
@@ -923,8 +1030,10 @@ export function ReviewerConsole({
               generalAnnotations={generalAnnotations}
               activeRubricId={activeRubricId}
               onActiveRubricChange={setActiveRubricId}
-              isReadOnly={isSubmitted}
-              onSubmit={() => setShowSubmitConfirm(true)}
+              isReadOnly={activeRubricIsReadOnly}
+              generalReadOnly={isSubmitted}
+              submittedRubricIds={submittedRubricIds}
+              onSubmit={() => { if (activeRubricId) setSubmitRubricId(activeRubricId) }}
               onScoreToggle={handleScoreToggle}
               onAddComment={handleAddScoreComment}
               onEditComment={handleEditScoreComment}
@@ -945,16 +1054,16 @@ export function ReviewerConsole({
         }
       />
 
-      <Modal open={showSubmitConfirm} onClose={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}>
+      <Modal open={submitRubricId !== null} onClose={() => { if (!isSubmitting) setSubmitRubricId(null) }}>
         <ModalContent className="max-w-sm h-auto">
           <div className="p-6">
             <div className="flex items-start justify-between gap-4 mb-3">
               <h2 className="font-heading text-title-lg text-text-primary leading-snug">
-                Submit Review
+                Submit {submitRubricTitle}?
               </h2>
               <button
                 type="button"
-                onClick={() => { if (!isSubmitting) setShowSubmitConfirm(false) }}
+                onClick={() => { if (!isSubmitting) setSubmitRubricId(null) }}
                 className="shrink-0 rounded-md p-1 text-text-muted hover:text-text-primary hover:bg-surface-container transition-colors duration-150"
                 aria-label="Close"
               >
@@ -964,7 +1073,9 @@ export function ReviewerConsole({
               </button>
             </div>
             <p className="text-body-md text-text-secondary">
-              Are you sure you want to submit? Once submitted, you will not be able to edit or add to this review.
+              {submitIsLastRubric
+                ? 'This is your last rubric. Submitting it sends this rubric to the author and completes the review — you will no longer be able to edit it.'
+                : 'This rubric will be sent to the author and locked. Your other rubrics stay open for editing.'}
             </p>
             {submitError && (
               <p className="text-body-sm text-error mt-3">{submitError}</p>
@@ -974,7 +1085,7 @@ export function ReviewerConsole({
                 variant="secondary"
                 size="md"
                 disabled={isSubmitting}
-                onClick={() => setShowSubmitConfirm(false)}
+                onClick={() => setSubmitRubricId(null)}
               >
                 Cancel
               </Button>
@@ -984,7 +1095,7 @@ export function ReviewerConsole({
                 disabled={isSubmitting}
                 onClick={handleConfirmSubmit}
               >
-                {isSubmitting ? 'Submitting…' : 'Submit Review'}
+                {isSubmitting ? 'Submitting…' : 'Submit Rubric'}
               </Button>
             </div>
           </div>

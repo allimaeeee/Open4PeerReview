@@ -31,6 +31,12 @@ const OPTION_CONFIG: Record<
     activeText: 'var(--color-status-in-progress-text)',
     activeBorder: 'var(--color-status-in-progress-text)',
   },
+  will_not_address: {
+    label: 'Will not address',
+    activeBg: 'var(--color-error-container)',
+    activeText: 'var(--color-error)',
+    activeBorder: 'var(--color-error)',
+  },
 }
 
 function CheckIcon() {
@@ -50,10 +56,24 @@ function ClockIcon() {
   )
 }
 
-const OPTIONS: FeedbackResponseStatus[] = ['addressed', 'will_address_later']
+function CrossIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 4L4 12M4 4l8 8" />
+    </svg>
+  )
+}
+
+function OptionIcon({ option }: { option: FeedbackResponseStatus }) {
+  if (option === 'addressed') return <CheckIcon />
+  if (option === 'will_address_later') return <ClockIcon />
+  return <CrossIcon />
+}
+
+const OPTIONS: FeedbackResponseStatus[] = ['addressed', 'will_address_later', 'will_not_address']
 
 /**
- * Author-only three-state control (none / addressed / will address later).
+ * Author-only control (none / addressed / will address later / will not address).
  * Clicking the active option clears it back to "none".
  */
 export function AddressStatusControl({ status, onChange, disabled, className }: AddressStatusControlProps) {
@@ -89,7 +109,7 @@ export function AddressStatusControl({ status, onChange, disabled, className }: 
                   }
             }
           >
-            {option === 'addressed' ? <CheckIcon /> : <ClockIcon />}
+            <OptionIcon option={option} />
             {cfg.label}
           </button>
         )

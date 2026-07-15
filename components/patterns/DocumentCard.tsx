@@ -3,6 +3,7 @@ import { Accordion } from '@/components/ui/Accordion'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { Button } from '@/components/ui/Button'
+import type { ReportStatus } from '@/types'
 
 export interface RubricReview {
   rubricId: string
@@ -20,8 +21,22 @@ export interface DocumentCardProps {
   description: string
   submittedAt: string
   rubrics: RubricReview[]
+  /** Author's publish/revise/private decision on the released report. */
+  reportStatus?: ReportStatus | null
+  /** True once every rubric has been reviewed and released to the author. */
+  reportReady?: boolean
   onDelete?: () => void
   deleteDisabled?: boolean
+}
+
+// Publication badge shown once a report is releasable or has a decision. Uses the
+// pipeline status tokens (see app/globals.css) to stay consistent with StatusBadge.
+function reportBadgeFor(reportStatus: ReportStatus | null | undefined, reportReady: boolean | undefined) {
+  if (reportStatus === 'published') return { label: 'Published', bg: 'var(--color-status-completed-bg)', text: 'var(--color-status-completed-text)' }
+  if (reportStatus === 'private') return { label: 'Private', bg: 'var(--color-status-draft-bg)', text: 'var(--color-status-draft-text)' }
+  if (reportStatus === 'revising') return { label: 'In Revision', bg: 'var(--color-status-in-progress-bg)', text: 'var(--color-status-in-progress-text)' }
+  if (reportReady) return { label: 'Ready to Publish', bg: 'var(--color-status-feedback-ready-bg)', text: 'var(--color-status-feedback-ready-text)' }
+  return null
 }
 
 const PRIORITY_ORDER: RubricReview['status'][] = [
@@ -51,10 +66,14 @@ export function DocumentCard({
   description,
   submittedAt,
   rubrics,
+  reportStatus,
+  reportReady,
   onDelete,
   deleteDisabled,
 }: DocumentCardProps) {
   const allCertified = rubrics.length > 0 && rubrics.every(r => r.status === 'certified')
+  const reportBadge = reportBadgeFor(reportStatus, reportReady)
+  const canViewReport = reportReady || reportStatus != null
 
   const priorityStatus: RubricReview['status'] = allCertified
     ? 'certified'
@@ -69,11 +88,19 @@ export function DocumentCard({
       <div className="flex-1 min-w-0">
 
         {/* Row 1: status badge + count hint */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge variant={priorityStatus} />
           {otherCount > 0 && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-sm bg-[var(--color-surface-container-high)] text-[var(--color-text-muted)] text-label-sm font-label font-medium uppercase tracking-widest">
               +{otherCount} others
+            </span>
+          )}
+          {reportBadge && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-sm text-label-sm font-label font-semibold uppercase tracking-widest"
+              style={{ backgroundColor: reportBadge.bg, color: reportBadge.text }}
+            >
+              {reportBadge.label}
             </span>
           )}
         </div>
@@ -102,16 +129,27 @@ export function DocumentCard({
 
       </div>
 
-      {/* Right column — only shown when allCertified */}
-      {allCertified && (
-        <div className="shrink-0">
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          >
-            Download Stamp
-          </Button>
+      {/* Right column — report entry point / stamp */}
+      {(canViewReport || allCertified) && (
+        <div className="shrink-0 flex items-center gap-2">
+          {canViewReport && (
+            <Link
+              href={`/author/feedback/${id}?from=author`}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-primary bg-primary text-on-primary hover:bg-[var(--color-primary-hover)] px-4 py-2 text-sm"
+            >
+              {reportStatus ? 'Manage report' : 'View report'}
+            </Link>
+          )}
+          {allCertified && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            >
+              Download Stamp
+            </Button>
+          )}
         </div>
       )}
 

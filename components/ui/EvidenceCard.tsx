@@ -1,5 +1,6 @@
 import type { FeedbackResponseStatus } from '@/types'
 import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
+import { AuthorCommentField } from '@/components/ui/AuthorCommentField'
 
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
@@ -23,6 +24,10 @@ interface EvidenceCardProps {
   showStatusControl?: boolean
   status?: FeedbackResponseStatus | null
   onStatusChange?: (status: FeedbackResponseStatus | null) => void
+  /** When true, show the author-only free-text comment box for this annotation. */
+  showComment?: boolean
+  comment?: string
+  onCommentChange?: (body: string) => void | Promise<void>
 }
 
 function getAnchorType(anchor: Record<string, unknown>): 'html' | 'pdf' | 'torus' | 'free-note' {
@@ -48,7 +53,7 @@ const TAG_CONFIG: Record<'action_item' | 'quick_fix', { label: string; bg: strin
   },
 }
 
-export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabel, screenshotNumber, showStatusControl, status, onStatusChange }: EvidenceCardProps) {
+export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabel, screenshotNumber, showStatusControl, status, onStatusChange, showComment, comment, onCommentChange }: EvidenceCardProps) {
   const anchorType        = getAnchorType(annotation.anchor)
   const isLinkedHighlight = anchorType !== 'free-note'
   const rawType           = annotation.anchor.type as string | undefined
@@ -197,10 +202,15 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
         </div>
       )}
 
-      {/* Author-only status control */}
-      {showStatusControl && onStatusChange && (
-        <div className="pt-2 mt-1 border-t border-[var(--color-border)]">
-          <AddressStatusControl status={status ?? null} onChange={onStatusChange} />
+      {/* Author-only status control + comment box */}
+      {((showStatusControl && onStatusChange) || (showComment && onCommentChange)) && (
+        <div className="pt-2 mt-1 border-t border-[var(--color-border)] flex flex-col gap-3">
+          {showStatusControl && onStatusChange && (
+            <AddressStatusControl status={status ?? null} onChange={onStatusChange} />
+          )}
+          {showComment && onCommentChange && (
+            <AuthorCommentField value={comment ?? ''} onSave={onCommentChange} />
+          )}
         </div>
       )}
     </div>

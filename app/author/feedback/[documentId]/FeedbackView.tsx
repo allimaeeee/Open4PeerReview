@@ -2,20 +2,27 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType } from '@/types'
+import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType, ReportStatus } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
 import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
 import { RevisionNotes, type RevisionNoteItem } from '@/components/ui/RevisionNotes'
+import { CoordinatorDecisionBar } from '@/components/ui/CoordinatorDecisionBar'
+import { ReportDecisionBar } from '@/components/ui/ReportDecisionBar'
+import { approveReview, returnReviewToReviewer } from '@/app/coordinator/actions'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
 import {
   setFeedbackResponse,
   clearFeedbackResponse,
+  setFeedbackComment,
+  clearFeedbackComment,
   addRevisionNote,
   updateRevisionNote,
   deleteRevisionNote,
+  setReportStatus,
+  setRevisedLink,
 } from '@/lib/supabase/authorFeedback'
 import { OerReadOnlyViewer } from './OerReadOnlyViewer'
 import { TorusReadOnlyViewer } from './TorusReadOnlyViewer'
@@ -57,8 +64,11 @@ interface ReviewRow {
   overall_comment: string | null
   notes: string | null
   submitted_at: string | null
+  coordinator_approval?: string | null
+  coordinator_note?: string | null
   reviewer: { display_name: string | null; email: string } | null
   rubric: { id: string; title: string } | null
+  review_rubric_submissions?: { rubric_id: string; submitted_at: string }[]
   review_scores: ReviewScoreRow[]
   annotations: AnnotationRow[]
   score_comments: ScoreCommentRow[]
@@ -80,6 +90,14 @@ interface RevisionNoteRow {
   updated_at: string
 }
 
+interface FeedbackCommentRow {
+  id: string
+  target_type: FeedbackTargetType
+  target_id: string
+  body: string
+  review_id: string
+}
+
 interface Props {
   document: {
     id: string
@@ -89,14 +107,18 @@ interface Props {
     platform?: string | null
     source_url?: string | null
     course_access_code?: string | null
+    report_status?: ReportStatus | null
+    revised_link?: string | null
   }
   reviews: ReviewRow[]
   allRubrics?: { id: string; title: string; itemIds: string[] }[]
   pdfUrl?: string | null
   includeAuthorNotes?: boolean
   isAuthor?: boolean
+  isCoordinator?: boolean
   initialResponses?: FeedbackResponseRow[]
   initialRevisionNotes?: RevisionNoteRow[]
+  initialFeedbackComments?: FeedbackCommentRow[]
 }
 
 function responseKey(targetType: FeedbackTargetType, targetId: string) {
@@ -132,8 +154,10 @@ export function FeedbackView({
   reviews,
   allRubrics: allRubricsFromProps,
   isAuthor = false,
+  isCoordinator = false,
   initialResponses = [],
   initialRevisionNotes = [],
+  initialFeedbackComments = [],
 }: Props) {
   const router = useRouter()
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
@@ -147,6 +171,10 @@ export function FeedbackView({
   )
   const [revisionNotes, setRevisionNotes] = useState<RevisionNoteItem[]>(
     () => initialRevisionNotes.map(n => ({ id: n.id, body: n.body, created_at: n.created_at }))
+  )
+  // Per-item author comments (annotations + rubric criteria), keyed by target.
+  const [comments, setComments] = useState<Map<string, string>>(
+    () => new Map(initialFeedbackComments.map(c => [responseKey(c.target_type, c.target_id), c.body]))
   )
 
   const statusFor = useCallback(
@@ -189,6 +217,49 @@ export function FeedbackView({
       }
     },
     [responses, document.id]
+  )
+
+  const commentFor = useCallback(
+    (targetType: FeedbackTargetType, targetId: string): string =>
+      comments.get(responseKey(targetType, targetId)) ?? '',
+    [comments]
+  )
+
+  const handleCommentChange = useCallback(
+    async (
+      targetType: FeedbackTargetType,
+      targetId: string,
+      reviewId: string,
+      body: string
+    ) => {
+      const key = responseKey(targetType, targetId)
+      const prev = comments.get(key) ?? ''
+      const trimmed = body.trim()
+      // Optimistic update
+      setComments(m => {
+        const copy = new Map(m)
+        if (trimmed === '') copy.delete(key)
+        else copy.set(key, trimmed)
+        return copy
+      })
+      try {
+        if (trimmed === '') {
+          await clearFeedbackComment({ targetType, targetId })
+        } else {
+          await setFeedbackComment({ documentId: document.id, reviewId, targetType, targetId, body: trimmed })
+        }
+      } catch (err) {
+        console.error('Failed to save feedback comment', err)
+        // Revert
+        setComments(m => {
+          const copy = new Map(m)
+          if (prev === '') copy.delete(key)
+          else copy.set(key, prev)
+          return copy
+        })
+      }
+    },
+    [comments, document.id]
   )
 
   const handleAddNote = useCallback(
@@ -246,18 +317,56 @@ export function FeedbackView({
 
   const allRubrics: { id: string; title: string; itemIds: string[] }[] = allRubricsFromProps ?? []
 
-  // Global submit: one review row covers all rubrics. All pills are accessible whenever
-  // any submitted review exists for this document.
-  const submittedRubricIds = new Set(
-    reviews.length > 0 ? allRubrics.map(r => r.id) : []
+  // Which capacity is the viewer acting in? A person can be both author and
+  // coordinator; the entry point (?from=) decides the mode. Arriving from the
+  // coordinator dashboard means they're here to review & release — read the review
+  // and approve/return it, no author notes. Arriving from the author dashboard (or
+  // anywhere else) they act as the author.
+  const actingAsCoordinator = isCoordinator && from === 'coordinator'
+
+  // Author-response controls (address statuses, per-item comments, revision notes)
+  // belong to the author's revision workflow. An author — including one who is also
+  // a coordinator — can leave notes, except when acting as a coordinator.
+  const canLeaveNotes = isAuthor && !actingAsCoordinator
+
+  // Per-rubric submit: a rubric is visible to the author once the reviewer has released
+  // it (a review_rubric_submissions row exists). Legacy fallback: a review with no
+  // submission rows predates per-rubric submission — treat all its rubrics as released.
+  const submittedRubricIds = new Set<string>(
+    reviews.flatMap(rv => {
+      const subs = rv.review_rubric_submissions ?? []
+      if (subs.length > 0) return subs.map(s => s.rubric_id)
+      return allRubrics.map(r => r.id) // legacy whole-review submission
+    })
   )
+
+  const firstSubmittedRubricId =
+    allRubrics.find(r => submittedRubricIds.has(r.id))?.id ?? null
+
+  // The report is ready for an author publish/revise/private decision once every
+  // rubric assigned to the document has been reviewed and released to the author.
+  const allRubricsReleased = allRubrics.length > 0 && allRubrics.every(r => submittedRubricIds.has(r.id))
+  const reportStatus = (document.report_status ?? null) as ReportStatus | null
+  // Author-only: shown once everything is released, or whenever a decision already
+  // exists (so a published/private report can still be revised or (re)published).
+  const showReportDecision = canLeaveNotes && (allRubricsReleased || reportStatus !== null)
+
+  const applyReportStatus = useCallback(async (status: ReportStatus | null) => {
+    await setReportStatus({ documentId: document.id, status })
+    router.refresh()
+  }, [document.id, router])
+
+  const applyRevisedLink = useCallback(async (link: string) => {
+    await setRevisedLink({ documentId: document.id, link: link || null })
+    router.refresh()
+  }, [document.id, router])
 
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
     if (!reviews.length) return null
-    if (requestedRubricId && allRubrics.some(r => r.id === requestedRubricId)) {
+    if (requestedRubricId && submittedRubricIds.has(requestedRubricId)) {
       return requestedRubricId
     }
-    return allRubrics[0]?.id ?? null
+    return firstSubmittedRubricId
   })
 
   // Prefer the review linked to the selected rubric; fall back to the first submitted review
@@ -275,10 +384,15 @@ export function FeedbackView({
     : []
 
   const reviewerName = review?.reviewer?.display_name ?? review?.reviewer?.email ?? 'Anonymous Reviewer'
-  const submittedDate = formatDate(review?.submitted_at ?? null)
+  // Prefer the selected rubric's own release date; fall back to the review-level date.
+  const selectedRubricSubmittedAt =
+    review?.review_rubric_submissions?.find(s => s.rubric_id === selectedRubricId)?.submitted_at
+    ?? review?.submitted_at
+    ?? null
+  const submittedDate = formatDate(selectedRubricSubmittedAt)
 
   const snapshotSrc = document.content_fingerprint
-    ? `/api/snapshot/${document.content_fingerprint}`
+    ? `/api/snapshot/${document.content_fingerprint}${document.source_url ? `?src=${encodeURIComponent(document.source_url)}` : ''}`
     : null
 
   const allAnnotations = useMemo(
@@ -466,6 +580,37 @@ export function FeedbackView({
 
         {review && (
           <>
+            {/* Author publish / revise / keep-private decision (all rubrics released) */}
+            {showReportDecision && (
+              <ReportDecisionBar
+                className="mb-6"
+                status={reportStatus}
+                onPublish={() => applyReportStatus('published')}
+                onRevise={() => applyReportStatus('revising')}
+                onKeepPrivate={() => applyReportStatus('private')}
+                revisedLink={document.revised_link ?? null}
+                onSaveRevisedLink={applyRevisedLink}
+              />
+            )}
+
+            {/* Coordinator approval decision (org submissions awaiting release) */}
+            {actingAsCoordinator && (
+              <CoordinatorDecisionBar
+                className="mb-6"
+                approval={(review.coordinator_approval ?? null) as 'pending' | 'approved' | 'changes_requested' | null}
+                reviewerName={reviewerName}
+                onApprove={async () => {
+                  await approveReview(review.id)
+                  router.refresh()
+                }}
+                onReturn={async (note) => {
+                  await returnReviewToReviewer(review.id, note)
+                  router.push('/coordinator')
+                  router.refresh()
+                }}
+              />
+            )}
+
             {/* Reviewer's summary */}
             {review.overall_comment && (
               <div className="rounded-lg bg-[var(--color-surface-container)] px-5 py-4 mb-6">
@@ -475,7 +620,7 @@ export function FeedbackView({
                 <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
                   {review.overall_comment}
                 </p>
-                {isAuthor && (
+                {canLeaveNotes && (
                   <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
                     <AddressStatusControl
                       status={statusFor('overall_comment', review.id)}
@@ -516,7 +661,7 @@ export function FeedbackView({
                   <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
                     {review.notes}
                   </p>
-                  {isAuthor && (
+                  {canLeaveNotes && (
                     <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
                       <AddressStatusControl
                         status={statusFor('general_comment', review.id)}
@@ -545,9 +690,12 @@ export function FeedbackView({
                         }}
                         goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                         screenshotNumber={annotationIndexMap.get(ann.id)}
-                        showStatusControl={isAuthor}
+                        showStatusControl={canLeaveNotes}
                         status={statusFor('annotation', ann.id)}
                         onStatusChange={s => handleStatusChange('annotation', ann.id, review.id, s)}
+                        showComment={canLeaveNotes}
+                        comment={commentFor('annotation', ann.id)}
+                        onCommentChange={body => handleCommentChange('annotation', ann.id, review.id, body)}
                       />
                     ))}
                   </div>
@@ -586,15 +734,17 @@ export function FeedbackView({
                   }}
                   goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                   annotationIndexMap={annotationIndexMap}
-                  showStatusControls={isAuthor}
+                  showStatusControls={canLeaveNotes}
                   statusFor={statusFor}
                   onStatusChange={(targetType, targetId, s) => handleStatusChange(targetType, targetId, review.id, s)}
+                  commentFor={commentFor}
+                  onCommentChange={(targetType, targetId, body) => handleCommentChange(targetType, targetId, review.id, body)}
                 />
               ))}
             </div>
 
-            {/* Revision Notes — author-only */}
-            {isAuthor && (
+            {/* Revision Notes — author-only (coordinators only read/approve) */}
+            {canLeaveNotes && (
               <div className="mt-6">
                 <RevisionNotes
                   notes={revisionNotes}

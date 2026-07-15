@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType } from '@/types'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
+import { AuthorCommentField } from '@/components/ui/AuthorCommentField'
 
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
@@ -51,6 +52,9 @@ interface CriterionReportCardProps {
   showStatusControls?: boolean
   statusFor?: (targetType: FeedbackTargetType, targetId: string) => FeedbackResponseStatus | null
   onStatusChange?: (targetType: FeedbackTargetType, targetId: string, status: FeedbackResponseStatus | null) => void
+  /** Author-only free-text comment boxes (on this criterion + each evidence annotation). */
+  commentFor?: (targetType: FeedbackTargetType, targetId: string) => string
+  onCommentChange?: (targetType: FeedbackTargetType, targetId: string, body: string) => void | Promise<void>
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -165,6 +169,8 @@ export function CriterionReportCard({
   showStatusControls,
   statusFor,
   onStatusChange,
+  commentFor,
+  onCommentChange,
 }: CriterionReportCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultExpanded)
   const isControlled = isOpenProp !== undefined
@@ -305,10 +311,25 @@ export function CriterionReportCard({
                       onStatusChange={
                         onStatusChange ? s => onStatusChange('annotation', annotation.id, s) : undefined
                       }
+                      showComment={showStatusControls}
+                      comment={commentFor?.('annotation', annotation.id) ?? ''}
+                      onCommentChange={
+                        onCommentChange ? body => onCommentChange('annotation', annotation.id, body) : undefined
+                      }
                     />
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Section 4 — Author's comment on this criterion (author-only) */}
+            {showStatusControls && onCommentChange && (
+              <AuthorCommentField
+                label="Your Comment on This Criterion"
+                placeholder="Add a comment or note about this criterion…"
+                value={commentFor?.('criterion', rubricItem.id) ?? ''}
+                onSave={body => onCommentChange('criterion', rubricItem.id, body)}
+              />
             )}
 
           </div>

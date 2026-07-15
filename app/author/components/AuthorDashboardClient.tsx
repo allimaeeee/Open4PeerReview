@@ -11,7 +11,7 @@ import { SubmissionModal } from './SubmissionModal'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { deleteDocument } from '@/app/coordinator/actions'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
-import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
+import type { ExpertDomain, CreativeCommonsLicense, ReportStatus } from '@/types'
 
 interface RubricRow {
   id: string
@@ -29,8 +29,15 @@ interface DocumentRow {
   file_type: string | null
   platform: string | null
   created_at: string
+  report_status: ReportStatus | null
   document_rubrics: { rubric: { id: string; title: string } | null }[]
-  reviews: { id: string; status: string; submitted_at: string | null; rubric_id: string }[]
+  reviews: {
+    id: string
+    status: string
+    submitted_at: string | null
+    rubric_id: string
+    review_rubric_submissions?: { rubric_id: string }[]
+  }[]
 }
 
 interface Props {
@@ -44,17 +51,38 @@ interface Props {
 // 'assigned' status is intentionally unused here — it will be wired in once the
 // coordinator dashboard is in place (coordinator assigns unassigned OER to a reviewer).
 function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
+  const docRubricIds = doc.document_rubrics
+    .map(dr => dr.rubric?.id)
+    .filter((id): id is string => !!id)
+
+  // Per-rubric submission: a rubric is 'feedback-ready' once released to the author.
+  // Legacy fallback: a submitted review with no submission rows predates per-rubric
+  // submission — treat all its rubrics as released.
+  const submittedRubricIds = new Set<string>(
+    doc.reviews.flatMap(rev => {
+      const subs = rev.review_rubric_submissions ?? []
+      if (subs.length > 0) return subs.map(s => s.rubric_id)
+      if (rev.status === 'submitted') return docRubricIds
+      return []
+    })
+  )
+  // The author only ever sees reviews that have started releasing feedback (RLS), so any
+  // review present means a reviewer is actively working the remaining rubrics.
+  const hasActiveReview = doc.reviews.length > 0
+
   const rubrics: RubricReview[] = doc.document_rubrics
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string } => r !== null)
     .map(r => {
-      const review = doc.reviews.find(rev => rev.rubric_id === r.id)
       const status: RubricReview['status'] =
-        review?.status === 'submitted'   ? 'feedback-ready' :
-        review?.status === 'in_progress' ? 'under-review' :
+        submittedRubricIds.has(r.id) ? 'feedback-ready' :
+        hasActiveReview              ? 'under-review' :
         'unassigned'
       return { rubricId: r.id, rubricTitle: r.title, status }
     })
+
+  // The report is releasable once every rubric has reached feedback-ready (or certified).
+  const reportReady = rubrics.length > 0 && rubrics.every(r => r.status === 'feedback-ready' || r.status === 'certified')
 
   return {
     id: doc.id,
@@ -68,6 +96,8 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
     description: doc.third_party_content_disclosure ?? '',
     submittedAt: doc.created_at,
     rubrics,
+    reportStatus: doc.report_status,
+    reportReady,
   }
 }
 
@@ -79,11 +109,12 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
 
   const allCards = documents.map(mapDocumentToCardProps)
 
-  // Tab split — "completed" = all rubrics certified; "active" = everything else
-  // NOTE: with interim status mapping, completed will always be empty until
-  // backend supports per-rubric certified status.
-  const activeCards = allCards.filter(c => !c.rubrics.every(r => r.status === 'certified'))
-  const completedCards = allCards.filter(c => c.rubrics.length > 0 && c.rubrics.every(r => r.status === 'certified'))
+  // Tab split — "completed" = the author has finalized the report (published or
+  // kept private); "active" = everything still in the pipeline, including reports
+  // that are released but awaiting the author's decision, or being revised.
+  const isFinalized = (c: DocumentCardProps) => c.reportStatus === 'published' || c.reportStatus === 'private'
+  const activeCards = allCards.filter(c => !isFinalized(c))
+  const completedCards = allCards.filter(isFinalized)
 
   const tabCards = activeTab === 'active' ? activeCards : completedCards
 
@@ -104,16 +135,19 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
       ]
     : [
         { value: 'all',       label: 'All',       count: tabCards.length },
-        { value: 'certified', label: 'Certified', count: tabCards.length },
+        { value: 'published', label: 'Published', count: tabCards.filter(c => c.reportStatus === 'published').length },
+        { value: 'private',   label: 'Private',   count: tabCards.filter(c => c.reportStatus === 'private').length },
       ]
 
   const filteredCards = activeFilter === 'all'
     ? tabCards
-    : tabCards.filter(c => {
-        const s = getPriorityStatus(c)
-        if (activeFilter === 'needs-revision') return s === 'feedback-ready'
-        return s === activeFilter
-      })
+    : activeTab === 'completed'
+      ? tabCards.filter(c => c.reportStatus === activeFilter)
+      : tabCards.filter(c => {
+          const s = getPriorityStatus(c)
+          if (activeFilter === 'needs-revision') return s === 'feedback-ready'
+          return s === activeFilter
+        })
 
   const sidebarItems = [
     { id: 'active',    label: 'Active Submissions', count: activeCards.length },
@@ -163,7 +197,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
             <p className="text-body-md text-text-secondary mt-1">
               {activeTab === 'active'
                 ? 'Track your submissions through the certification pipeline.'
-                : 'Review your certified OER submissions.'}
+                : 'Reports you have published or kept private.'}
             </p>
           </div>
 
@@ -183,7 +217,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                 <p className="text-body-sm text-text-muted mt-1">
                   {activeTab === 'active'
                     ? 'Use the sidebar to submit a new OER for review.'
-                    : 'Completed submissions will appear here once all rubrics are certified.'}
+                    : 'Reports you publish or keep private will appear here.'}
                 </p>
               </div>
             ) : (

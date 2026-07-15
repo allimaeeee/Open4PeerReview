@@ -289,7 +289,7 @@
     ` : `
       <div class="review-box">
         <div class="review-label">No active review</div>
-        <div class="review-rubric" style="margin-top:2px;">Navigate to the OER you're assigned to review on Torus \u2014 the panel will open automatically.</div>
+        <div class="review-rubric" style="margin-top:2px;">Open a review from your OER Hub dashboard \u2014 the panel appears on Torus automatically. It won't show up if you browse Torus on your own.</div>
       </div>
     `;
     app.innerHTML = `

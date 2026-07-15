@@ -465,14 +465,14 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
             <div>
               <input
                 type="url"
-                placeholder="https://openstax.org/books/..."
+                placeholder="https://openstax.org/books/… or other OER platform URL"
                 value={oerUrl}
                 onChange={e => setOerUrl(e.target.value)}
                 disabled={loading}
                 className={inputBase}
               />
               <p className="mt-1 text-xs text-slate-400">
-                Only OpenStax URLs are currently supported.
+                Supported: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
               </p>
             </div>
 

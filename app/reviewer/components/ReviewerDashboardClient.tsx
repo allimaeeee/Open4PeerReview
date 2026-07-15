@@ -209,12 +209,13 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
                     {...card}
                     onAccept={async (id) => {
                       await acceptDocument(id)
+                      router.refresh()
                       setActiveTab('my-reviews')
                       setConfirmModal('accepted')
                     }}
-                    onDecline={async (id, reason, note) => {
-                      const fullNote = [reason, note].filter(Boolean).join(': ')
-                      await declineDocument(id, fullNote)
+                    onDecline={async (id, declineNote) => {
+                      await declineDocument(id, declineNote)
+                      router.refresh()
                       setConfirmModal('declined')
                     }}
                   />

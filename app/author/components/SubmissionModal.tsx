@@ -169,12 +169,12 @@ export function SubmissionModal({
       for (const pageUrl of additionalPageUrls) {
         if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
         try {
-          const parsed = new URL(pageUrl.trim())
-          if (parsed.hostname !== 'openstax.org' && !parsed.hostname.endsWith('.openstax.org')) {
-            setError('Additional page URLs must be on openstax.org.'); return
-          }
+          new URL(pageUrl.trim())
         } catch {
           setError('Please enter a valid URL for each additional page.'); return
+        }
+        if (!isKnownOerUrl(pageUrl.trim())) {
+          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`); return
         }
       }
     }
@@ -250,7 +250,7 @@ export function SubmissionModal({
         })
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          throw new Error(body.error ?? 'Failed to fetch OpenStax content.')
+          throw new Error(body.error ?? 'Failed to fetch OER content.')
         }
       }
       router.refresh()
@@ -331,7 +331,7 @@ export function SubmissionModal({
             isSelected={sourceTab === 'openstax'}
             onChange={() => { setSourceTab('openstax'); touch() }}
             disabled={loading}
-            title="OpenStax URL"
+            title="OER URL"
             size="compact"
             icon={
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -568,7 +568,7 @@ export function SubmissionModal({
     { label: 'Title',         value: title || '—' },
     { label: 'Author(s)',     value: authors || '—' },
     { label: 'Subject Area',  value: isOther ? (customSubject || '—') : ((EXPERT_DOMAIN_LABELS[subjectMatter as ExpertDomain] ?? subjectMatter) || '—') },
-    { label: 'Resource Type', value: sourceTab === 'pdf' ? `PDF — ${file?.name ?? ''}` : sourceTab === 'torus' ? `OLI Torus — ${torusUrl}` : `OpenStax URL — ${openstaxUrl}` },
+    { label: 'Resource Type', value: sourceTab === 'pdf' ? `PDF — ${file?.name ?? ''}` : sourceTab === 'torus' ? `OLI Torus — ${torusUrl}` : `OER URL — ${openstaxUrl}` },
     ...(sourceTab === 'torus' && torusCourseAccessCode.trim()
       ? [{ label: 'Access Code', value: torusCourseAccessCode.trim() }]
       : []),
