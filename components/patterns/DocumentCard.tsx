@@ -134,7 +134,7 @@ export function DocumentCard({
         <div className="shrink-0 flex items-center gap-2">
           {canViewReport && (
             <Link
-              href={`/author/feedback/${id}?from=author`}
+              href={`/author/feedback/${id}?from=author&view=report`}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
               className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-primary bg-primary text-on-primary hover:bg-[var(--color-primary-hover)] px-4 py-2 text-sm"
             >
@@ -172,7 +172,7 @@ export function DocumentCard({
               </span>
               {rubric.status === 'feedback-ready' && (
                 <Link
-                  href={`/author/feedback/${id}?from=author`}
+                  href={`/author/feedback/${id}?from=author&view=report&rubric=${rubric.rubricId}`}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-border bg-surface-card text-text-secondary hover:bg-surface-container hover:border-border-strong px-3 py-1.5 text-xs"
                 >

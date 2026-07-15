@@ -124,7 +124,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
       completedAt: myReview?.submitted_at ?? doc.created_at,
-      reviewUrl: `/author/feedback/${doc.id}?from=reviewer`,
+      reviewUrl: `/author/feedback/${doc.id}?from=reviewer&view=report`,
     }
   })
 

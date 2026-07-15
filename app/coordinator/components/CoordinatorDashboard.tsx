@@ -105,7 +105,7 @@ function DocCard({
             <div className="flex items-center gap-2">
               {submitted > 0 && (
                 <Link
-                  href={`/author/feedback/${doc.id}?from=coordinator`}
+                  href={`/coordinator/review/${doc.id}`}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   View Feedback
@@ -239,7 +239,7 @@ export async function CoordinatorDashboard() {
                           </p>
                         </div>
                         <Link
-                          href={`/author/feedback/${doc.id}?from=coordinator`}
+                          href={`/coordinator/review/${doc.id}`}
                           className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1e3a5f] text-white hover:bg-[#274b78] transition-colors"
                         >
                           Review &amp; release
