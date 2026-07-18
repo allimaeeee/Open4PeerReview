@@ -235,6 +235,7 @@ export function ReportFeedbackView({
       `}</style>
 
       <ResizablePanelLayout
+        defaultLeftPercent={50}
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={setLeftPanelCollapsed}
         leftPanelLabel={document.platform === 'OLI Torus' ? 'View Torus' : 'View OER'}
@@ -279,7 +280,7 @@ export function ReportFeedbackView({
         }
         rightPanel={
           <div className="h-full overflow-y-auto">
-            <div className="mx-auto max-w-2xl px-6 py-10">
+            <div className="mx-auto max-w-6xl px-6 py-10">
 
         {/* Decision slot — rendered by parent (e.g. CoordinatorDecisionBar on the coordinator route) */}
         {decisionSlot && (
@@ -298,6 +299,13 @@ export function ReportFeedbackView({
           </svg>
           Back to Dashboard
         </Button>
+
+        {/* View tag */}
+        <div className="mb-3" data-print-hide>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-sm bg-[var(--color-surface-container-high)] text-[var(--color-text-muted)] text-label-sm font-label font-medium uppercase tracking-widest">
+            Review Report
+          </span>
+        </div>
 
         {/* Page header */}
         <div className="flex items-start justify-between gap-6 mb-6">

@@ -26,13 +26,13 @@ const OPTION_CONFIG: Record<
     activeBorder: 'var(--color-status-completed-text)',
   },
   will_address_later: {
-    label: 'Will address later',
+    label: 'Later',
     activeBg: 'var(--color-status-in-progress-bg)',
     activeText: 'var(--color-status-in-progress-text)',
     activeBorder: 'var(--color-status-in-progress-text)',
   },
   will_not_address: {
-    label: 'Will not address',
+    label: "Won't address",
     activeBg: 'var(--color-error-container)',
     activeText: 'var(--color-error)',
     activeBorder: 'var(--color-error)',

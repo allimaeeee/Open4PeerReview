@@ -1,6 +1,8 @@
+'use client'
+
+import { useState, useEffect, useRef } from 'react'
 import type { FeedbackResponseStatus } from '@/types'
 import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
-import { AuthorCommentField } from '@/components/ui/AuthorCommentField'
 
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
@@ -54,6 +56,25 @@ const TAG_CONFIG: Record<'action_item' | 'quick_fix', { label: string; bg: strin
 }
 
 export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabel, screenshotNumber, showStatusControl, status, onStatusChange, showComment, comment, onCommentChange }: EvidenceCardProps) {
+  const [commentExpanded, setCommentExpanded] = useState(!!(comment && comment.trim()))
+  const [annotationCommentDraft, setAnnotationCommentDraft] = useState(comment ?? '')
+  const annotationCommentSavedRef = useRef(comment ?? '')
+
+  useEffect(() => {
+    setAnnotationCommentDraft(comment ?? '')
+    annotationCommentSavedRef.current = comment ?? ''
+  }, [comment])
+
+  const handleAnnotationCommentBlur = async () => {
+    const next = annotationCommentDraft.trim()
+    if (next === annotationCommentSavedRef.current.trim()) {
+      if (next === '') setCommentExpanded(false)
+      return
+    }
+    if (onCommentChange) await onCommentChange(next)
+    annotationCommentSavedRef.current = next
+    if (next === '') setCommentExpanded(false)
+  }
   const anchorType        = getAnchorType(annotation.anchor)
   const isLinkedHighlight = anchorType !== 'free-note'
   const rawType           = annotation.anchor.type as string | undefined
@@ -202,15 +223,39 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
         </div>
       )}
 
-      {/* Author-only status control + comment box */}
-      {((showStatusControl && onStatusChange) || (showComment && onCommentChange)) && (
-        <div className="pt-2 mt-1 border-t border-[var(--color-border)] flex flex-col gap-3">
-          {showStatusControl && onStatusChange && (
-            <AddressStatusControl status={status ?? null} onChange={onStatusChange} />
-          )}
-          {showComment && onCommentChange && (
-            <AuthorCommentField value={comment ?? ''} onSave={onCommentChange} />
-          )}
+      {/* Author-only: revision comment toggle/textarea + status buttons always visible */}
+      {((showComment && onCommentChange) || (showStatusControl && onStatusChange)) && (
+        <div className="pt-2 mt-1 border-t border-[var(--color-border)]" data-print-hide>
+          <div className="flex items-start gap-3">
+            {showComment && onCommentChange && (
+              <div className="flex-1 min-w-0">
+                {commentExpanded ? (
+                  <textarea
+                    className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-card)] px-3 py-2 text-body-sm text-[var(--color-text-primary)] leading-relaxed resize-y min-h-[60px] focus:outline-none focus:border-[var(--color-border-strong)]"
+                    placeholder="Add a revision comment for this annotation…"
+                    value={annotationCommentDraft}
+                    onChange={e => setAnnotationCommentDraft(e.target.value)}
+                    onBlur={handleAnnotationCommentBlur}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCommentExpanded(true)}
+                    className="text-body-sm text-[var(--color-secondary)] underline-offset-2 hover:underline"
+                  >
+                    + Add revision comment
+                  </button>
+                )}
+              </div>
+            )}
+            {showStatusControl && onStatusChange && (
+              <AddressStatusControl
+                status={status ?? null}
+                onChange={onStatusChange}
+                className="shrink-0"
+              />
+            )}
+          </div>
         </div>
       )}
     </div>
