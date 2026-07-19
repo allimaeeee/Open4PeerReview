@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { uploadDocument, assignRubrics, submitTorusLink } from '@/lib/supabase/queries'
+import { uploadDocument, assignRubrics, submitTorusLink, savePdfDraft, updateDraftMetadata } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { Modal, ModalContent } from '@/components/ui/Modal'
@@ -18,7 +18,7 @@ import { isKnownOerUrl, isTorusUrl } from '@/lib/oer-platform'
 
 type SourceTab = 'pdf' | 'openstax' | 'torus'
 
-const STEPS = ['Resource', 'Rubrics', 'License', 'Review']
+const STEPS = ['Resource', 'Rubrics', 'License', 'Visibility', 'Review']
 
 const PREDEFINED_ENTRIES = (Object.entries(EXPERT_DOMAIN_LABELS) as [ExpertDomain, string][])
   .filter(([key]) => key !== 'other')
@@ -38,6 +38,8 @@ interface Props {
   customSubjectMatters: string[]
   displayName: string
   authorInstitution?: string | null
+  /** When provided, load this draft and pre-fill the wizard on open. */
+  documentId?: string
 }
 
 function cx(...parts: (string | false | null | undefined)[]) {
@@ -51,6 +53,7 @@ export function SubmissionModal({
   customSubjectMatters,
   displayName,
   authorInstitution,
+  documentId,
 }: Props) {
   // Navigation state
   const [step, setStep] = useState(1)
@@ -71,10 +74,13 @@ export function SubmissionModal({
   const [torusUrl, setTorusUrl] = useState('')
   const [torusCourseAccessCode, setTorusCourseAccessCode] = useState('')
   const [submissionScope, setSubmissionScope] = useState<'organization' | 'public'>('organization')
+  const [publicReview, setPublicReview] = useState<boolean | null>(null)
   const [selectedRubrics, setSelectedRubrics] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [rubricError, setRubricError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Tracks the doc ID of a draft saved this wizard session so re-saves update rather than insert.
+  const [draftDocumentId, setDraftDocumentId] = useState<string | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
@@ -107,11 +113,67 @@ export function SubmissionModal({
     setTorusUrl('')
     setTorusCourseAccessCode('')
     setSubmissionScope('organization')
+    setPublicReview(null)
     setSelectedRubrics(new Set())
     setError(null)
     setRubricError(null)
     setLoading(false)
+    setDraftDocumentId(null)
   }
+
+  // Pre-fill wizard state when reopening an existing draft
+  useEffect(() => {
+    if (!isOpen || !documentId) return
+    const draftId = documentId
+    async function loadDraft() {
+      const { data: doc } = await supabase
+        .from('documents')
+        .select('*, document_rubrics(rubric:rubrics(id, title))')
+        .eq('id', draftId)
+        .single()
+      if (!doc) return
+
+      setTouched(false)
+      setTitle(doc.title ?? '')
+      setAuthors(doc.authors ?? '')
+      setThirdPartyDisclosure(doc.third_party_content_disclosure ?? '')
+      setCcLicense((doc.creative_commons_license as CreativeCommonsLicense | '') ?? '')
+      setSubmissionScope((doc.submission_scope?.[0] as 'organization' | 'public') ?? 'organization')
+      setPublicReview(doc.public_review ?? null)
+      setDraftDocumentId(draftId)
+
+      const predefinedKeys = PREDEFINED_ENTRIES.map(([key]) => key as string)
+      if (predefinedKeys.includes(doc.subject_matter ?? '')) {
+        setSubjectMatter(doc.subject_matter ?? '')
+        setCustomSubject('')
+      } else {
+        setSubjectMatter(OTHER_SENTINEL)
+        setCustomSubject(doc.subject_matter ?? '')
+      }
+
+      const rubricIds = (doc.document_rubrics ?? [])
+        .map((dr: { rubric: { id: string } | null }) => dr.rubric?.id)
+        .filter((id: string | undefined): id is string => !!id)
+      setSelectedRubrics(new Set(rubricIds))
+
+      if (doc.file_type === 'pdf') {
+        setSourceTab('pdf')
+        setFile(null)
+        setStep(1)
+      } else if (doc.platform === 'OLI Torus') {
+        setSourceTab('torus')
+        setTorusUrl(doc.source_url ?? '')
+        setTorusCourseAccessCode((doc as { course_access_code?: string | null }).course_access_code ?? '')
+        setStep(rubricIds.length === 0 ? 2 : !doc.creative_commons_license ? 3 : 5)
+      } else {
+        setSourceTab('openstax')
+        setOpenstaxUrl(doc.source_url ?? doc.file_url ?? '')
+        setStep(rubricIds.length === 0 ? 2 : !doc.creative_commons_license ? 3 : 5)
+      }
+    }
+    loadDraft()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, documentId])
 
   function handleCloseAttempt() {
     if (touched) {
@@ -121,13 +183,99 @@ export function SubmissionModal({
     }
   }
 
-  // TODO: implement draft persistence to Supabase
-  // Should write partial submission state to a drafts table
-  // and return the user to the author dashboard Drafts tab
-  const handleSaveAsDraft = () => {
-    console.warn('onSaveAsDraft not yet implemented')
-    resetAll()
-    onClose()
+  const handleSaveAsDraft = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const rubricIds = Array.from(selectedRubrics)
+      const sharedMeta = {
+        title: title.trim() || 'Untitled Draft',
+        authors: authors.trim(),
+        subjectMatter: finalSubjectMatter || '',
+        ccLicense: (ccLicense || 'cc_by') as CreativeCommonsLicense,
+        thirdPartyDisclosure: thirdPartyDisclosure.trim() || null,
+        submissionScope: [submissionScope] as string[],
+        publicReview: publicReview ?? false,
+      }
+
+      if (sourceTab === 'pdf') {
+        if (draftDocumentId) {
+          await updateDraftMetadata(supabase, draftDocumentId, sharedMeta)
+          await assignRubrics(supabase, draftDocumentId, rubricIds)
+        } else {
+          const doc = await savePdfDraft(supabase, { ...sharedMeta, rubricIds })
+          setDraftDocumentId(doc.id)
+        }
+      } else if (sourceTab === 'torus') {
+        if (draftDocumentId) {
+          await updateDraftMetadata(supabase, draftDocumentId, {
+            ...sharedMeta,
+            sourceUrl: torusUrl.trim() || null,
+            courseAccessCode: torusCourseAccessCode.trim() || null,
+          })
+          await assignRubrics(supabase, draftDocumentId, rubricIds)
+        } else {
+          const doc = await submitTorusLink(supabase, {
+            url: torusUrl.trim(),
+            title: sharedMeta.title,
+            authors: sharedMeta.authors,
+            subjectMatter: sharedMeta.subjectMatter,
+            ccLicense: sharedMeta.ccLicense,
+            thirdPartyDisclosure: sharedMeta.thirdPartyDisclosure,
+            courseAccessCode: torusCourseAccessCode.trim() || null,
+            rubricIds,
+            submissionScope: sharedMeta.submissionScope,
+            isDraft: true,
+            coordinatorUpload: false,
+            publicReview: sharedMeta.publicReview,
+          })
+          setDraftDocumentId(doc.id)
+        }
+      } else {
+        // OpenStax — snapshot runs on each save; use documentId param to update existing row
+        const body: Record<string, unknown> = {
+          url: openstaxUrl.trim(),
+          title: sharedMeta.title,
+          authors: sharedMeta.authors,
+          subjectMatter: sharedMeta.subjectMatter,
+          ccLicense: sharedMeta.ccLicense,
+          thirdPartyDisclosure: sharedMeta.thirdPartyDisclosure || undefined,
+          rubricIds,
+          submissionScope: sharedMeta.submissionScope,
+          isDraft: true,
+          publicReview: sharedMeta.publicReview,
+          additionalPageUrls: additionalPageUrls.filter(u => u.trim()).map(u => u.trim()),
+        }
+        if (draftDocumentId) body.documentId = draftDocumentId
+        const res = await fetch('/api/snapshot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) {
+          const resBody = await res.json().catch(() => ({}))
+          throw new Error(resBody.error ?? 'Failed to save draft.')
+        }
+        const resBody = await res.json().catch(() => ({}))
+        if (draftDocumentId) {
+          // Re-save: snapshot route updated content; also update metadata and rubrics
+          await updateDraftMetadata(supabase, draftDocumentId, sharedMeta)
+          await assignRubrics(supabase, draftDocumentId, rubricIds)
+        } else if (resBody.documentId) {
+          // Initial save: snapshot route created the doc and assigned rubrics
+          setDraftDocumentId(resBody.documentId)
+        }
+      }
+
+      router.refresh()
+      resetAll()
+      onClose()
+    } catch (err) {
+      console.error('Draft save failed:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save draft. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function toggleRubric(id: string) {
@@ -213,7 +361,7 @@ export function SubmissionModal({
         const doc = await uploadDocument(
           supabase, file!, title.trim(), 'pdf', authors.trim(), finalSubjectMatter,
           ccLicense as CreativeCommonsLicense, thirdPartyDisclosure.trim() || null,
-          [submissionScope],
+          [submissionScope], false, false, publicReview ?? false,
         )
         if (selectedRubrics.size > 0) {
           await assignRubrics(supabase, doc.id, Array.from(selectedRubrics))
@@ -231,6 +379,7 @@ export function SubmissionModal({
           submissionScope: [submissionScope],
           isDraft: false,
           coordinatorUpload: false,
+          publicReview: publicReview ?? false,
         })
       } else {
         const res = await fetch('/api/snapshot', {
@@ -245,6 +394,7 @@ export function SubmissionModal({
             thirdPartyDisclosure: thirdPartyDisclosure.trim() || undefined,
             rubricIds: Array.from(selectedRubrics),
             submissionScope: [submissionScope],
+            publicReview,
             additionalPageUrls: additionalPageUrls.filter(u => u.trim()).map(u => u.trim()),
           }),
         })
@@ -331,25 +481,12 @@ export function SubmissionModal({
             isSelected={sourceTab === 'openstax'}
             onChange={() => { setSourceTab('openstax'); touch() }}
             disabled={loading}
-            title="OER URL"
+            title="OpenStax or Pressbooks"
             size="compact"
             icon={
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13.828 10.172a4 4 0 010 5.656l-1.415 1.414a4 4 0 01-5.656-5.656l1.415-1.414M6.172 9.828a4 4 0 010-5.656l1.415-1.414a4 4 0 015.656 5.656L11.83 9.828" />
-              </svg>
-            }
-          />
-          <SelectionCard
-            selectionMode="radio"
-            isSelected={sourceTab === 'pdf'}
-            onChange={() => { setSourceTab('pdf'); touch() }}
-            disabled={loading}
-            title="PDF Upload"
-            size="compact"
-            icon={
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
-                <path d="M8 11h4M10 9v4" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
               </svg>
             }
           />
@@ -361,8 +498,26 @@ export function SubmissionModal({
             title="OLI Torus"
             size="compact"
             icon={
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+                <polygon points="10 7 15 10 10 13 10 7" />
+              </svg>
+            }
+          />
+          <SelectionCard
+            selectionMode="radio"
+            isSelected={sourceTab === 'pdf'}
+            onChange={() => { setSourceTab('pdf'); touch() }}
+            disabled={loading}
+            title="PDF"
+            size="compact"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
               </svg>
             }
           />
@@ -531,6 +686,11 @@ export function SubmissionModal({
       {rubricError && (
         <p className="text-body-sm text-[var(--color-error)]">{rubricError}</p>
       )}
+      {error && (
+        <p className="text-body-sm text-[var(--color-error)] bg-[var(--color-error-container)] rounded-lg px-3.5 py-2.5">
+          {error}
+        </p>
+      )}
     </div>
   )
 
@@ -578,10 +738,55 @@ export function SubmissionModal({
     { label: 'Submit to',     value: submissionScope === 'organization' ? 'My Organization' : 'Public Pool' },
     { label: 'Rubrics',       value: selectedRubricNames.join(', ') || '—' },
     { label: 'License',       value: ccLicense ? CC_LICENSE_LABELS[ccLicense as CreativeCommonsLicense] : '—' },
+    { label: 'Visibility',    value: publicReview ? 'Public' : 'Private' },
     ...(thirdPartyDisclosure ? [{ label: 'Third-Party Disclosure', value: thirdPartyDisclosure }] : []),
   ]
 
   const step4Content = (
+    <div>
+      <p className="text-body-sm text-text-secondary mb-5">
+        Should this review be public or private?
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <SelectionCard
+          selectionMode="radio"
+          isSelected={publicReview === true}
+          onChange={() => { setPublicReview(true); touch() }}
+          disabled={loading}
+          title="Public"
+          description="Once feedback is ready, you can choose to publish this review to the O4PR site for adopters to browse. Reviewers will know this review may become public."
+          icon={
+            <svg className="w-full h-full" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="6" />
+              <path d="M2 8h12" />
+              <path d="M8 2a9.6 9.6 0 0 1 2.5 6A9.6 9.6 0 0 1 8 14 9.6 9.6 0 0 1 5.5 8 9.6 9.6 0 0 1 8 2z" />
+            </svg>
+          }
+        />
+        <SelectionCard
+          selectionMode="radio"
+          isSelected={publicReview === false}
+          onChange={() => { setPublicReview(false); touch() }}
+          disabled={loading}
+          title="Private"
+          description="Stays within your organization only. Never appears on the public site. This choice can't be changed later."
+          icon={
+            <svg className="w-full h-full" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="8" rx="1" />
+              <path d="M5 7V5a3 3 0 016 0v2" />
+            </svg>
+          }
+        />
+      </div>
+      {error && (
+        <p className="mt-4 text-body-sm text-[var(--color-error)] bg-[var(--color-error-container)] rounded-lg px-3.5 py-2.5">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+
+  const step5Content = (
     <div className="space-y-5">
       <p className="text-body-sm text-text-secondary">
         Review your submission before sending it for certification.
@@ -608,9 +813,15 @@ export function SubmissionModal({
     <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-surface-card)]">
       <div className="flex items-center gap-3">
         {step === 1 ? (
-          <Button variant="secondary" size="md" onClick={handleCloseAttempt} disabled={loading}>
-            Cancel
-          </Button>
+          title.trim() ? (
+            <Button variant="text" size="md" onClick={handleSaveAsDraft} disabled={loading}>
+              Save & Exit
+            </Button>
+          ) : (
+            <Button variant="secondary" size="md" onClick={handleCloseAttempt} disabled={loading}>
+              Cancel
+            </Button>
+          )
         ) : (
           <>
             <Button variant="secondary" size="md" onClick={goBack} disabled={loading}>
@@ -623,15 +834,16 @@ export function SubmissionModal({
         )}
       </div>
       <div>
-        {step < 4 ? (
+        {step < 5 ? (
           <Button
             variant="primary"
             size="md"
-            disabled={loading}
+            disabled={loading || (step === 4 && publicReview === null)}
             onClick={() => {
               if (step === 1) handleContinueStep1()
               else if (step === 2) handleContinueStep2()
               else if (step === 3) handleContinueStep3()
+              else if (step === 4) setStep(5)
             }}
           >
             Continue →
@@ -684,6 +896,7 @@ export function SubmissionModal({
               {step === 2 && step2Content}
               {step === 3 && step3Content}
               {step === 4 && step4Content}
+              {step === 5 && step5Content}
             </div>
 
             {footer}

@@ -65,6 +65,27 @@ export function TaskPoolCard({
       {/* Left column (full width — no right column) */}
       <div className="flex-1 min-w-0">
 
+        {/* Row 1: public/private pill */}
+        <div className="flex items-center gap-2 mb-3">
+          {publicReview ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none bg-[var(--color-primary)] text-[var(--color-on-primary)] text-label-sm font-label font-semibold uppercase tracking-widest">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 2a8.5 8.5 0 010 12M8 2a8.5 8.5 0 000 12M2 8h12"/>
+              </svg>
+              Public
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none border border-[var(--color-status-unassigned-text)] bg-[var(--color-surface-card)] text-[var(--color-status-unassigned-text)] text-label-sm font-label font-semibold uppercase tracking-widest">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <rect x="3" y="8" width="10" height="7" rx="1"/>
+                <path d="M5 8V5a3 3 0 016 0v3"/>
+              </svg>
+              Private
+            </span>
+          )}
+        </div>
+
         {/* Row 2: title */}
         <h2 className="font-heading text-title-lg text-text-primary leading-snug truncate">
           {title}

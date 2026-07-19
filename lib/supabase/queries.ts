@@ -91,6 +91,7 @@ export async function uploadDocument(
   submissionScope: string[] = ['public'],
   isDraft = false,
   coordinatorUpload = false,
+  publicReview = false,
 ) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -128,6 +129,7 @@ export async function uploadDocument(
       submission_scope: submissionScope,
       is_draft: isDraft,
       coordinator_upload: coordinatorUpload,
+      public_review: publicReview,
     })
     .select()
     .single()
@@ -153,6 +155,7 @@ export async function submitOpenStaxLink(
     submissionScope: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    publicReview?: boolean
     additionalPages?: Array<{ url: string; fingerprint: string; storagePath: string }>
   }
 ) {
@@ -177,6 +180,7 @@ export async function submitOpenStaxLink(
       submission_scope: opts.submissionScope,
       is_draft: opts.isDraft ?? false,
       coordinator_upload: opts.coordinatorUpload ?? false,
+      public_review: opts.publicReview ?? false,
       pages: opts.additionalPages?.length ? (opts.additionalPages as import('@/types/database.types').Json) : null,
     })
     .select()
@@ -255,6 +259,7 @@ export async function submitTorusLink(
     submissionScope: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    publicReview?: boolean
   }
 ) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -277,6 +282,7 @@ export async function submitTorusLink(
       submission_scope: opts.submissionScope,
       is_draft: opts.isDraft ?? false,
       coordinator_upload: opts.coordinatorUpload ?? false,
+      public_review: opts.publicReview ?? false,
     })
     .select()
     .single()
@@ -324,6 +330,82 @@ export async function saveDraftDocument(
 
   if (error) throw error
   return data
+}
+
+/** Insert a PDF draft row (metadata only — skips file upload) */
+export async function savePdfDraft(
+  supabase: Client,
+  opts: {
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: CreativeCommonsLicense
+    thirdPartyDisclosure: string | null
+    submissionScope: string[]
+    publicReview: boolean
+    rubricIds: string[]
+  }
+) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      author_id: user.id,
+      title: opts.title,
+      file_type: 'pdf',
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      submission_scope: opts.submissionScope,
+      is_draft: true,
+      coordinator_upload: false,
+      public_review: opts.publicReview,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  if (opts.rubricIds.length > 0) {
+    await assignRubrics(supabase, data.id, opts.rubricIds)
+  }
+  return data
+}
+
+/** Update metadata fields on an existing draft without touching file/storage columns */
+export async function updateDraftMetadata(
+  supabase: Client,
+  documentId: string,
+  opts: {
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: string
+    thirdPartyDisclosure: string | null
+    submissionScope: string[]
+    publicReview: boolean
+    sourceUrl?: string | null
+    courseAccessCode?: string | null
+  }
+) {
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      title: opts.title,
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense as CreativeCommonsLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      submission_scope: opts.submissionScope,
+      public_review: opts.publicReview,
+      ...(opts.sourceUrl !== undefined ? { source_url: opts.sourceUrl, file_url: opts.sourceUrl } : {}),
+      ...(opts.courseAccessCode !== undefined ? { course_access_code: opts.courseAccessCode } : {}),
+    })
+    .eq('id', documentId)
+
+  if (error) throw error
 }
 
 /** Assign specific reviewers to a document (upserts, ignores duplicates) */
@@ -407,7 +489,7 @@ export async function getMyDocumentsWithStats(supabase: Client) {
     .select(`
       id, title, file_type, platform, created_at, authors, subject_matter,
       creative_commons_license, third_party_content_disclosure, source_url,
-      submission_scope, coordinator_released_at, is_draft, report_status,
+      submission_scope, coordinator_released_at, is_draft, report_status, public_review,
       document_rubrics ( rubric:rubrics ( id, title ) ),
       reviews ( id, status, submitted_at, rubric_id, coordinator_approval, review_rubric_submissions ( rubric_id ) )
     `)

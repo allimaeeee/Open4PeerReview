@@ -8,7 +8,7 @@ import type { ReportStatus } from '@/types'
 export interface RubricReview {
   rubricId: string
   rubricTitle: string
-  status: 'unassigned' | 'assigned' | 'under-review' | 'feedback-ready' | 'certified'
+  status: 'unassigned' | 'assigned' | 'under-review' | 'review-submitted' | 'feedback-ready' | 'published'
 }
 
 export interface DocumentCardProps {
@@ -25,35 +25,42 @@ export interface DocumentCardProps {
   reportStatus?: ReportStatus | null
   /** True once every rubric has been reviewed and released to the author. */
   reportReady?: boolean
+  /** Whether this document is on the public-review track (affects pipeline step labels). */
+  publicReview?: boolean
   onDelete?: () => void
   deleteDisabled?: boolean
 }
 
-// Publication badge shown once a report is releasable or has a decision. Uses the
-// pipeline status tokens (see app/globals.css) to stay consistent with StatusBadge.
-function reportBadgeFor(reportStatus: ReportStatus | null | undefined, reportReady: boolean | undefined) {
-  if (reportStatus === 'published') return { label: 'Published', bg: 'var(--color-status-completed-bg)', text: 'var(--color-status-completed-text)' }
-  if (reportStatus === 'private') return { label: 'Private', bg: 'var(--color-status-draft-bg)', text: 'var(--color-status-draft-text)' }
+// Badge shown for author report decisions not already covered by pipeline status badges.
+// 'published'         → pipeline already shows 'Published' per-rubric when report_status='published' — removed here.
+// 'ready to publish'  → pipeline already shows 'Feedback Ready' per-rubric when reportReady is true — removed here.
+// 'private'           → kept: on public-track submissions it conveys distinct info from the Public/Private pill.
+// 'revising'          → kept: no pipeline-status equivalent for this author action.
+function reportBadgeFor(reportStatus: ReportStatus | null | undefined) {
+  if (reportStatus === 'private')  return { label: 'Private',     bg: 'var(--color-status-draft-bg)',        text: 'var(--color-status-draft-text)' }
   if (reportStatus === 'revising') return { label: 'In Revision', bg: 'var(--color-status-in-progress-bg)', text: 'var(--color-status-in-progress-text)' }
-  if (reportReady) return { label: 'Ready to Publish', bg: 'var(--color-status-feedback-ready-bg)', text: 'var(--color-status-feedback-ready-text)' }
   return null
 }
 
 const PRIORITY_ORDER: RubricReview['status'][] = [
+  'published',
   'feedback-ready',
+  'review-submitted',
   'under-review',
   'assigned',
   'unassigned',
 ]
 
-const PIPELINE_STEPS = ['Unassigned', 'Assigned', 'Under Review', 'Feedback Ready', 'Certified']
+const PIPELINE_STEPS_PRIVATE = ['Unassigned', 'Assigned', 'Under Review', 'Review Submitted', 'Feedback Ready']
+const PIPELINE_STEPS_PUBLIC  = ['Unassigned', 'Assigned', 'Under Review', 'Review Submitted', 'Feedback Ready', 'Published']
 
 const STATUS_TO_STEP: Record<RubricReview['status'], number> = {
-  'unassigned':     1,
-  'assigned':       2,
-  'under-review':   3,
-  'feedback-ready': 4,
-  'certified':      5,
+  'unassigned':        1,
+  'assigned':          2,
+  'under-review':      3,
+  'review-submitted':  4,
+  'feedback-ready':    5,
+  'published':         6,
 }
 
 export function DocumentCard({
@@ -68,18 +75,16 @@ export function DocumentCard({
   rubrics,
   reportStatus,
   reportReady,
+  publicReview,
   onDelete,
   deleteDisabled,
 }: DocumentCardProps) {
-  const allCertified = rubrics.length > 0 && rubrics.every(r => r.status === 'certified')
-  const reportBadge = reportBadgeFor(reportStatus, reportReady)
+  const reportBadge = publicReview ? reportBadgeFor(reportStatus) : null
   const canViewReport = reportReady || reportStatus != null
 
-  const priorityStatus: RubricReview['status'] = allCertified
-    ? 'certified'
-    : PRIORITY_ORDER.find(s => rubrics.some(r => r.status === s)) ?? 'unassigned'
-
-  const otherCount = rubrics.filter(r => r.status !== priorityStatus).length
+  const distinctStatuses = PRIORITY_ORDER.filter(s => rubrics.some(r => r.status === s))
+  const shownStatuses = distinctStatuses.slice(0, 3)
+  const hiddenRubricCount = rubrics.filter(r => !shownStatuses.includes(r.status)).length
 
   const trigger = (
     <div className="flex items-start justify-between gap-4 w-full">
@@ -87,12 +92,29 @@ export function DocumentCard({
       {/* Left column */}
       <div className="flex-1 min-w-0">
 
-        {/* Row 1: status badge + count hint */}
+        {/* Row 1: public/private pill + status badges + report badge */}
         <div className="flex items-center gap-2 flex-wrap">
-          <StatusBadge variant={priorityStatus} />
-          {otherCount > 0 && (
+          <span className={publicReview
+            ? "inline-flex items-center gap-1 px-2 py-0.5 rounded-none bg-[var(--color-primary)] text-[var(--color-on-primary)] text-label-sm font-label font-semibold uppercase tracking-widest"
+            : "inline-flex items-center gap-1 px-2 py-0.5 rounded-none border border-[var(--color-status-unassigned-text)] bg-[var(--color-surface-card)] text-[var(--color-status-unassigned-text)] text-label-sm font-label font-semibold uppercase tracking-widest"
+          }>
+            {publicReview ? (
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 2a8.5 8.5 0 010 12M8 2a8.5 8.5 0 000 12M2 8h12"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <rect x="3" y="8" width="10" height="7" rx="1"/>
+                <path d="M5 8V5a3 3 0 016 0v3"/>
+              </svg>
+            )}
+            {publicReview ? 'Public' : 'Private'}
+          </span>
+          {shownStatuses.map(s => <StatusBadge key={s} variant={s} />)}
+          {hiddenRubricCount > 0 && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-sm bg-[var(--color-surface-container-high)] text-[var(--color-text-muted)] text-label-sm font-label font-medium uppercase tracking-widest">
-              +{otherCount} others
+              +{hiddenRubricCount} others
             </span>
           )}
           {reportBadge && (
@@ -129,27 +151,16 @@ export function DocumentCard({
 
       </div>
 
-      {/* Right column — report entry point / stamp */}
-      {(canViewReport || allCertified) && (
+      {/* Right column — report entry point */}
+      {canViewReport && (
         <div className="shrink-0 flex items-center gap-2">
-          {canViewReport && (
-            <Link
-              href={`/author/feedback/${id}?from=author&view=report`}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-primary bg-primary text-on-primary hover:bg-[var(--color-primary-hover)] px-4 py-2 text-sm"
-            >
-              {reportStatus ? 'Manage report' : 'View report'}
-            </Link>
-          )}
-          {allCertified && (
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            >
-              Download Stamp
-            </Button>
-          )}
+          <Link
+            href={`/author/feedback/${id}?from=author&view=report`}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md border border-primary bg-primary text-on-primary hover:bg-[var(--color-primary-hover)] px-4 py-2 text-sm"
+          >
+            {reportStatus ? 'Manage report' : 'View report'}
+          </Link>
         </div>
       )}
 
@@ -182,7 +193,7 @@ export function DocumentCard({
             </div>
 
             <StepIndicator
-              steps={PIPELINE_STEPS}
+              steps={publicReview ? PIPELINE_STEPS_PUBLIC : PIPELINE_STEPS_PRIVATE}
               currentStep={STATUS_TO_STEP[rubric.status]}
               size="compact-labeled"
             />

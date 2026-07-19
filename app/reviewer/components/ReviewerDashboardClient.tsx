@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { acceptDocument, declineDocument } from '@/app/coordinator/actions'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
 import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
@@ -37,6 +38,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   const initialTab = (searchParams.get('tab') ?? 'my-reviews') as 'my-reviews' | 'completed' | 'task-pool'
   const [activeTab, setActiveTab] = useState<'my-reviews' | 'completed' | 'task-pool'>(initialTab)
   const [confirmModal, setConfirmModal] = useState<'accepted' | 'declined' | null>(null)
+  const [acceptConfirm, setAcceptConfirm] = useState<{ id: string; publicReview: boolean } | null>(null)
   const [showSubmittedModal, setShowSubmittedModal] = useState(searchParams.get('submitted') === 'true')
 
   // Clear ?submitted from the URL so a refresh doesn't re-show the modal
@@ -207,11 +209,8 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
                   <TaskPoolCard
                     key={card.id}
                     {...card}
-                    onAccept={async (id) => {
-                      await acceptDocument(id)
-                      router.refresh()
-                      setActiveTab('my-reviews')
-                      setConfirmModal('accepted')
+                    onAccept={() => {
+                      setAcceptConfirm({ id: card.id, publicReview: card.publicReview ?? false })
                     }}
                     onDecline={async (id, declineNote) => {
                       await declineDocument(id, declineNote)
@@ -226,6 +225,50 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         )}
 
       </div>
+      {/* Accept confirmation modal */}
+      <Modal open={acceptConfirm !== null} onClose={() => setAcceptConfirm(null)}>
+        <div
+          onClick={e => e.stopPropagation()}
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface-card rounded-lg shadow-4 p-6"
+        >
+          <button
+            type="button"
+            onClick={() => setAcceptConfirm(null)}
+            aria-label="Close"
+            className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 4L4 12M4 4l8 8" />
+            </svg>
+          </button>
+          <h2 className="font-heading text-title-md text-text-primary mb-3 pr-6">Accept this review?</h2>
+          <p className="text-body-md text-text-secondary mb-6">
+            {acceptConfirm?.publicReview
+              ? 'This is a public review. If the author chooses to publish it, your feedback, ratings, and comments may appear on the O4PR public site alongside the OER. Once accepted, this task moves to your active reviews.'
+              : 'This is a private review. Your feedback, ratings, and comments will only be visible to the author and coordinators, and won\'t appear on the public site. Once accepted, this task moves to your active reviews.'}
+          </p>
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="secondary" size="md" onClick={() => setAcceptConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={async () => {
+                if (!acceptConfirm) return
+                await acceptDocument(acceptConfirm.id)
+                setAcceptConfirm(null)
+                router.refresh()
+                setActiveTab('my-reviews')
+                setConfirmModal('accepted')
+              }}
+            >
+              Accept review
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={showSubmittedModal} onClose={() => setShowSubmittedModal(false)}>
         <div
           onClick={e => e.stopPropagation()}

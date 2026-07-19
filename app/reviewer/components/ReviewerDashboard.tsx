@@ -108,6 +108,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       sourceUrl: doc.source_url ?? null,
       courseAccessCode: doc.course_access_code ?? null,
       defaultRubricId: defaultRubric?.rubricId ?? null,
+      publicReview: doc.public_review ?? false,
     }
   })
 
@@ -125,6 +126,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
       completedAt: myReview?.submitted_at ?? doc.created_at,
       reviewUrl: `/author/feedback/${doc.id}?from=reviewer&view=report`,
+      publicReview: doc.public_review ?? false,
     }
   })
 

@@ -2,16 +2,21 @@
 
 import { useState } from 'react'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
-import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
 import { DocumentCard } from '@/components/patterns/DocumentCard'
 import type { DocumentCardProps, RubricReview } from '@/components/patterns/DocumentCard'
+import { DraftCard } from '@/components/patterns/DraftCard'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { SubmissionModal } from './SubmissionModal'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { deleteDocument } from '@/app/coordinator/actions'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense, ReportStatus } from '@/types'
+
+function cx(...parts: (string | false | null | undefined)[]) {
+  return parts.filter(Boolean).join(' ')
+}
 
 interface RubricRow {
   id: string
@@ -29,13 +34,17 @@ interface DocumentRow {
   file_type: string | null
   platform: string | null
   created_at: string
+  is_draft: boolean
   report_status: ReportStatus | null
+  submission_scope: string[] | null
+  public_review: boolean | null
   document_rubrics: { rubric: { id: string; title: string } | null }[]
   reviews: {
     id: string
     status: string
     submitted_at: string | null
     rubric_id: string
+    coordinator_approval?: string | null
     review_rubric_submissions?: { rubric_id: string }[]
   }[]
 }
@@ -55,19 +64,29 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
     .map(dr => dr.rubric?.id)
     .filter((id): id is string => !!id)
 
-  // Per-rubric submission: a rubric is 'feedback-ready' once released to the author.
-  // Legacy fallback: a submitted review with no submission rows predates per-rubric
-  // submission — treat all its rubrics as released.
-  const submittedRubricIds = new Set<string>(
-    doc.reviews.flatMap(rev => {
-      const subs = rev.review_rubric_submissions ?? []
-      if (subs.length > 0) return subs.map(s => s.rubric_id)
-      if (rev.status === 'submitted') return docRubricIds
-      return []
-    })
-  )
-  // The author only ever sees reviews that have started releasing feedback (RLS), so any
-  // review present means a reviewer is actively working the remaining rubrics.
+  // Split submitted rubrics into coordinator-approved and pending sets.
+  // Organization-scoped docs require coordinator_approval === 'approved' before
+  // feedback is visible to the author (mirrors getDocumentFeedback's gate).
+  // Public-pool docs skip the gate — submission alone is sufficient.
+  const approvedRubricIds = new Set<string>()
+  const pendingRubricIds = new Set<string>()
+  const requiresApproval = doc.submission_scope?.includes('organization') ?? false
+
+  doc.reviews.forEach(rev => {
+    const subs = rev.review_rubric_submissions ?? []
+    // Per-rubric submission rows are the primary signal; legacy whole-review
+    // submissions (status === 'submitted', no rows) fall back to all doc rubrics.
+    const rubricIds = subs.length > 0
+      ? subs.map(s => s.rubric_id)
+      : rev.status === 'submitted' ? docRubricIds : []
+
+    if (!requiresApproval || rev.coordinator_approval === 'approved') {
+      rubricIds.forEach(id => approvedRubricIds.add(id))
+    } else {
+      rubricIds.forEach(id => pendingRubricIds.add(id))
+    }
+  })
+
   const hasActiveReview = doc.reviews.length > 0
 
   const rubrics: RubricReview[] = doc.document_rubrics
@@ -75,14 +94,15 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
     .filter((r): r is { id: string; title: string } => r !== null)
     .map(r => {
       const status: RubricReview['status'] =
-        submittedRubricIds.has(r.id) ? 'feedback-ready' :
-        hasActiveReview              ? 'under-review' :
+        doc.report_status === 'published' ? 'published' :
+        approvedRubricIds.has(r.id)       ? 'feedback-ready' :
+        pendingRubricIds.has(r.id)        ? 'review-submitted' :
+        hasActiveReview                   ? 'under-review' :
         'unassigned'
       return { rubricId: r.id, rubricTitle: r.title, status }
     })
 
-  // The report is releasable once every rubric has reached feedback-ready (or certified).
-  const reportReady = rubrics.length > 0 && rubrics.every(r => r.status === 'feedback-ready' || r.status === 'certified')
+  const reportReady = rubrics.length > 0 && rubrics.every(r => r.status === 'feedback-ready')
 
   return {
     id: doc.id,
@@ -98,16 +118,31 @@ function mapDocumentToCardProps(doc: DocumentRow): DocumentCardProps {
     rubrics,
     reportStatus: doc.report_status,
     reportReady,
+    publicReview: doc.public_review ?? false,
   }
 }
 
+type TabId = 'active' | 'active-public' | 'active-private' | 'completed' | 'completed-public' | 'completed-private' | 'drafts'
+
+const PAGE_COPY: Record<TabId, { header: string; subtext: string }> = {
+  'active':            { header: 'Active Submissions',            subtext: 'Track your submissions through the peer review pipeline.' },
+  'active-public':     { header: 'Active Public Submissions',     subtext: 'Public submissions currently moving through the peer review pipeline.' },
+  'active-private':    { header: 'Active Private Submissions',    subtext: 'Private submissions currently moving through the peer review pipeline.' },
+  'completed':         { header: 'Completed Submissions',         subtext: 'Submissions that have finished the peer review pipeline.' },
+  'completed-public':  { header: 'Completed Public Submissions',  subtext: "Public submissions you've published or chosen to keep private." },
+  'completed-private': { header: 'Completed Private Submissions', subtext: 'Private submissions whose review process is complete.' },
+  'drafts':            { header: 'Drafts',                        subtext: 'Submissions saved as drafts.' },
+}
+
 export function AuthorDashboardClient({ displayName, documents, rubrics, customSubjectMatters, authorInstitution }: Props) {
-  const [activeTab, setActiveTab] = useState('active')
+  const [activeTab, setActiveTab] = useState<TabId>('active')
   const [activeFilter, setActiveFilter] = useState('all')
   const [showUpload, setShowUpload] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [draftDocumentIdForModal, setDraftDocumentIdForModal] = useState<string | null>(null)
 
-  const allCards = documents.map(mapDocumentToCardProps)
+  const draftDocuments = documents.filter(d => d.is_draft)
+  const allCards = documents.filter(d => !d.is_draft).map(mapDocumentToCardProps)
 
   // Tab split — "completed" = the author has finalized the report (published or
   // kept private); "active" = everything still in the pipeline, including reports
@@ -116,32 +151,47 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
   const activeCards = allCards.filter(c => !isFinalized(c))
   const completedCards = allCards.filter(isFinalized)
 
-  const tabCards = activeTab === 'active' ? activeCards : completedCards
+  const tabIsActive    = activeTab === 'active' || activeTab === 'active-public'    || activeTab === 'active-private'
+  const tabIsCompleted = activeTab === 'completed' || activeTab === 'completed-public' || activeTab === 'completed-private'
+
+  const activePublicCount     = activeCards.filter(c => c.publicReview === true).length
+  const activePrivateCount    = activeCards.filter(c => !c.publicReview).length
+  const completedPublicCount  = completedCards.filter(c => c.publicReview === true).length
+  const completedPrivateCount = completedCards.filter(c => !c.publicReview).length
+
+  const baseCards = tabIsActive ? activeCards : tabIsCompleted ? completedCards : []
+  const tabCards =
+    activeTab === 'active-public'     ? baseCards.filter(c => c.publicReview === true) :
+    activeTab === 'active-private'    ? baseCards.filter(c => !c.publicReview) :
+    activeTab === 'completed-public'  ? baseCards.filter(c => c.publicReview === true) :
+    activeTab === 'completed-private' ? baseCards.filter(c => !c.publicReview) :
+    baseCards
 
   const getPriorityStatus = (card: DocumentCardProps): RubricReview['status'] => {
-    const PRIORITY: RubricReview['status'][] = ['feedback-ready', 'under-review', 'assigned', 'unassigned']
-    const allCertified = card.rubrics.length > 0 && card.rubrics.every(r => r.status === 'certified')
-    if (allCertified) return 'certified'
+    const PRIORITY: RubricReview['status'][] = ['published', 'feedback-ready', 'review-submitted', 'under-review', 'assigned', 'unassigned']
     return PRIORITY.find(s => card.rubrics.some(r => r.status === s)) ?? 'unassigned'
   }
 
-  const filterOptions = activeTab === 'active'
+  const filterOptions = tabIsActive
     ? [
-        { value: 'all',            label: 'All',           count: tabCards.length },
-        { value: 'needs-revision', label: 'Needs Revision', count: tabCards.filter(c => getPriorityStatus(c) === 'feedback-ready').length },
-        { value: 'under-review',   label: 'Under Review',  count: tabCards.filter(c => getPriorityStatus(c) === 'under-review').length },
-        { value: 'assigned',       label: 'Assigned',      count: tabCards.filter(c => getPriorityStatus(c) === 'assigned').length },
-        { value: 'unassigned',     label: 'Unassigned',    count: tabCards.filter(c => getPriorityStatus(c) === 'unassigned').length },
+        { value: 'all',              label: 'All',              count: tabCards.length },
+        { value: 'needs-revision',   label: 'Needs Revision',   count: tabCards.filter(c => getPriorityStatus(c) === 'feedback-ready').length },
+        { value: 'review-submitted', label: 'Review Submitted', count: tabCards.filter(c => getPriorityStatus(c) === 'review-submitted').length },
+        { value: 'under-review',     label: 'Under Review',     count: tabCards.filter(c => getPriorityStatus(c) === 'under-review').length },
+        { value: 'assigned',         label: 'Assigned',         count: tabCards.filter(c => getPriorityStatus(c) === 'assigned').length },
+        { value: 'unassigned',       label: 'Unassigned',       count: tabCards.filter(c => getPriorityStatus(c) === 'unassigned').length },
       ]
-    : [
-        { value: 'all',       label: 'All',       count: tabCards.length },
-        { value: 'published', label: 'Published', count: tabCards.filter(c => c.reportStatus === 'published').length },
-        { value: 'private',   label: 'Private',   count: tabCards.filter(c => c.reportStatus === 'private').length },
-      ]
+    : tabIsCompleted
+      ? [
+          { value: 'all',       label: 'All',       count: tabCards.length },
+          { value: 'published', label: 'Published', count: tabCards.filter(c => c.reportStatus === 'published').length },
+          { value: 'private',   label: 'Private',   count: tabCards.filter(c => c.reportStatus === 'private').length },
+        ]
+      : []
 
   const filteredCards = activeFilter === 'all'
     ? tabCards
-    : activeTab === 'completed'
+    : tabIsCompleted
       ? tabCards.filter(c => c.reportStatus === activeFilter)
       : tabCards.filter(c => {
           const s = getPriorityStatus(c)
@@ -149,14 +199,33 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
           return s === activeFilter
         })
 
-  const sidebarItems = [
-    { id: 'active',    label: 'Active Submissions', count: activeCards.length },
-    { id: 'completed', label: 'Completed',          count: completedCards.length },
-  ]
-
   const handleTabChange = (id: string) => {
-    setActiveTab(id)
+    setActiveTab(id as TabId)
     setActiveFilter('all')
+  }
+
+  const navBtn = (id: string, label: string, count?: number, indent = false) => {
+    const isActive = activeTab === id
+    return (
+      <button
+        type="button"
+        onClick={() => handleTabChange(id)}
+        className={cx(
+          'w-full text-left py-2 rounded-md text-body-md transition-colors cursor-pointer flex items-center justify-between',
+          indent ? 'pl-7 pr-3' : 'px-3',
+          isActive
+            ? 'bg-surface-container text-text-primary font-medium'
+            : 'text-text-secondary hover:bg-surface-container hover:text-text-primary'
+        )}
+      >
+        <span className={cx(!indent && 'font-semibold')}>{label}</span>
+        {count !== undefined && (
+          <span className="text-label-sm font-label font-semibold px-1.5 py-0.5 rounded-full bg-[var(--color-surface-container-high)] text-text-muted leading-none">
+            {count}
+          </span>
+        )}
+      </button>
+    )
   }
 
   const rightPanel = (
@@ -171,14 +240,35 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
   )
 
   const sidebar = (
-    <DashboardSidebar
-      title="My Workspace"
-      activeItem={activeTab}
-      items={sidebarItems}
-      onNavigate={handleTabChange}
-      ctaLabel="+ New Submission"
-      onCtaClick={() => setShowUpload(true)}
-    />
+    <div className="flex flex-col h-full p-4">
+      <Button
+        variant="primary"
+        size="md"
+        fullWidth
+        onClick={() => setShowUpload(true)}
+        className="mb-6"
+      >
+        + New Submission
+      </Button>
+
+      <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-muted mb-3">
+        My Workspace
+      </p>
+
+      {navBtn('active', 'Active Submissions', activeCards.length)}
+      {navBtn('active-public',  'Public',  activePublicCount,  true)}
+      {navBtn('active-private', 'Private', activePrivateCount, true)}
+
+      <div className="mt-2">
+        {navBtn('completed',         'Completed',  completedCards.length)}
+        {navBtn('completed-public',  'Public',  completedPublicCount,  true)}
+        {navBtn('completed-private', 'Private', completedPrivateCount, true)}
+      </div>
+
+      <div className="mt-2">
+        {navBtn('drafts', 'Drafts', draftDocuments.length || undefined)}
+      </div>
+    </div>
   )
 
   return (
@@ -192,30 +282,62 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
               Author Workspace
             </p>
             <h1 className="text-heading-lg font-semibold font-heading text-text-primary">
-              {activeTab === 'active' ? 'Active Submissions' : 'Completed Submissions'}
+              {PAGE_COPY[activeTab].header}
             </h1>
             <p className="text-body-md text-text-secondary mt-1">
-              {activeTab === 'active'
-                ? 'Track your submissions through the certification pipeline.'
-                : 'Reports you have published or kept private.'}
+              {PAGE_COPY[activeTab].subtext}
             </p>
           </div>
 
-          {/* Filter pills */}
-          <FilterPillGroup
-            options={filterOptions}
-            value={activeFilter}
-            onChange={setActiveFilter}
-            size="sm"
-          />
+          {/* Filter pills (not shown on Drafts tab) */}
+          {activeTab !== 'drafts' && (
+            <FilterPillGroup
+              options={filterOptions}
+              value={activeFilter}
+              onChange={setActiveFilter}
+              size="sm"
+            />
+          )}
 
           {/* Document list */}
           <div className="mt-6 space-y-4">
-            {filteredCards.length === 0 ? (
+            {activeTab === 'drafts' ? (
+              draftDocuments.length === 0 ? (
+                <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
+                  <p className="text-body-md font-medium text-text-secondary">No drafts yet.</p>
+                  <p className="text-body-sm text-text-muted mt-1">
+                    Save a submission as a draft and it will appear here.
+                  </p>
+                </div>
+              ) : (
+                draftDocuments.map(doc => {
+                  const rubrics = doc.document_rubrics
+                    .map(dr => dr.rubric)
+                    .filter((r): r is { id: string; title: string } => r !== null)
+                  const platform = doc.platform
+                    ?? (doc.file_type === 'pdf' ? 'PDF' : doc.file_type?.toUpperCase() ?? 'Unknown')
+                  return (
+                    <DraftCard
+                      key={doc.id}
+                      id={doc.id}
+                      title={doc.title}
+                      platform={platform}
+                      rubrics={rubrics}
+                      savedAt={doc.created_at}
+                      onContinue={() => {
+                        setDraftDocumentIdForModal(doc.id)
+                        setShowUpload(true)
+                      }}
+                      onDelete={() => setDeletingId(doc.id)}
+                    />
+                  )
+                })
+              )
+            ) : filteredCards.length === 0 ? (
               <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
                 <p className="text-body-md font-medium text-text-secondary">No submissions here yet.</p>
                 <p className="text-body-sm text-text-muted mt-1">
-                  {activeTab === 'active'
+                  {tabIsActive
                     ? 'Use the sidebar to submit a new OER for review.'
                     : 'Reports you publish or keep private will appear here.'}
                 </p>
@@ -227,8 +349,8 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                   <DocumentCard
                     key={card.id}
                     {...card}
-                    onDelete={activeTab === 'active' && canDelete ? () => setDeletingId(card.id) : undefined}
-                    deleteDisabled={activeTab === 'active' && !canDelete}
+                    onDelete={tabIsActive && canDelete ? () => setDeletingId(card.id) : undefined}
+                    deleteDisabled={tabIsActive && !canDelete}
                   />
                 )
               })
@@ -240,11 +362,12 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
 
       <SubmissionModal
         isOpen={showUpload}
-        onClose={() => setShowUpload(false)}
+        onClose={() => { setShowUpload(false); setDraftDocumentIdForModal(null) }}
         rubrics={rubrics}
         customSubjectMatters={customSubjectMatters}
         displayName={displayName}
         authorInstitution={authorInstitution}
+        documentId={draftDocumentIdForModal ?? undefined}
       />
 
       <ConfirmationDialog
