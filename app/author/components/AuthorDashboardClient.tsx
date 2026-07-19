@@ -144,12 +144,16 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
   const draftDocuments = documents.filter(d => d.is_draft)
   const allCards = documents.filter(d => !d.is_draft).map(mapDocumentToCardProps)
 
-  // Tab split — "completed" = the author has finalized the report (published or
-  // kept private); "active" = everything still in the pipeline, including reports
-  // that are released but awaiting the author's decision, or being revised.
-  const isFinalized = (c: DocumentCardProps) => c.reportStatus === 'published' || c.reportStatus === 'private'
-  const activeCards = allCards.filter(c => !isFinalized(c))
-  const completedCards = allCards.filter(isFinalized)
+  // Tab split:
+  //   Private track — Completed once all feedback is released (no decision step).
+  //   Public track  — Completed only after the author makes a final decision
+  //                   (published or kept private). Revising stays in Active.
+  const isCompleted = (c: DocumentCardProps) =>
+    !c.publicReview
+      ? c.reportReady === true
+      : c.reportStatus === 'published' || c.reportStatus === 'private'
+  const activeCards = allCards.filter(c => !isCompleted(c))
+  const completedCards = allCards.filter(isCompleted)
 
   const tabIsActive    = activeTab === 'active' || activeTab === 'active-public'    || activeTab === 'active-private'
   const tabIsCompleted = activeTab === 'completed' || activeTab === 'completed-public' || activeTab === 'completed-private'

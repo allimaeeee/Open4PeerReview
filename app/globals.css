@@ -79,6 +79,11 @@
   --color-status-completed-bg:        #d4f0d4;
   --color-status-completed-text:      #1a5c1a;
 
+  /* ── Decision / revision banners (DocumentCard) ── */
+  --color-banner-bg:     #cce0f2;
+  --color-banner-border: #8bb5d4;
+  --color-banner-text:   #123653;
+
   /* ── Role accents ── */
   --color-role-author:              #0c3b1a;
   --color-role-reviewer:            #242d64;
