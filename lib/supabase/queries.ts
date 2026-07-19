@@ -643,7 +643,7 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
       creative_commons_license, third_party_content_disclosure, source_url, course_access_code, public_review,
       author:users!author_id ( id, display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title, rubric_items ( id ) ) ),
-      reviews ( id, status, reviewer_id, submitted_at, rubric_id, notes, review_scores ( id, rubric_item_id, criterion_scores ) )
+      reviews ( id, status, reviewer_id, submitted_at, rubric_id, notes, review_scores ( id, rubric_item_id, criterion_scores ), review_rubric_submissions ( rubric_id ) )
     `)
     .order('created_at', { ascending: false })
 

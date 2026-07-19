@@ -22,7 +22,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const assignedIds = new Set((assignmentsData ?? []).map(a => a.document_id))
 
   type ReviewScoreRow = { id: string; rubric_item_id: string; criterion_scores: string[] }
-  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; notes: string | null; review_scores: ReviewScoreRow[] }
+  type ReviewRow = { id: string; status: string; reviewer_id: string; submitted_at: string | null; rubric_id: string | null; notes: string | null; review_scores: ReviewScoreRow[]; review_rubric_submissions?: { rubric_id: string }[] }
   type AuthorRow = { display_name: string | null; email: string } | null
   type Doc = (typeof documents)[number]
 
@@ -53,13 +53,17 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       const ratedCount = myScores.filter(
         rs => rubricItemIds.has(rs.rubric_item_id) && (rs.criterion_scores ?? []).length > 0
       ).length
+      // Per-rubric submission is tracked in review_rubric_submissions, not reviews.status —
+      // reviews.status only flips to 'submitted' when ALL rubrics are done.
+      const perRubricSubmitted = (myReview?.review_rubric_submissions ?? []).length > 0
+      const status = perRubricSubmitted || myReview?.status === 'submitted' ? 'submitted' : (myReview?.status ?? null)
       return {
         rubricId: r.id,
         rubricTitle: r.title,
         ratedCount,
         totalCount,
         reviewId: myReview?.id ?? null,
-        status: myReview?.status ?? null,
+        status,
       }
     })
   }
@@ -116,7 +120,11 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
   const completedCards = completedReviews.map(doc => {
     const author = doc.author as AuthorRow
     const reviews = (doc.reviews ?? []) as ReviewRow[]
-    const myReview = reviews.filter(r => r.reviewer_id === userId).find(r => r.status === 'submitted')
+    const submittedReviews = reviews.filter(r => r.reviewer_id === userId && r.status === 'submitted')
+    const latestSubmitted = submittedReviews.reduce<ReviewRow | null>(
+      (latest, r) => !latest || (r.submitted_at ?? '') > (latest.submitted_at ?? '') ? r : latest,
+      null
+    )
     return {
       id: doc.id,
       title: doc.title,
@@ -124,7 +132,7 @@ export async function ReviewerDashboard({ userId, displayName }: Props) {
       authorName: author?.display_name ?? author?.email ?? 'Unknown',
       discipline: EXPERT_DOMAIN_LABELS[doc.subject_matter as ExpertDomain] ?? doc.subject_matter ?? '',
       rubrics: mapRubrics(doc).map(r => ({ rubricId: r.id, rubricTitle: r.title })),
-      completedAt: myReview?.submitted_at ?? doc.created_at,
+      completedAt: latestSubmitted?.submitted_at ?? doc.created_at,
       reviewUrl: `/author/feedback/${doc.id}?from=reviewer&view=report`,
       publicReview: doc.public_review ?? false,
     }

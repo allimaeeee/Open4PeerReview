@@ -2,9 +2,12 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Card } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { RubricTagList } from '@/components/ui/RubricTagList'
+
+function cx(...parts: (string | false | null | undefined)[]) {
+  return parts.filter(Boolean).join(' ')
+}
 
 export interface CompletedReviewCardProps {
   id: string
@@ -34,7 +37,13 @@ export function CompletedReviewCard({
   })
 
   return (
-    <Card>
+    <div className={cx(
+      'rounded-lg bg-[var(--color-surface-card)] border',
+      'transition-[box-shadow,border-color,transform] duration-[var(--transition-duration-base)] ease-[var(--transition-timing-function-brand)]',
+      isOpen
+        ? 'border-[var(--color-border-strong)] shadow-[0_2px_8px_rgba(28,28,24,0.05),0_20px_56px_rgba(28,28,24,0.08)] -translate-y-[2px]'
+        : 'border-[var(--color-border)] shadow-[var(--shadow-1)] hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-2)] hover:-translate-y-[1px]'
+    )}>
       {/* Header — always visible, clickable to toggle */}
       <div
         className="p-5 flex items-start justify-between gap-4 cursor-pointer select-none"
@@ -98,8 +107,15 @@ export function CompletedReviewCard({
 
         </div>
 
-        {/* Right column: chevron */}
-        <div className="shrink-0 flex flex-col items-end">
+        {/* Right column: View Report button + chevron */}
+        <div className="shrink-0 flex flex-col items-end gap-2">
+          <Link
+            href={reviewUrl}
+            onClick={e => e.stopPropagation()}
+            className="inline-flex items-center justify-center font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md px-3 py-1.5 text-xs font-semibold border border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-hover)]"
+          >
+            View Report
+          </Link>
           <svg
             viewBox="0 0 16 16"
             fill="none"
@@ -121,23 +137,16 @@ export function CompletedReviewCard({
             {rubrics.map(r => (
               <div
                 key={r.rubricId}
-                className="flex items-center justify-between gap-4 py-3 border-b border-[var(--color-border)] last:border-b-0"
+                className="flex items-center py-3 border-b border-[var(--color-border)] last:border-b-0"
               >
                 <span className="text-body-md text-text-primary font-medium">
                   {r.rubricTitle}
                 </span>
-                <Link
-                  href={reviewUrl}
-                  onClick={e => e.stopPropagation()}
-                  className="inline-flex items-center justify-center gap-2 font-medium transition-all duration-[var(--transition-duration-base)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md font-semibold bg-primary text-on-primary shadow-1 hover:bg-primary-hover hover:shadow-2 active:scale-[0.99] px-3 py-1.5 text-label-md"
-                >
-                  View Submitted Review
-                </Link>
               </div>
             ))}
           </div>
         </div>
       </div>
-    </Card>
+    </div>
   )
 }

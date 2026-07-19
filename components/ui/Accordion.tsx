@@ -20,7 +20,14 @@ export function Accordion({ trigger, children, defaultOpen = false, className, c
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (
-    <div className={cx('rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-card)] shadow-[var(--shadow-1)]', className)}>
+    <div className={cx(
+      'rounded-lg bg-[var(--color-surface-card)] border',
+      'transition-[box-shadow,border-color,transform] duration-[var(--transition-duration-base)] ease-[var(--transition-timing-function-brand)]',
+      isOpen
+        ? 'border-[var(--color-border-strong)] shadow-[0_2px_8px_rgba(28,28,24,0.05),0_20px_56px_rgba(28,28,24,0.08)] -translate-y-[2px]'
+        : 'border-[var(--color-border)] shadow-[var(--shadow-1)] hover:border-[var(--color-border-strong)] hover:shadow-[var(--shadow-2)] hover:-translate-y-[1px]',
+      className
+    )}>
       <div
         className={cx('flex justify-between px-5 py-4 cursor-pointer', rightSlot ? 'items-start' : 'items-center')}
         onClick={() => setIsOpen(prev => !prev)}

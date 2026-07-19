@@ -74,12 +74,14 @@ export function ReviewerCard({
   const pct = (r: RubricProgress) => r.totalCount > 0 ? (r.ratedCount / r.totalCount) * 100 : 0
   const isTorus = platform === 'OLI Torus'
 
-  // Status/CTA reflect the currently selected rubric tab, not the whole document.
+  // CTA label reflects the active rubric tab: opened on the server (in_progress) or has ratings.
   const activeStarted = activeRubric ? pct(activeRubric) > 0 || activeRubric.status === 'in_progress' : false
+  // Badge matches the filter pill: in-progress only once at least one criterion is rated across any rubric.
+  const anyRated = rubrics.some(r => pct(r) > 0)
   const cardStatus: 'not-started' | 'in-progress' =
-    (activeStarted || hasGeneralComment) ? 'in-progress' : 'not-started'
+    (anyRated || hasGeneralComment) ? 'in-progress' : 'not-started'
 
-  const ctaLabel = activeStarted ? 'Continue review' : 'Start review'
+  const ctaLabel = cardStatus === 'in-progress' ? 'Continue review' : 'Start review'
 
   const formattedDate = new Date(claimedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -194,6 +196,14 @@ export function ReviewerCard({
                   {rubric.rubricTitle}
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
+                  {rubric.status === 'submitted' && (
+                    <span className="inline-flex items-center gap-1 text-label-sm font-label font-semibold uppercase tracking-wide text-success">
+                      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 6l3 3 5-5" />
+                      </svg>
+                      Submitted
+                    </span>
+                  )}
                   <span className={[
                     'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold whitespace-nowrap',
                     pct(rubric) === 100

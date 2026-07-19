@@ -11,8 +11,11 @@ import { Card } from '@/components/ui/Card'
 import { SubmissionModal } from './SubmissionModal'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { deleteDocument } from '@/app/coordinator/actions'
+import { Select } from '@/components/ui/Select'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense, ReportStatus } from '@/types'
+
+type SortOrder = 'recent' | 'oldest' | 'az'
 
 function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(' ')
@@ -137,6 +140,7 @@ const PAGE_COPY: Record<TabId, { header: string; subtext: string }> = {
 export function AuthorDashboardClient({ displayName, documents, rubrics, customSubjectMatters, authorInstitution }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('active')
   const [activeFilter, setActiveFilter] = useState('all')
+  const [sortBy, setSortBy] = useState<SortOrder>('recent')
   const [showUpload, setShowUpload] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [draftDocumentIdForModal, setDraftDocumentIdForModal] = useState<string | null>(null)
@@ -293,20 +297,42 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
             </p>
           </div>
 
-          {/* Filter pills (not shown on Drafts tab) */}
-          {activeTab !== 'drafts' && (
-            <FilterPillGroup
-              options={filterOptions}
-              value={activeFilter}
-              onChange={setActiveFilter}
-              size="sm"
-            />
-          )}
+          {/* Sort + filter row */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+              <div className="w-44">
+                <Select
+                  size="compact"
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as SortOrder)}
+                >
+                  <option value="recent">Most Recent First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="az">A–Z</option>
+                </Select>
+              </div>
+            </div>
+            {activeTab !== 'drafts' && (
+              <FilterPillGroup
+                options={filterOptions}
+                value={activeFilter}
+                onChange={setActiveFilter}
+                size="sm"
+              />
+            )}
+          </div>
 
           {/* Document list */}
           <div className="mt-6 space-y-4">
-            {activeTab === 'drafts' ? (
-              draftDocuments.length === 0 ? (
+            {activeTab === 'drafts' ? (() => {
+              const sortedDrafts = [...draftDocuments].sort((a, b) => {
+                if (sortBy === 'az') return a.title.localeCompare(b.title)
+                const da = new Date(a.created_at).getTime()
+                const db = new Date(b.created_at).getTime()
+                return sortBy === 'recent' ? db - da : da - db
+              })
+              return sortedDrafts.length === 0 ? (
                 <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
                   <p className="text-body-md font-medium text-text-secondary">No drafts yet.</p>
                   <p className="text-body-sm text-text-muted mt-1">
@@ -314,7 +340,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                   </p>
                 </div>
               ) : (
-                draftDocuments.map(doc => {
+                sortedDrafts.map(doc => {
                   const rubrics = doc.document_rubrics
                     .map(dr => dr.rubric)
                     .filter((r): r is { id: string; title: string } => r !== null)
@@ -337,29 +363,36 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                   )
                 })
               )
-            ) : filteredCards.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
-                <p className="text-body-md font-medium text-text-secondary">No submissions here yet.</p>
-                <p className="text-body-sm text-text-muted mt-1">
-                  {tabIsActive
-                    ? 'Use the sidebar to submit a new OER for review.'
-                    : 'Reports you publish or keep private will appear here.'}
-                </p>
-              </div>
-            ) : (
-              filteredCards.map(card => {
-                const canDelete = card.rubrics.every(r => r.status === 'unassigned' || r.status === 'assigned')
-                return (
-                  <DocumentCard
-                    key={card.id}
-                    {...card}
-                    onDelete={tabIsActive && canDelete ? () => setDeletingId(card.id) : undefined}
-                    deleteDisabled={tabIsActive && !canDelete}
-                  />
-                )
+            })() : (() => {
+              const sortedCards = [...filteredCards].sort((a, b) => {
+                if (sortBy === 'az') return a.title.localeCompare(b.title)
+                const da = new Date(a.submittedAt).getTime()
+                const db = new Date(b.submittedAt).getTime()
+                return sortBy === 'recent' ? db - da : da - db
               })
-            )}
-          </div>
+              return sortedCards.length === 0 ? (
+                <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
+                  <p className="text-body-md font-medium text-text-secondary">No submissions here yet.</p>
+                  <p className="text-body-sm text-text-muted mt-1">
+                    {tabIsActive
+                      ? 'Use the sidebar to submit a new OER for review.'
+                      : 'Reports you publish or keep private will appear here.'}
+                  </p>
+                </div>
+              ) : (
+                sortedCards.map(card => {
+                  const canDelete = card.rubrics.every(r => r.status === 'unassigned' || r.status === 'assigned')
+                  return (
+                    <DocumentCard
+                      key={card.id}
+                      {...card}
+                      onDelete={tabIsActive && canDelete ? () => setDeletingId(card.id) : undefined}
+                      deleteDisabled={tabIsActive && !canDelete}
+                    />
+                  )
+                })
+              )
+            })()}</div>
 
         </div>
       </DashboardShell>

@@ -129,53 +129,35 @@ export function ReviewRightPanel({
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-surface">
-      {/* Fixed header: rubric tabs + global submit button */}
-      <div className="flex-shrink-0 flex items-stretch">
-        <div className="flex-1 min-w-0">
-          <TabBar
-            tabs={rubrics.map(r => ({
-              id: r.id,
-              label: r.title,
-              badge: submittedRubricIds.has(r.id) ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label font-semibold bg-success-container text-success border border-success">
-                  <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M13 4L6 11L3 8" />
-                  </svg>
-                  Submitted
-                </span>
-              ) : (
-                <span className={[
-                  'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
-                  r.rated === r.total && r.total > 0
-                    ? 'bg-success-container text-success border border-success'
-                    : 'bg-amber-100 text-amber-800 border border-amber-800',
-                ].join(' ')}>
-                  {r.rated}/{r.total}
-                </span>
-              ),
-            }))}
-            activeId={activeRubricId ?? ''}
-            onChange={onActiveRubricChange}
-            tabClassName="py-[16px]"
-          />
-        </div>
-        <div className="shrink-0 flex items-center px-3 bg-surface-card border-l border-b border-border">
-          <Button
-            variant="primary"
-            disabled={generalReadOnly || activeRubricSubmitted || !activeRubricFullyRated}
-            title={
-              activeRubricSubmitted
-                ? 'This rubric has been submitted to the author.'
-                : !activeRubricFullyRated
-                  ? 'Rate all criteria in this rubric to submit it.'
-                  : undefined
-            }
-            onClick={onSubmit}
-          >
-            {activeRubricSubmitted ? 'Submitted' : 'Submit Rubric'}
-          </Button>
-        </div>
+    <div className="h-full flex flex-col overflow-hidden bg-surface relative">
+      {/* Fixed header: rubric tabs */}
+      <div className="flex-shrink-0">
+        <TabBar
+          tabs={rubrics.map(r => ({
+            id: r.id,
+            label: r.title,
+            badge: submittedRubricIds.has(r.id) ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label font-semibold bg-success-container text-success border border-success">
+                <svg viewBox="0 0 16 16" fill="none" className="w-3 h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M13 4L6 11L3 8" />
+                </svg>
+                Submitted
+              </span>
+            ) : (
+              <span className={[
+                'inline-flex items-center px-2 py-0.5 rounded-full text-label-sm font-label font-semibold',
+                r.rated === r.total && r.total > 0
+                  ? 'bg-success-container text-success border border-success'
+                  : 'bg-amber-100 text-amber-800 border border-amber-800',
+              ].join(' ')}>
+                {r.rated}/{r.total}
+              </span>
+            ),
+          }))}
+          activeId={activeRubricId ?? ''}
+          onChange={onActiveRubricChange}
+          tabClassName="py-[16px]"
+        />
       </div>
 
       {/* Scrollable content */}
@@ -200,7 +182,7 @@ export function ReviewRightPanel({
           annotationIndexMap={annotationIndexMap}
         />
 
-        <div className="flex flex-col gap-2 p-4">
+        <div className="flex flex-col gap-2 p-4 pb-[6rem]">
           {activeRubricItems.map((item, index) => {
             const score = scores[item.id]
             if (!score) return null
@@ -229,6 +211,20 @@ export function ReviewRightPanel({
         </div>
 
       </div>
+
+      {/* Floating submit button — appears only once all criteria are rated, not yet submitted */}
+      {activeRubricFullyRated && !activeRubricSubmitted && !generalReadOnly && (
+        <div
+          className="absolute bottom-0 inset-x-0 flex justify-center pb-5 pt-12 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, transparent, var(--color-surface) 55%)' }}
+        >
+          <div className="pointer-events-auto shadow-3 rounded-md">
+            <Button variant="primary" onClick={onSubmit}>
+              Submit {activeRubric?.title} Rubric
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

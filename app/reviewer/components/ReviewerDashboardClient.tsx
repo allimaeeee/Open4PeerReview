@@ -5,6 +5,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { acceptDocument, declineDocument } from '@/app/coordinator/actions'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
+
+type SortOrder = 'az' | 'recent' | 'oldest'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
 import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
@@ -39,6 +42,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   const [activeTab, setActiveTab] = useState<'my-reviews' | 'completed' | 'task-pool'>(initialTab)
   const [confirmModal, setConfirmModal] = useState<'accepted' | 'declined' | null>(null)
   const [acceptConfirm, setAcceptConfirm] = useState<{ id: string; publicReview: boolean } | null>(null)
+  const [sortBy, setSortBy] = useState<SortOrder>('az')
   const [showSubmittedModal, setShowSubmittedModal] = useState(searchParams.get('submitted') === 'true')
 
   // Clear ?submitted from the URL so a refresh doesn't re-show the modal
@@ -164,65 +168,125 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         </div>
 
         {/* My Reviews tab */}
-        {activeTab === 'my-reviews' && (
-          <>
-            <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} size="sm" />
-            <div className="mt-6 space-y-4">
-              {filteredActiveCards.length === 0 ? (
-                <EmptyState message="No active reviews." sub="Check the Task Pool to find new assignments." />
-              ) : (
-                filteredActiveCards.map(card => <ReviewerCard key={card.id} {...card} />)
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'my-reviews' && (() => {
+          const sortedCards = [...filteredActiveCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.claimedAt).getTime()
+            const db = new Date(b.claimedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} size="sm" />
+              </div>
+              <div className="mt-6 space-y-4">
+                {sortedCards.length === 0 ? (
+                  <EmptyState message="No active reviews." sub="Check the Task Pool to find new assignments." />
+                ) : (
+                  sortedCards.map(card => <ReviewerCard key={card.id} {...card} />)
+                )}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Completed tab */}
-        {activeTab === 'completed' && (
-          <>
-            {completedCards.length > 0 && (
-              <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
-            )}
-            <div className="mt-6 space-y-4">
-              {completedCards.length === 0 ? (
-                <EmptyState message="No completed reviews yet." sub="Completed reviews will appear here once submitted." />
-              ) : (
-                filteredCompletedCards.map(card => <CompletedReviewCard key={card.id} {...card} />)
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'completed' && (() => {
+          const sortedCards = [...filteredCompletedCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.completedAt).getTime()
+            const db = new Date(b.completedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                {completedCards.length > 0 && (
+                  <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
+                )}
+              </div>
+              <div className="mt-6 space-y-4">
+                {completedCards.length === 0 ? (
+                  <EmptyState message="No completed reviews yet." sub="Completed reviews will appear here once submitted." />
+                ) : (
+                  sortedCards.map(card => <CompletedReviewCard key={card.id} {...card} />)
+                )}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Task Pool tab */}
-        {activeTab === 'task-pool' && (
-          <>
-            {taskCards.length > 0 && (
-              <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} size="sm" />
-            )}
-            <div className="mt-6 space-y-4">
-              {taskCards.length === 0 ? (
-                <EmptyState message="No tasks available." sub="Check back later for new assignments." />
-              ) : filteredTaskCards.length === 0 ? (
-                <EmptyState message="No tasks match the selected filters." sub="Try adjusting the filters above." />
-              ) : (
-                filteredTaskCards.map(card => (
-                  <TaskPoolCard
-                    key={card.id}
-                    {...card}
-                    onAccept={() => {
-                      setAcceptConfirm({ id: card.id, publicReview: card.publicReview ?? false })
-                    }}
-                    onDecline={async (id, declineNote) => {
-                      await declineDocument(id, declineNote)
-                      router.refresh()
-                      setConfirmModal('declined')
-                    }}
-                  />
-                ))
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'task-pool' && (() => {
+          const sortedCards = [...filteredTaskCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.submittedAt).getTime()
+            const db = new Date(b.submittedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                {taskCards.length > 0 && (
+                  <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} size="sm" />
+                )}
+              </div>
+              <div className="mt-6 space-y-4">
+                {taskCards.length === 0 ? (
+                  <EmptyState message="No tasks available." sub="Check back later for new assignments." />
+                ) : sortedCards.length === 0 ? (
+                  <EmptyState message="No tasks match the selected filters." sub="Try adjusting the filters above." />
+                ) : (
+                  sortedCards.map(card => (
+                    <TaskPoolCard
+                      key={card.id}
+                      {...card}
+                      onAccept={() => {
+                        setAcceptConfirm({ id: card.id, publicReview: card.publicReview ?? false })
+                      }}
+                      onDecline={async (id, declineNote) => {
+                        await declineDocument(id, declineNote)
+                        router.refresh()
+                        setConfirmModal('declined')
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )
+        })()}
 
       </div>
       {/* Accept confirmation modal */}
