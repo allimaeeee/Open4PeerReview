@@ -161,6 +161,8 @@ interface HtmlViewerCanvasProps {
   pulseAnnotationId?: string | null
   onPulseComplete?: () => void
   onBack?: () => void
+  /** Show a page-navigation bar (arrows + page selector) even without a back button. Used by read-only viewers. */
+  showPageNav?: boolean
 }
 
 export default function HtmlViewerCanvas({
@@ -185,6 +187,7 @@ export default function HtmlViewerCanvas({
   pulseAnnotationId,
   onPulseComplete,
   onBack,
+  showPageNav = false,
 }: HtmlViewerCanvasProps) {
 
   // Include all pages that have either a URL or fingerprint
@@ -546,6 +549,43 @@ export default function HtmlViewerCanvas({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col bg-slate-100">
+
+      {/* Page nav without a back button — read-only viewers that pass showPageNav */}
+      {!onBack && showPageNav && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1 px-3 py-1.5 bg-white border-b border-slate-200 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setCurrentPageIndex(i => Math.max(0, i - 1))}
+            disabled={currentPageIndex <= 0}
+            className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Previous page"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-1 text-xs text-slate-600">
+            <span>Page</span>
+            <PageSelector
+              currentPageIndex={currentPageIndex}
+              totalPages={totalPages}
+              onChange={setCurrentPageIndex}
+            />
+            <span className="tabular-nums">/ {totalPages}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentPageIndex(i => Math.min(totalPages - 1, i + 1))}
+            disabled={currentPageIndex >= totalPages - 1}
+            className="p-1 rounded hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label="Next page"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {onBack && <ViewerPanelHeader
         onBack={onBack}

@@ -10,12 +10,20 @@ interface AnnotationRow {
   tag: string | null
 }
 
+interface OERPage {
+  fingerprint: string | null
+  url?: string
+}
+
 interface OerReadOnlyViewerProps {
   snapshotSrc: string
   annotations: AnnotationRow[]
+  /** Scroll to (and highlight) this annotation — switches pages automatically if needed. */
   scrollToAnnotationId?: string | null
   rubricItems: { id: string; label: string }[]
   onViewFullComment?: (rubricItemId: string) => void
+  /** Additional pages for multi-page OpenStax documents — same shape as HtmlViewerCanvas. */
+  additionalPages?: OERPage[]
 }
 
 export function OerReadOnlyViewer({
@@ -24,6 +32,7 @@ export function OerReadOnlyViewer({
   scrollToAnnotationId,
   rubricItems,
   onViewFullComment,
+  additionalPages,
 }: OerReadOnlyViewerProps) {
   const savedAnnotations = annotations.map(a => ({
     id: a.id,
@@ -36,14 +45,20 @@ export function OerReadOnlyViewer({
   return (
     <HtmlViewerCanvas
       snapshotSrc={snapshotSrc}
+      additionalPages={additionalPages}
       savedAnnotations={savedAnnotations}
       rubricItems={rubricItems}
-      scrollToAnnotationId={scrollToAnnotationId ?? null}
-      focusAnnotationId={null}
+      // Route scrollToAnnotationId through focusAnnotationId so cross-page
+      // navigation works — focusAnnotationId switches to the right page first,
+      // then scrolls and outlines. scrollToAnnotationId is kept null to avoid
+      // double-scroll on same-page annotations.
+      focusAnnotationId={scrollToAnnotationId ?? null}
+      scrollToAnnotationId={null}
       pendingSelection={null}
       activeItemId={null}
       pulseAnnotationId={null}
       disabled={true}
+      showPageNav={true}
       onTextSelected={() => {}}
       onAnnotationConfirm={async () => null}
       onPendingSelectionClear={() => {}}

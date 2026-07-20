@@ -88,8 +88,8 @@ const POLARITY_CONFIG: Record<'does_not_meet' | 'exceeds' | 'exemplifies', { lab
   },
   exemplifies: {
     label:  'Exemplifies Standard',
-    border: 'var(--color-brand-primary)',
-    text:   'var(--color-rating-exemplifies-text)',
+    border: 'var(--color-primary)',
+    text:   'var(--color-primary)',
   },
   exceeds: {
     label:  'Exceeds Standard',

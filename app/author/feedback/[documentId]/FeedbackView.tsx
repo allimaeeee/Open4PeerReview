@@ -104,6 +104,7 @@ interface Props {
     title: string
     file_type?: string | null
     content_fingerprint?: string | null
+    pages?: unknown
     platform?: string | null
     source_url?: string | null
     course_access_code?: string | null
@@ -482,6 +483,7 @@ export function FeedbackView({
               annotations={allAnnotations}
               scrollToAnnotationId={scrollToAnnotationId}
               rubricItems={rubricItems}
+              additionalPages={document.pages as { fingerprint: string | null; url?: string }[] | undefined}
               onViewFullComment={(rubricItemId) => {
                 setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
                 setTimeout(() => {

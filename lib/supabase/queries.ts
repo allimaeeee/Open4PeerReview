@@ -508,7 +508,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id, storage_path, file_type, content_fingerprint, platform, source_url, course_access_code, submission_scope, report_status, revised_link, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
+    .select('id, title, author_id, storage_path, file_type, content_fingerprint, pages, platform, source_url, course_access_code, submission_scope, report_status, revised_link, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
     .eq('id', documentId)
     .single()
 
