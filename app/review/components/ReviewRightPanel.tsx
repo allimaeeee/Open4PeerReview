@@ -157,6 +157,7 @@ export function ReviewRightPanel({
           activeId={activeRubricId ?? ''}
           onChange={onActiveRubricChange}
           tabClassName="py-[16px]"
+          className="bg-surface-card"
         />
       </div>
 

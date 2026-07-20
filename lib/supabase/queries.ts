@@ -786,9 +786,10 @@ export async function getCoordinatorDashboardData(supabase: Client) {
           .from('documents')
           .select(`
             id, title, file_type, created_at, submission_scope, coordinator_released_at, is_draft, coordinator_upload,
+            authors, platform, subject_matter, creative_commons_license, public_review,
             author:users!author_id ( id, display_name, email, institution ),
             document_rubrics ( rubric:rubrics ( id, title ) ),
-            reviews ( id, status, coordinator_approval, submitted_at, reviewer:users!reviewer_id ( id, display_name, email ) )
+            reviews ( id, status, coordinator_approval, submitted_at, rubric_id, reviewer:users!reviewer_id ( id, display_name, email ) )
           `)
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null }),

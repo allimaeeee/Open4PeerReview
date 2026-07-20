@@ -18,6 +18,7 @@ import type { CompletedReviewCardProps } from '@/components/patterns/CompletedRe
 import { TaskPoolCard } from '@/components/patterns/TaskPoolCard'
 import type { TaskPoolCardProps } from '@/components/patterns/TaskPoolCard'
 import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Props {
   displayName: string
@@ -26,14 +27,6 @@ interface Props {
   taskCards: Omit<TaskPoolCardProps, 'onAccept' | 'onDecline'>[]
 }
 
-function EmptyState({ message, sub }: { message: string; sub: string }) {
-  return (
-    <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
-      <p className="text-body-md font-medium text-text-secondary">{message}</p>
-      <p className="text-body-sm text-text-muted mt-1">{sub}</p>
-    </div>
-  )
-}
 
 export function ReviewerDashboardClient({ displayName: _displayName, activeCards, completedCards, taskCards }: Props) {
   const searchParams = useSearchParams()

@@ -17,7 +17,7 @@ export interface TabBarProps {
 
 export function TabBar({ tabs, activeId, onChange, rightSlot, className, tabClassName }: TabBarProps) {
   return (
-    <div className={cx('flex items-center border-b border-border bg-surface-card', className)}>
+    <div className={cx('flex items-center border-b border-border', className)}>
       {/* Scrollable tab strip */}
       <div className="flex-1 flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {tabs.map(tab => {

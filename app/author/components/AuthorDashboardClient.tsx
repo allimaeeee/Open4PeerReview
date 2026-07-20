@@ -12,6 +12,7 @@ import { SubmissionModal } from './SubmissionModal'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { deleteDocument } from '@/app/coordinator/actions'
 import { Select } from '@/components/ui/Select'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense, ReportStatus } from '@/types'
 
@@ -333,12 +334,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                 return sortBy === 'recent' ? db - da : da - db
               })
               return sortedDrafts.length === 0 ? (
-                <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
-                  <p className="text-body-md font-medium text-text-secondary">No drafts yet.</p>
-                  <p className="text-body-sm text-text-muted mt-1">
-                    Save a submission as a draft and it will appear here.
-                  </p>
-                </div>
+                <EmptyState message="No drafts yet." sub="Save a submission as a draft and it will appear here." />
               ) : (
                 sortedDrafts.map(doc => {
                   const rubrics = doc.document_rubrics
@@ -371,14 +367,12 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
                 return sortBy === 'recent' ? db - da : da - db
               })
               return sortedCards.length === 0 ? (
-                <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
-                  <p className="text-body-md font-medium text-text-secondary">No submissions here yet.</p>
-                  <p className="text-body-sm text-text-muted mt-1">
-                    {tabIsActive
-                      ? 'Use the sidebar to submit a new OER for review.'
-                      : 'Reports you publish or keep private will appear here.'}
-                  </p>
-                </div>
+                <EmptyState
+                  message="No submissions here yet."
+                  sub={tabIsActive
+                    ? 'Use the sidebar to submit a new OER for review.'
+                    : 'Reports you publish or keep private will appear here.'}
+                />
               ) : (
                 sortedCards.map(card => {
                   const canDelete = card.rubrics.every(r => r.status === 'unassigned' || r.status === 'assigned')
