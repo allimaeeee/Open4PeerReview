@@ -22,7 +22,7 @@ const newsreader = Newsreader({
 })
 
 export const metadata: Metadata = {
-  title: 'OLI Annotation Platform',
+  title: 'Open 4 Peer Review Hub',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

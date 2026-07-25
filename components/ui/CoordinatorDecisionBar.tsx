@@ -70,6 +70,7 @@ export function CoordinatorDecisionBar({
   if (approval === 'approved') {
     return (
       <div
+        data-print-hide
         className={cx(
           'rounded-lg border border-[var(--color-success)] bg-[var(--color-success-container)] px-5 py-3',
           className

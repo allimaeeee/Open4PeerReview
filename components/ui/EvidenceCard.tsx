@@ -124,6 +124,7 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
 
   return (
     <div
+      data-evidence-card
       className={cx(
         'rounded-md border border-[var(--color-border)] bg-[var(--color-surface-container-low)] p-3 flex flex-col gap-2',
         className
@@ -147,6 +148,7 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
             {onGoToAnnotation && (
               <button
                 type="button"
+                data-print-hide
                 onClick={onGoToAnnotation}
                 className="shrink-0 text-body-sm text-[var(--color-secondary)] underline-offset-2 hover:underline whitespace-nowrap"
               >
@@ -169,6 +171,7 @@ export function EvidenceCard({ annotation, className, onGoToAnnotation, goToLabe
             {!pageName && onGoToAnnotation && (
               <button
                 type="button"
+                data-print-hide
                 onClick={onGoToAnnotation}
                 className="shrink-0 text-body-sm text-[var(--color-secondary)] underline-offset-2 hover:underline"
               >

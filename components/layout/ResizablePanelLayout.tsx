@@ -98,6 +98,7 @@ export default function ResizablePanelLayout({
   return (
     <div
       ref={containerRef}
+      data-panel-root
       className={`relative h-full overflow-hidden${isDragging ? ' select-none cursor-col-resize' : ''}`}
     >
       {/* Left panel — right edge at split point, covering the left half of the divider */}
@@ -169,6 +170,7 @@ export default function ResizablePanelLayout({
           leftCollapsed && leftPanelLabel ? (
             <button
               type="button"
+              data-print-hide
               onClick={e => { e.stopPropagation(); setLeftCollapsed(false) }}
               onPointerDown={e => e.stopPropagation()}
               className="absolute top-0 right-1.5 translate-x-full flex flex-col items-center gap-2 px-1.5 py-3 bg-surface-card border border-l-0 border-border rounded-r-md cursor-pointer hover:bg-surface-container-low"
@@ -203,6 +205,7 @@ export default function ResizablePanelLayout({
       {/* Right panel — left edge at split point, covering the right half of the divider */}
       {!rightCollapsed && (
         <div
+          data-panel-right
           className="absolute inset-y-0 overflow-y-auto"
           style={{
             left: leftCollapsed ? 0 : `${leftPercent}%`,

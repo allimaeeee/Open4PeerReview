@@ -579,6 +579,7 @@ export function ConsoleRevisionView({
   return (
     <div className="flex-1 min-h-0">
       <style>{`
+        [data-print-header] { display: none; }
         @media print {
           nav,
           .back-link,
@@ -602,6 +603,32 @@ export function ConsoleRevisionView({
           }
           body {
             background: white !important;
+          }
+          [data-panel-root] {
+            overflow: visible !important;
+            height: auto !important;
+          }
+          [data-panel-right] {
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            width: 100% !important;
+          }
+          [data-print-header] {
+            display: flex !important;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--color-border);
+          }
+          [data-rating="exemplifies"],
+          [data-rubric-tab-selected] {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            background-color: transparent !important;
+            border-color: var(--color-primary) !important;
+            color: var(--color-primary) !important;
           }
         }
       `}</style>
@@ -655,6 +682,17 @@ export function ConsoleRevisionView({
           <div className="h-full overflow-y-auto">
             <div className="mx-auto max-w-6xl px-6 py-10">
 
+        {/* Print-only branding header */}
+        <div
+          data-print-header
+          style={{ alignItems: 'center', gap: '12px', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}
+        >
+          <img src="/logo.svg" alt="" style={{ height: '32px', width: 'auto' }} />
+          <span style={{ fontFamily: 'var(--font-newsreader), Newsreader, Georgia, serif', fontWeight: 700, fontSize: '18px', color: 'var(--color-primary)' }}>
+            Open 4 Peer Review Hub
+          </span>
+        </div>
+
         {/* Back link */}
         <Button
           variant="text"
@@ -699,6 +737,7 @@ export function ConsoleRevisionView({
                       key={rubric.id}
                       disabled={!isSubmitted}
                       onClick={() => isSubmitted && setSelectedRubricId(rubric.id)}
+                      {...(isSelected ? { 'data-rubric-tab-selected': '' } : {})}
                       className={[
                         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-sm font-label font-semibold border transition-colors',
                         isSelected
@@ -735,7 +774,21 @@ export function ConsoleRevisionView({
                 variant="secondary"
                 size="sm"
                 className="export-pdf-btn"
-                onClick={() => window.print()}
+                onClick={() => {
+                  const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, '-')
+                  const sub = sanitize(document.title)
+                  const rub = review?.rubric?.title ? sanitize(review.rubric.title) : ''
+                  const rev = sanitize(reviewerName)
+                  const filename = rub ? `${sub} (${rub}) - ${rev}` : `${sub} - ${rev}`
+                  const orig = window.document.title
+                  window.document.title = filename
+                  const restore = () => {
+                    window.document.title = orig
+                    window.removeEventListener('afterprint', restore)
+                  }
+                  window.addEventListener('afterprint', restore)
+                  window.print()
+                }}
               >
                 <PrintIcon />
                 Export PDF
@@ -809,7 +862,7 @@ export function ConsoleRevisionView({
             )}
 
             {/* Detailed feedback heading */}
-            <h2 className="font-heading text-heading-sm text-[var(--color-text-primary)]">
+            <h2 data-print-hide className="font-heading text-heading-sm text-[var(--color-text-primary)]">
               Detailed Feedback
             </h2>
 

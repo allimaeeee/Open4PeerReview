@@ -39,31 +39,6 @@ type Profile = {
   role: string | null
 }
 
-function LogoIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-      className="w-4 h-4 text-on-primary"
-    >
-      <path
-        d="M 8 1 C 9.4 2.3 11.1 2.9 13 3.1 C 13.1 5 13.7 6.6 15 8 C 13.7 9.4 13.1 11 13 12.9 C 11.1 13.1 9.4 13.7 8 15 C 6.6 13.7 5 13.1 3.1 12.9 C 2.9 11 2.3 9.4 1 8 C 2.3 6.6 2.9 5 3.1 3.1 C 5 2.9 6.6 2.3 8 1 Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M 4.5 8 L 7 10.5 L 11.5 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
 
 export default function Navbar() {
   const { user, loading } = useUser()
@@ -133,9 +108,7 @@ export default function Navbar() {
           href={user ? '/author' : '/login'}
           className="flex items-center gap-2 font-semibold font-display text-text-primary"
         >
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-            <LogoIcon />
-          </div>
+          <img src="/logo.svg" alt="" className="h-7 w-auto" />
           Open 4 Peer Review Hub
         </Link>
         {showRightSide && (

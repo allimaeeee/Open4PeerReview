@@ -197,6 +197,33 @@
   100% { box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.8); }
 }
 
+@media print {
+  [data-print-hide] {
+    display: none !important;
+  }
+  [data-panel-right] * {
+    box-shadow: none !important;
+  }
+  [data-evidence-card] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  [data-rating="exemplifies"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: transparent !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+  }
+  [data-rubric-tab-selected] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: transparent !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+  }
+}
+
 .card-highlight.active {
   animation: card-highlight-pulse 1.6s ease-out;
 }

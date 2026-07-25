@@ -648,7 +648,7 @@ export function FeedbackView({
             />
 
             {/* Detailed feedback heading */}
-            <h2 className="font-heading text-heading-sm text-[var(--color-text-primary)]">
+            <h2 data-print-hide className="font-heading text-heading-sm text-[var(--color-text-primary)]">
               Detailed Feedback
             </h2>
 

@@ -215,6 +215,7 @@ export function AIChatPanel() {
 
   return (
     <div
+      data-print-hide
       className={[
         'fixed top-0 right-0 h-screen flex flex-col bg-surface-card',
         'border-l border-border',

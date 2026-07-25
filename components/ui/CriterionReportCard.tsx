@@ -249,6 +249,7 @@ export function CriterionReportCard({
             return (
               <span
                 key={score}
+                data-rating={score}
                 className="inline-flex items-center px-2 py-0.5 rounded text-label-sm font-label font-semibold border"
                 style={{ backgroundColor: cfg.bg, color: cfg.text, borderColor: cfg.border }}
               >
