@@ -94,7 +94,7 @@
   var criterionResizeObservers = /* @__PURE__ */ new Map();
   var gcTimer = null;
   function emptyScoreComments() {
-    return { does_not_meet: [], exceeds: [] };
+    return { does_not_meet: [], exemplifies: [], exceeds: [] };
   }
   var scoreComments = /* @__PURE__ */ new Map();
   var shadow;
@@ -771,7 +771,7 @@
     scoreTimers.delete(rubricItemId);
     const s = scores.get(rubricItemId);
     const levels = s?.criterion_scores ?? [];
-    const [scoreResp, dnmOk, exceedsOk] = await Promise.all([
+    const [scoreResp, dnmOk, exeOk, exceedsOk] = await Promise.all([
       send({
         type: "SAVE_SCORE",
         payload: {
@@ -782,9 +782,10 @@
         }
       }),
       syncScoreComments(rubricItemId, "does_not_meet"),
+      syncScoreComments(rubricItemId, "exemplifies"),
       syncScoreComments(rubricItemId, "exceeds")
     ]);
-    setSaveStatus(scoreResp.success && dnmOk && exceedsOk ? "saved" : "error");
+    setSaveStatus(scoreResp.success && dnmOk && exeOk && exceedsOk ? "saved" : "error");
   }
   async function syncScoreComments(rubricItemId, level) {
     if (!selectedReview) return false;
@@ -1905,7 +1906,7 @@
           <div class="doc-title">${escHtml(selectedReview.documents?.title ?? "Untitled")}</div>
         </div>
         <div class="rubric-header-btns">
-          <button class="btn-hotspot" id="btn-hotspot"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
+          <button class="btn-hotspot" id="btn-hotspot" title="Add Hotspot (Alt+H)"><svg width="12" height="15" viewBox="0 0 28 36" fill="currentColor"><path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z"/></svg>Add Hotspot</button>
           <a class="btn-open-console" id="btn-open-console" href="${platformUrl}/review?document=${selectedReview.document_id}&review=${selectedReview.id}" target="_blank" title="Open review console with snapshots and rubric grading">&#8599; Console</a>
         </div>
       </div>
@@ -2005,9 +2006,7 @@
         ${del}
       </div>`;
     }).join("");
-    return `
-    <div class="score-comment-list" data-item="${itemId}" data-level="${level}">${rowsHtml}</div>
-    <button type="button" class="score-comment-add" data-item="${itemId}" data-level="${level}">+ Add comment</button>`;
+    return `<div class="score-comment-list" data-item="${itemId}" data-level="${level}">${rowsHtml}</div>`;
   }
   function renderRubricCriteria() {
     const list = shadow.getElementById("criterion-list");
@@ -2036,6 +2035,10 @@
           <span class="expand-icon" id="expand-${item.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
         </div>
         <div class="criterion-bd" id="crit-body-${item.id}">
+          <div class="standard-block">
+            <span class="standard-label">Standard</span>
+            <p class="standard-text">${escHtml(item.description.replace(/\d+\.\s+/g, ""))}</p>
+          </div>
           <div class="rating-row">
             <div class="rating-box rating-box-exceeds${selectedLevels.includes("exceeds") ? " active" : ""}" id="rbox-exceeds-${item.id}" data-variant="exceeds" data-item="${item.id}">
               <div class="rbox-label rbox-label-exceeds">Exceeds</div>
@@ -2043,7 +2046,7 @@
             </div>
             <div class="rating-box rating-box-exemplifies${selectedLevels.includes("exemplifies") ? " active" : ""}" id="rbox-exemplifies-${item.id}" data-variant="exemplifies" data-item="${item.id}">
               <div class="rbox-label rbox-label-exemplifies">Exemplifies</div>
-              <div class="rbox-desc">${escHtml(item.description.replace(/\d+\.\s+/g, ""))}</div>
+              ${renderCommentList(item.id, "exemplifies", savedComments.exemplifies, "Note what exemplifies the standard...")}
             </div>
             <div class="rating-box rating-box-dnm${selectedLevels.includes("does_not_meet") ? " active" : ""}" id="rbox-dnm-${item.id}" data-variant="does_not_meet" data-item="${item.id}">
               <div class="rbox-label rbox-label-dnm">Does Not Meet</div>
@@ -2083,18 +2086,43 @@
         const cardEl = shadow.getElementById(`criterion-item-${itemId}`);
         if (!cardEl || cardEl.classList.contains("is-narrow")) return;
         const transition = "flex 150ms ease, max-width 150ms ease, opacity 150ms ease, padding 150ms ease";
-        const focused = shadow.getElementById(level === "exceeds" ? `rbox-exceeds-${itemId}` : `rbox-dnm-${itemId}`);
-        const other = shadow.getElementById(level === "exceeds" ? `rbox-dnm-${itemId}` : `rbox-exceeds-${itemId}`);
-        const exemplifies = shadow.getElementById(`rbox-exemplifies-${itemId}`);
-        if (focused) {
-          focused.style.flex = "2 1 0%";
-          focused.style.transition = transition;
+        const excEl = shadow.getElementById(`rbox-exceeds-${itemId}`);
+        const exeEl = shadow.getElementById(`rbox-exemplifies-${itemId}`);
+        const dnmEl = shadow.getElementById(`rbox-dnm-${itemId}`);
+        if (level === "exceeds") {
+          if (excEl) {
+            excEl.style.flex = "2 1 0%";
+            excEl.style.transition = transition;
+          }
+          if (exeEl) {
+            exeEl.style.flex = "1 1 0%";
+            exeEl.style.transition = transition;
+          }
+          if (dnmEl) Object.assign(dnmEl.style, { flex: "0 0 0%", maxWidth: "0", opacity: "0", overflow: "hidden", padding: "0", transition });
+        } else if (level === "does_not_meet") {
+          if (dnmEl) {
+            dnmEl.style.flex = "2 1 0%";
+            dnmEl.style.transition = transition;
+          }
+          if (exeEl) {
+            exeEl.style.flex = "1 1 0%";
+            exeEl.style.transition = transition;
+          }
+          if (excEl) Object.assign(excEl.style, { flex: "0 0 0%", maxWidth: "0", opacity: "0", overflow: "hidden", padding: "0", transition });
+        } else {
+          if (exeEl) {
+            exeEl.style.flex = "2 1 0%";
+            exeEl.style.transition = transition;
+          }
+          if (excEl) {
+            excEl.style.flex = "1 1 0%";
+            excEl.style.transition = transition;
+          }
+          if (dnmEl) {
+            dnmEl.style.flex = "1 1 0%";
+            dnmEl.style.transition = transition;
+          }
         }
-        if (exemplifies) {
-          exemplifies.style.flex = "1 1 0%";
-          exemplifies.style.transition = transition;
-        }
-        if (other) Object.assign(other.style, { flex: "0 0 0%", maxWidth: "0", opacity: "0", overflow: "hidden", padding: "0", transition });
       });
       ta.addEventListener("blur", () => {
         const itemId = ta.dataset.item;
@@ -2134,22 +2162,6 @@
         const existing = scoreTimers.get(itemId);
         if (existing) clearTimeout(existing);
         scoreTimers.set(itemId, setTimeout(() => flushScore(itemId), SCORE_DEBOUNCE_MS));
-      });
-    });
-    list.querySelectorAll(".score-comment-add").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const itemId = btn.dataset.item;
-        const level = btn.dataset.level;
-        const map = scoreComments.get(itemId) ?? emptyScoreComments();
-        const arr = map[level].slice();
-        if (arr.length === 0 || arr[arr.length - 1].body.trim()) arr.push({ id: null, body: "" });
-        scoreComments.set(itemId, { ...map, [level]: arr });
-        renderRubricCriteria();
-        const inputs = shadow.querySelectorAll(
-          `.score-comment-input[data-item="${itemId}"][data-level="${level}"]`
-        );
-        inputs[inputs.length - 1]?.focus();
       });
     });
     list.querySelectorAll(".score-comment-del").forEach((btn) => {
@@ -2503,7 +2515,7 @@
         gap: 8px;
         flex-shrink: 0;
       }
-      .doc-title { font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+      .doc-title { font-size: 13px; font-weight: 600; color: ${tokens.color.textPrimary}; font-family: ${tokens.font.heading}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .rubric-header-btns { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
       .rubric-tabs { display: flex; gap: 2px; padding: 0 10px; background: ${tokens.color.surfaceCard}; border-bottom: 1px solid ${tokens.color.border}; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
@@ -2571,16 +2583,16 @@
       .rbox-label-exceeds     { color: ${tokens.color.secondary}; }
       .rbox-label-exemplifies { color: ${tokens.color.primary}; }
       .rbox-label-dnm         { color: ${tokens.color.error}; }
-      .rbox-desc { font-size: 11px; color: ${tokens.color.textSecondary}; line-height: 1.5; max-height: 5.5rem; overflow-y: auto; padding-right: 4px; }
-      .rbox-desc::-webkit-scrollbar { width: 6px; }
-      .rbox-desc::-webkit-scrollbar-track { background: transparent; }
-      .rbox-desc::-webkit-scrollbar-thumb { background: rgba(115,92,0,0.4); border-radius: 9999px; }
-      .rbox-desc::-webkit-scrollbar-thumb:hover { background: rgba(115,92,0,0.6); }
+      .standard-block { display: flex; flex-direction: column; gap: 3px; }
+      .standard-label { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${tokens.color.textSecondary}; }
+      .standard-text { font-size: 11px; color: ${tokens.color.textSecondary}; line-height: 1.5; margin: 0; }
 
       .score-comment-input { flex: 1; width: 100%; padding: 0 0 8px; border: none; border-bottom: 1px solid ${tokens.color.border}; border-radius: 0; font-size: 12px; resize: none; font-family: inherit; color: ${tokens.color.textPrimary}; box-sizing: border-box; outline: none; background: transparent; }
       .score-comment-input::placeholder { color: ${tokens.color.textMuted}; opacity: 0.7; }
       .rating-box-exceeds .score-comment-input { border-bottom-color: rgba(115,92,0,0.4); }
       .rating-box-exceeds .score-comment-input:focus { border-bottom-color: ${tokens.color.secondary}; }
+      .rating-box-exemplifies .score-comment-input { border-bottom-color: rgba(4,22,39,0.25); }
+      .rating-box-exemplifies .score-comment-input:focus { border-bottom-color: ${tokens.color.primary}; }
       .rating-box-dnm .score-comment-input { border-bottom-color: rgba(186,26,26,0.4); }
       .rating-box-dnm .score-comment-input:focus { border-bottom-color: ${tokens.color.error}; }
 
@@ -2589,10 +2601,6 @@
       .score-comment-row .score-comment-input { flex: 1; }
       .score-comment-del { flex-shrink: 0; border: none; background: transparent; color: ${tokens.color.textMuted}; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; border-radius: 4px; font-family: inherit; }
       .score-comment-del:hover { color: ${tokens.color.error}; background: rgba(186,26,26,0.08); }
-      .score-comment-add { align-self: flex-start; margin-top: 6px; border: none; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 0; font-family: inherit; }
-      .score-comment-add:hover { text-decoration: underline; }
-      .rating-box-exceeds .score-comment-add { color: ${tokens.color.secondary}; }
-      .rating-box-dnm .score-comment-add { color: ${tokens.color.error}; }
 
       .btn-open-console { display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 5px; border: 1px solid ${tokens.color.border}; background: ${tokens.color.surfaceCard}; color: ${tokens.color.primary}; font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.15s; text-decoration: none; flex-shrink: 0; }
       .btn-open-console:hover { background: ${tokens.color.surface}; border-color: ${tokens.color.primary}; }
@@ -2809,7 +2817,8 @@
     (scoresResp.data ?? []).forEach((s) => scores.set(s.rubric_item_id, s));
     (scoreCommentsResp.data ?? []).forEach((c) => {
       const map = scoreComments.get(c.rubric_item_id) ?? emptyScoreComments();
-      map[c.score_level].push({ id: c.id, body: c.body });
+      const arr = map[c.score_level];
+      if (arr) arr.push({ id: c.id, body: c.body });
       scoreComments.set(c.rubric_item_id, map);
     });
     renderContent("review");
@@ -2843,7 +2852,8 @@
         scoreComments.clear();
         (commentsResp.data ?? []).forEach((c) => {
           const map = scoreComments.get(c.rubric_item_id) ?? emptyScoreComments();
-          map[c.score_level].push({ id: c.id, body: c.body });
+          const arr = map[c.score_level];
+          if (arr) arr.push({ id: c.id, body: c.body });
           scoreComments.set(c.rubric_item_id, map);
         });
       }
@@ -2950,6 +2960,17 @@
       if (e.key === "Escape") {
         hideAnnotationPopup();
         exitHotspotMode();
+      } else if (e.altKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        if (!selectedReview) {
+          showToast("Select a review first");
+          return;
+        }
+        if (hotspotMode) {
+          exitHotspotMode();
+        } else {
+          enterHotspotMode();
+        }
       }
     });
     const origPush = history.pushState.bind(history);

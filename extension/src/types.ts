@@ -105,7 +105,7 @@ export interface ScoreCommentRecord {
   id: string;
   review_id: string;
   rubric_item_id: string;
-  score_level: 'does_not_meet' | 'exceeds';
+  score_level: 'does_not_meet' | 'exemplifies' | 'exceeds';
   body: string;
 }
 
