@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 
 type SortOrder = 'az' | 'recent' | 'oldest'
+type Tab = 'my-reviews' | 'active-public' | 'active-private' | 'completed' | 'completed-public' | 'completed-private' | 'task-pool'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
 import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
@@ -17,7 +18,7 @@ import { CompletedReviewCard } from '@/components/patterns/CompletedReviewCard'
 import type { CompletedReviewCardProps } from '@/components/patterns/CompletedReviewCard'
 import { TaskPoolCard } from '@/components/patterns/TaskPoolCard'
 import type { TaskPoolCardProps } from '@/components/patterns/TaskPoolCard'
-import { Card } from '@/components/ui/Card'
+import { ActivityFeedPlaceholder } from '@/components/patterns/ActivityFeedPlaceholder'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Props {
@@ -31,8 +32,8 @@ interface Props {
 export function ReviewerDashboardClient({ displayName: _displayName, activeCards, completedCards, taskCards }: Props) {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const initialTab = (searchParams.get('tab') ?? 'my-reviews') as 'my-reviews' | 'completed' | 'task-pool'
-  const [activeTab, setActiveTab] = useState<'my-reviews' | 'completed' | 'task-pool'>(initialTab)
+  const initialTab = (searchParams.get('tab') ?? 'my-reviews') as Tab
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const [confirmModal, setConfirmModal] = useState<'accepted' | 'declined' | null>(null)
   const [acceptConfirm, setAcceptConfirm] = useState<{ id: string; publicReview: boolean } | null>(null)
   const [sortBy, setSortBy] = useState<SortOrder>('az')
@@ -55,7 +56,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   const [poolRubricFilter, setPoolRubricFilter] = useState('all')
 
   const handleTabChange = (id: string) => {
-    setActiveTab(id as typeof activeTab)
+    setActiveTab(id as Tab)
     setActiveFilter('all')
     setCompletedFilter('all')
     setPoolRubricFilter('all')
@@ -66,31 +67,41 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   const getCardStatus = (card: typeof activeCards[number]) =>
     card.rubrics.some(r => r.ratedCount > 0) ? 'in-progress' : 'not-started'
 
+  const baseActiveCards =
+    activeTab === 'active-public'  ? activeCards.filter(c => c.publicReview === true) :
+    activeTab === 'active-private' ? activeCards.filter(c => c.publicReview === false) :
+    activeCards
+
   const filterOptions = [
-    { value: 'all',         label: 'All',         count: activeCards.length },
-    { value: 'in-progress', label: 'In Progress', count: activeCards.filter(c => getCardStatus(c) === 'in-progress').length },
-    { value: 'not-started', label: 'Not Started', count: activeCards.filter(c => getCardStatus(c) === 'not-started').length },
+    { value: 'all',         label: 'All',         count: baseActiveCards.length },
+    { value: 'in-progress', label: 'In Progress', count: baseActiveCards.filter(c => getCardStatus(c) === 'in-progress').length },
+    { value: 'not-started', label: 'Not Started', count: baseActiveCards.filter(c => getCardStatus(c) === 'not-started').length },
   ]
 
   const filteredActiveCards = activeFilter === 'all'
-    ? activeCards
-    : activeCards.filter(c => getCardStatus(c) === activeFilter)
+    ? baseActiveCards
+    : baseActiveCards.filter(c => getCardStatus(c) === activeFilter)
 
   // ── Completed ───────────────────────────────────────────────────────────────
 
-  const completedRubrics = ['all', ...Array.from(new Set(completedCards.flatMap(c => c.rubrics.map(r => r.rubricTitle))))]
+  const baseCompletedCards =
+    activeTab === 'completed-public'  ? completedCards.filter(c => c.publicReview === true) :
+    activeTab === 'completed-private' ? completedCards.filter(c => c.publicReview === false) :
+    completedCards
+
+  const completedRubrics = ['all', ...Array.from(new Set(baseCompletedCards.flatMap(c => c.rubrics.map(r => r.rubricTitle))))]
 
   const completedFilterOptions = completedRubrics.map(rubric => ({
     value: rubric,
     label: rubric === 'all' ? 'All' : rubric,
     count: rubric === 'all'
-      ? completedCards.length
-      : completedCards.filter(c => c.rubrics.some(r => r.rubricTitle === rubric)).length,
+      ? baseCompletedCards.length
+      : baseCompletedCards.filter(c => c.rubrics.some(r => r.rubricTitle === rubric)).length,
   }))
 
   const filteredCompletedCards = completedFilter === 'all'
-    ? completedCards
-    : completedCards.filter(c => c.rubrics.some(r => r.rubricTitle === completedFilter))
+    ? baseCompletedCards
+    : baseCompletedCards.filter(c => c.rubrics.some(r => r.rubricTitle === completedFilter))
 
   // ── Task Pool ────────────────────────────────────────────────────────────────
 
@@ -110,14 +121,17 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   // ── Sidebar / layout ─────────────────────────────────────────────────────────
 
   const sidebarItems = [
-    { id: 'my-reviews', label: 'My Reviews', count: activeCards.length },
-    { id: 'completed',  label: 'Completed',  count: completedCards.length },
-    { id: 'task-pool',  label: 'Task Pool',  count: taskCards.length },
+    { id: 'my-reviews',        label: 'Active Reviews', count: activeCards.length },
+    { id: 'active-public',     label: 'Public',  count: activeCards.filter(c => c.publicReview === true).length,   indent: true },
+    { id: 'active-private',    label: 'Private', count: activeCards.filter(c => c.publicReview === false).length,  indent: true },
+    { id: 'completed',         label: 'Completed',      count: completedCards.length },
+    { id: 'completed-public',  label: 'Public',  count: completedCards.filter(c => c.publicReview === true).length,  indent: true },
+    { id: 'completed-private', label: 'Private', count: completedCards.filter(c => c.publicReview === false).length, indent: true },
+    { id: 'task-pool',         label: 'Task Pool',      count: taskCards.length },
   ]
 
   const sidebar = (
     <DashboardSidebar
-      title="Reviewer Workspace"
       activeItem={activeTab}
       items={sidebarItems}
       onNavigate={handleTabChange}
@@ -126,19 +140,18 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
 
   const rightPanel = (
     <div className="p-4">
-      <Card>
-        <div className="p-4">
-          <h3 className="font-heading text-title-sm text-text-primary mb-2">Recent Activity</h3>
-          <p className="text-body-sm text-text-muted">Activity feed coming soon.</p>
-        </div>
-      </Card>
+      <ActivityFeedPlaceholder />
     </div>
   )
 
-  const headingMap = {
-    'my-reviews': { heading: 'My Reviews',        description: 'Manage your active review assignments.' },
-    'completed':  { heading: 'Completed Reviews',  description: 'Reviews you have submitted.' },
-    'task-pool':  { heading: 'Task Pool',           description: 'OERs available for you to review.' },
+  const headingMap: Record<Tab, { heading: string; description: string }> = {
+    'my-reviews':        { heading: 'Active Reviews',            description: 'Manage your active review assignments.' },
+    'active-public':     { heading: 'Active Public Reviews',     description: 'Public reviews currently in progress.' },
+    'active-private':    { heading: 'Active Private Reviews',    description: 'Private reviews currently in progress.' },
+    'completed':         { heading: 'Completed Reviews',         description: 'Reviews you have submitted.' },
+    'completed-public':  { heading: 'Completed Public Reviews',  description: 'Public reviews you have submitted.' },
+    'completed-private': { heading: 'Completed Private Reviews', description: 'Private reviews you have submitted.' },
+    'task-pool':         { heading: 'Task Pool',                 description: 'OERs available for you to review.' },
   }
 
   const { heading, description } = headingMap[activeTab]
@@ -160,8 +173,8 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
           </p>
         </div>
 
-        {/* My Reviews tab */}
-        {activeTab === 'my-reviews' && (() => {
+        {/* Active Reviews tab */}
+        {(['my-reviews', 'active-public', 'active-private'] as Tab[]).includes(activeTab) && (() => {
           const sortedCards = [...filteredActiveCards].sort((a, b) => {
             if (sortBy === 'az') return a.title.localeCompare(b.title)
             const da = new Date(a.claimedAt).getTime()
@@ -195,7 +208,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         })()}
 
         {/* Completed tab */}
-        {activeTab === 'completed' && (() => {
+        {(['completed', 'completed-public', 'completed-private'] as Tab[]).includes(activeTab) && (() => {
           const sortedCards = [...filteredCompletedCards].sort((a, b) => {
             if (sortBy === 'az') return a.title.localeCompare(b.title)
             const da = new Date(a.completedAt).getTime()
@@ -215,12 +228,12 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
                     </Select>
                   </div>
                 </div>
-                {completedCards.length > 0 && (
+                {baseCompletedCards.length > 0 && (
                   <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
                 )}
               </div>
               <div className="mt-6 space-y-4">
-                {completedCards.length === 0 ? (
+                {baseCompletedCards.length === 0 ? (
                   <EmptyState message="No completed reviews yet." sub="Completed reviews will appear here once submitted." />
                 ) : (
                   sortedCards.map(card => <CompletedReviewCard key={card.id} {...card} />)
@@ -364,7 +377,7 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
           </button>
           <p className="text-body-md text-text-primary pr-6">
             {confirmModal === 'accepted'
-              ? 'Assignment accepted. You can find it in your My Reviews tab.'
+              ? 'Assignment accepted. You can find it in your Active Reviews tab.'
               : 'Assignment declined. It has been removed from your task pool.'}
           </p>
         </div>

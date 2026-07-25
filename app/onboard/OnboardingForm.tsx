@@ -328,7 +328,7 @@ export function OnboardingForm({
     // Panel 1 — Welcome
     if (mainStep === 1) return (
       <>
-        <img src="/welcome-icon.svg" alt="" className="w-20 h-20 mb-4" />
+        <img src="/logo.svg" alt="" className="w-20 h-20 mb-4" />
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Welcome to Open4PeerReview</h1>
         <p className="text-body-md text-text-muted mt-2">
           Open Educational Resources improve when experts and authors collaborate. Whether you create OERs or evaluate them — your contribution strengthens learning for everyone.

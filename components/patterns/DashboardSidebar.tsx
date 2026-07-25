@@ -8,10 +8,11 @@ interface NavItem {
   id: string
   label: string
   count?: number
+  indent?: boolean
 }
 
 interface DashboardSidebarProps {
-  title: string
+  title?: string
   activeItem: string
   items: NavItem[]
   onNavigate: (id: string) => void
@@ -36,9 +37,11 @@ export function DashboardSidebar({
         </Button>
       )}
 
-      <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-muted mb-3">
-        {title}
-      </p>
+      {title && (
+        <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-muted mb-3">
+          {title}
+        </p>
+      )}
 
       {items.map(item => (
         <button
@@ -46,13 +49,14 @@ export function DashboardSidebar({
           type="button"
           onClick={() => onNavigate(item.id)}
           className={cx(
-            'w-full text-left px-3 py-2 rounded-md text-body-md transition-colors cursor-pointer flex items-center justify-between',
+            'w-full text-left py-2 rounded-md text-body-md transition-colors cursor-pointer flex items-center justify-between',
+            item.indent ? 'pl-7 pr-3' : 'px-3',
             activeItem === item.id
               ? 'bg-surface-container text-text-primary font-medium'
               : 'text-text-secondary hover:bg-surface-container hover:text-text-primary'
           )}
         >
-          {item.label}
+          <span className={cx(!item.indent && 'font-semibold')}>{item.label}</span>
           {item.count !== undefined && (
             <span className="text-label-sm font-label font-semibold px-1.5 py-0.5 rounded-full bg-[var(--color-surface-container-high)] text-text-muted leading-none">
               {item.count}

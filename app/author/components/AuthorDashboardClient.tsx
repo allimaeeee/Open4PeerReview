@@ -7,7 +7,7 @@ import { DocumentCard } from '@/components/patterns/DocumentCard'
 import type { DocumentCardProps, RubricReview } from '@/components/patterns/DocumentCard'
 import { DraftCard } from '@/components/patterns/DraftCard'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
+import { ActivityFeedPlaceholder } from '@/components/patterns/ActivityFeedPlaceholder'
 import { SubmissionModal } from './SubmissionModal'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { deleteDocument } from '@/app/coordinator/actions'
@@ -239,12 +239,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
 
   const rightPanel = (
     <div className="p-4">
-      <Card>
-        <div className="p-4">
-          <h3 className="font-heading text-title-sm text-text-primary mb-2">Recent Activity</h3>
-          <p className="text-body-sm text-text-muted">Activity feed coming soon.</p>
-        </div>
-      </Card>
+      <ActivityFeedPlaceholder />
     </div>
   )
 
@@ -260,10 +255,6 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
         + New Submission
       </Button>
 
-      <p className="text-label-sm font-label font-semibold uppercase tracking-widest text-text-muted mb-3">
-        My Workspace
-      </p>
-
       {navBtn('active', 'Active Submissions', activeCards.length)}
       {navBtn('active-public',  'Public',  activePublicCount,  true)}
       {navBtn('active-private', 'Private', activePrivateCount, true)}
@@ -275,7 +266,7 @@ export function AuthorDashboardClient({ displayName, documents, rubrics, customS
       </div>
 
       <div className="mt-2">
-        {navBtn('drafts', 'Drafts', draftDocuments.length || undefined)}
+        {navBtn('drafts', 'Drafts', draftDocuments.length)}
       </div>
     </div>
   )

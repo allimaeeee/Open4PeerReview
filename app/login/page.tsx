@@ -84,7 +84,7 @@ function LoginForm() {
     <main className="flex flex-1 min-h-0 overflow-y-auto items-center justify-center bg-surface">
       <Card variant="elevated" className="flex w-full max-w-4xl overflow-hidden">
         <div className="flex flex-col items-center justify-center gap-5 bg-surface-warm p-8 flex-1">
-          <img src="/welcome-icon.svg" alt="" className="w-20 h-20" />
+          <img src="/logo.svg" alt="" className="w-20 h-20" />
           <h2 className="font-heading text-heading-sm font-semibold text-text-primary text-center">
             Welcome to Open4PeerReview
           </h2>

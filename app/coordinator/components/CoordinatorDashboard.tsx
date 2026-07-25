@@ -52,10 +52,6 @@ export async function CoordinatorDashboard() {
     assignmentsByDoc.set(a.document_id, list)
   }
 
-  const reviewsSubmitted = released
-    .flatMap(d => (d.reviews ?? []) as { status: string }[])
-    .filter(r => r.status === 'submitted').length
-
   // ── Need Assignment bucket ────────────────────────────────────────────────
   const needAssignmentDocs: AssignmentDocShape[] = pending.map(doc => ({
     id: doc.id,
@@ -125,103 +121,102 @@ export async function CoordinatorDashboard() {
     <CoordinatorDashboardClient
       institution={institution ?? null}
       stats={{
-        members: members.length,
         needAssignment: pending.length,
+        underReview: underReviewDocs.length,
         needApproval: needApprovalDocs.length,
-        reviewsSubmitted,
+        approved: approvedDocs.length,
       }}
       orgReviewers={orgReviewers}
       needAssignment={needAssignmentDocs}
       underReview={underReviewDocs}
       needApproval={needApprovalDocs}
       approved={approvedDocs}
-    >
-      {/* Organization Members — untouched per Build Prompt 4 Step 4 */}
-      {institution && (
-        <section className="mt-8">
-          <h3 className="text-base font-semibold text-slate-800 mb-3">Organization Members</h3>
-          {members.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center">
-              <p className="text-sm text-slate-500">No other members found for {institution}.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Roles</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Reviewer type</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Expertise</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Rubric expertise</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Joined</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {members.map(m => {
-                    const roles: string[] = (m.roles ?? []) as string[]
-                    const tags: string[] = (m.expertise_tags ?? []) as string[]
-                    const specializations: string[] = (m.rubric_specializations ?? []) as string[]
-                    return (
-                      <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900">
-                          {m.display_name ?? <span className="text-slate-400 italic">—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">{m.email}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {roles.length > 0 ? roles.map(r => (
-                              <span key={r} className="text-xs capitalize px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                {r}
-                              </span>
-                            )) : <span className="text-slate-400 text-xs italic">none</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500 capitalize text-xs">
-                          {m.reviewer_type?.replace('_', ' ') ?? <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {tags.slice(0, 3).map(t => (
-                              <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                                {EXPERT_DOMAIN_LABELS[t as ExpertDomain] ?? t}
-                              </span>
-                            ))}
-                            {tags.length > 3 && (
-                              <span className="text-xs text-slate-400">+{tags.length - 3} more</span>
-                            )}
-                            {tags.length === 0 && <span className="text-slate-300 text-xs">—</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {specializations.slice(0, 3).map(id => {
-                              const title = rubricMap.get(id) ?? id
-                              return (
-                                <span key={id} className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
-                                  {title}
+      membersTable={
+        institution ? (
+          <section>
+            {members.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center">
+                <p className="text-sm text-slate-500">No other members found for {institution}.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Roles</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Reviewer type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Expertise</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Rubric expertise</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {members.map(m => {
+                      const roles: string[] = (m.roles ?? []) as string[]
+                      const tags: string[] = (m.expertise_tags ?? []) as string[]
+                      const specializations: string[] = (m.rubric_specializations ?? []) as string[]
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {m.display_name ?? <span className="text-slate-400 italic">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500">{m.email}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {roles.length > 0 ? roles.map(r => (
+                                <span key={r} className="text-xs capitalize px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                  {r}
                                 </span>
-                              )
-                            })}
-                            {specializations.length > 3 && (
-                              <span className="text-xs text-slate-400">+{specializations.length - 3} more</span>
-                            )}
-                            {specializations.length === 0 && <span className="text-slate-300 text-xs">—</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
-                          {m.created_at ? formatDate(m.created_at) : '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-    </CoordinatorDashboardClient>
+                              )) : <span className="text-slate-400 text-xs italic">none</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 capitalize text-xs">
+                            {m.reviewer_type?.replace('_', ' ') ?? <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {tags.slice(0, 3).map(t => (
+                                <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                                  {EXPERT_DOMAIN_LABELS[t as ExpertDomain] ?? t}
+                                </span>
+                              ))}
+                              {tags.length > 3 && (
+                                <span className="text-xs text-slate-400">+{tags.length - 3} more</span>
+                              )}
+                              {tags.length === 0 && <span className="text-slate-300 text-xs">—</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {specializations.slice(0, 3).map(id => {
+                                const title = rubricMap.get(id) ?? id
+                                return (
+                                  <span key={id} className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
+                                    {title}
+                                  </span>
+                                )
+                              })}
+                              {specializations.length > 3 && (
+                                <span className="text-xs text-slate-400">+{specializations.length - 3} more</span>
+                              )}
+                              {specializations.length === 0 && <span className="text-slate-300 text-xs">—</span>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+                            {m.created_at ? formatDate(m.created_at) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ) : null
+      }
+    />
   )
 }
