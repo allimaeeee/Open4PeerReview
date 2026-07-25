@@ -1,29 +1,13 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType, ReportStatus } from '@/types'
+import type { CriterionScore } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { CriterionReportCard } from '@/components/ui/CriterionReportCard'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { ReviewSummaryPanel } from '@/components/ui/ReviewSummaryPanel'
-import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
-import { RevisionNotes, type RevisionNoteItem } from '@/components/ui/RevisionNotes'
-import { CoordinatorDecisionBar } from '@/components/ui/CoordinatorDecisionBar'
-import { ReportDecisionBar } from '@/components/ui/ReportDecisionBar'
-import { approveReview, returnReviewToReviewer } from '@/app/coordinator/actions'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
-import {
-  setFeedbackResponse,
-  clearFeedbackResponse,
-  setFeedbackComment,
-  clearFeedbackComment,
-  addRevisionNote,
-  updateRevisionNote,
-  deleteRevisionNote,
-  setReportStatus,
-  setRevisedLink,
-} from '@/lib/supabase/authorFeedback'
 import { OerReadOnlyViewer } from './OerReadOnlyViewer'
 import { TorusReadOnlyViewer } from './TorusReadOnlyViewer'
 
@@ -74,30 +58,6 @@ interface ReviewRow {
   score_comments: ScoreCommentRow[]
 }
 
-interface FeedbackResponseRow {
-  id: string
-  target_type: FeedbackTargetType
-  target_id: string
-  status: FeedbackResponseStatus
-  review_id: string
-}
-
-interface RevisionNoteRow {
-  id: string
-  body: string
-  review_id: string | null
-  created_at: string
-  updated_at: string
-}
-
-interface FeedbackCommentRow {
-  id: string
-  target_type: FeedbackTargetType
-  target_id: string
-  body: string
-  review_id: string
-}
-
 interface Props {
   document: {
     id: string
@@ -108,22 +68,14 @@ interface Props {
     platform?: string | null
     source_url?: string | null
     course_access_code?: string | null
-    report_status?: ReportStatus | null
+    report_status?: string | null
     revised_link?: string | null
   }
   reviews: ReviewRow[]
   allRubrics?: { id: string; title: string; itemIds: string[] }[]
   pdfUrl?: string | null
-  includeAuthorNotes?: boolean
-  isAuthor?: boolean
-  isCoordinator?: boolean
-  initialResponses?: FeedbackResponseRow[]
-  initialRevisionNotes?: RevisionNoteRow[]
-  initialFeedbackComments?: FeedbackCommentRow[]
-}
-
-function responseKey(targetType: FeedbackTargetType, targetId: string) {
-  return `${targetType}:${targetId}`
+  /** Optional slot rendered inside the right panel above the reviewer summary (e.g. CoordinatorDecisionBar). */
+  decisionSlot?: React.ReactNode
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,164 +100,19 @@ function PrintIcon() {
   )
 }
 
-// ── FeedbackView ─────────────────────────────────────────────────────────────
+// ── ReportFeedbackView ───────────────────────────────────────────────────────
 
-export function FeedbackView({
+export function ReportFeedbackView({
   document,
   reviews,
   allRubrics: allRubricsFromProps,
-  isAuthor = false,
-  isCoordinator = false,
-  initialResponses = [],
-  initialRevisionNotes = [],
-  initialFeedbackComments = [],
+  decisionSlot,
 }: Props) {
   const router = useRouter()
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
   const [scrollToAnnotationId, setScrollToAnnotationId] = useState<string | null>(null)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(true)
   const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
-
-  // ── Author-side feedback state (statuses + revision notes) ──
-  const [responses, setResponses] = useState<Map<string, FeedbackResponseStatus>>(
-    () => new Map(initialResponses.map(r => [responseKey(r.target_type, r.target_id), r.status]))
-  )
-  const [revisionNotes, setRevisionNotes] = useState<RevisionNoteItem[]>(
-    () => initialRevisionNotes.map(n => ({ id: n.id, body: n.body, created_at: n.created_at }))
-  )
-  // Per-item author comments (annotations + rubric criteria), keyed by target.
-  const [comments, setComments] = useState<Map<string, string>>(
-    () => new Map(initialFeedbackComments.map(c => [responseKey(c.target_type, c.target_id), c.body]))
-  )
-
-  const statusFor = useCallback(
-    (targetType: FeedbackTargetType, targetId: string): FeedbackResponseStatus | null =>
-      responses.get(responseKey(targetType, targetId)) ?? null,
-    [responses]
-  )
-
-  const handleStatusChange = useCallback(
-    async (
-      targetType: FeedbackTargetType,
-      targetId: string,
-      reviewId: string,
-      next: FeedbackResponseStatus | null
-    ) => {
-      const key = responseKey(targetType, targetId)
-      const prev = responses.get(key) ?? null
-      // Optimistic update
-      setResponses(m => {
-        const copy = new Map(m)
-        if (next === null) copy.delete(key)
-        else copy.set(key, next)
-        return copy
-      })
-      try {
-        if (next === null) {
-          await clearFeedbackResponse({ targetType, targetId })
-        } else {
-          await setFeedbackResponse({ documentId: document.id, reviewId, targetType, targetId, status: next })
-        }
-      } catch (err) {
-        console.error('Failed to save feedback status', err)
-        // Revert
-        setResponses(m => {
-          const copy = new Map(m)
-          if (prev === null) copy.delete(key)
-          else copy.set(key, prev)
-          return copy
-        })
-      }
-    },
-    [responses, document.id]
-  )
-
-  const commentFor = useCallback(
-    (targetType: FeedbackTargetType, targetId: string): string =>
-      comments.get(responseKey(targetType, targetId)) ?? '',
-    [comments]
-  )
-
-  const handleCommentChange = useCallback(
-    async (
-      targetType: FeedbackTargetType,
-      targetId: string,
-      reviewId: string,
-      body: string
-    ) => {
-      const key = responseKey(targetType, targetId)
-      const prev = comments.get(key) ?? ''
-      const trimmed = body.trim()
-      // Optimistic update
-      setComments(m => {
-        const copy = new Map(m)
-        if (trimmed === '') copy.delete(key)
-        else copy.set(key, trimmed)
-        return copy
-      })
-      try {
-        if (trimmed === '') {
-          await clearFeedbackComment({ targetType, targetId })
-        } else {
-          await setFeedbackComment({ documentId: document.id, reviewId, targetType, targetId, body: trimmed })
-        }
-      } catch (err) {
-        console.error('Failed to save feedback comment', err)
-        // Revert
-        setComments(m => {
-          const copy = new Map(m)
-          if (prev === '') copy.delete(key)
-          else copy.set(key, prev)
-          return copy
-        })
-      }
-    },
-    [comments, document.id]
-  )
-
-  const handleAddNote = useCallback(
-    async (body: string, reviewId: string | null) => {
-      try {
-        const row = await addRevisionNote({ documentId: document.id, reviewId, body })
-        setRevisionNotes(list => [...list, { id: row.id, body: row.body, created_at: row.created_at }])
-      } catch (err) {
-        console.error('Failed to add revision note', err)
-      }
-    },
-    [document.id]
-  )
-
-  const handleUpdateNote = useCallback(async (id: string, body: string) => {
-    const prev = revisionNotes
-    setRevisionNotes(list => list.map(n => (n.id === id ? { ...n, body } : n)))
-    try {
-      await updateRevisionNote({ id, body })
-    } catch (err) {
-      console.error('Failed to update revision note', err)
-      setRevisionNotes(prev)
-    }
-  }, [revisionNotes])
-
-  const handleDeleteNote = useCallback(async (id: string) => {
-    const prev = revisionNotes
-    setRevisionNotes(list => list.filter(n => n.id !== id))
-    try {
-      await deleteRevisionNote({ id })
-    } catch (err) {
-      console.error('Failed to delete revision note', err)
-      setRevisionNotes(prev)
-    }
-  }, [revisionNotes])
-
-  const handleCriterionClick = (rubricItemId: string) => {
-    setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
-    setTimeout(() => {
-      window.document.getElementById(`criterion-${rubricItemId}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    }, 50)
-  }
 
   const searchParams = useSearchParams()
   const from = searchParams.get('from')
@@ -318,49 +125,16 @@ export function FeedbackView({
 
   const allRubrics: { id: string; title: string; itemIds: string[] }[] = allRubricsFromProps ?? []
 
-  // Which capacity is the viewer acting in? A person can be both author and
-  // coordinator; the entry point (?from=) decides the mode. Arriving from the
-  // coordinator dashboard means they're here to review & release — read the review
-  // and approve/return it, no author notes. Arriving from the author dashboard (or
-  // anywhere else) they act as the author.
-  const actingAsCoordinator = isCoordinator && from === 'coordinator'
-
-  // Author-response controls (address statuses, per-item comments, revision notes)
-  // belong to the author's revision workflow. An author — including one who is also
-  // a coordinator — can leave notes, except when acting as a coordinator.
-  const canLeaveNotes = isAuthor && !actingAsCoordinator
-
-  // Per-rubric submit: a rubric is visible to the author once the reviewer has released
-  // it (a review_rubric_submissions row exists). Legacy fallback: a review with no
-  // submission rows predates per-rubric submission — treat all its rubrics as released.
   const submittedRubricIds = new Set<string>(
     reviews.flatMap(rv => {
       const subs = rv.review_rubric_submissions ?? []
       if (subs.length > 0) return subs.map(s => s.rubric_id)
-      return allRubrics.map(r => r.id) // legacy whole-review submission
+      return allRubrics.map(r => r.id)
     })
   )
 
   const firstSubmittedRubricId =
     allRubrics.find(r => submittedRubricIds.has(r.id))?.id ?? null
-
-  // The report is ready for an author publish/revise/private decision once every
-  // rubric assigned to the document has been reviewed and released to the author.
-  const allRubricsReleased = allRubrics.length > 0 && allRubrics.every(r => submittedRubricIds.has(r.id))
-  const reportStatus = (document.report_status ?? null) as ReportStatus | null
-  // Author-only: shown once everything is released, or whenever a decision already
-  // exists (so a published/private report can still be revised or (re)published).
-  const showReportDecision = canLeaveNotes && (allRubricsReleased || reportStatus !== null)
-
-  const applyReportStatus = useCallback(async (status: ReportStatus | null) => {
-    await setReportStatus({ documentId: document.id, status })
-    router.refresh()
-  }, [document.id, router])
-
-  const applyRevisedLink = useCallback(async (link: string) => {
-    await setRevisedLink({ documentId: document.id, link: link || null })
-    router.refresh()
-  }, [document.id, router])
 
   const [selectedRubricId, setSelectedRubricId] = useState<string | null>(() => {
     if (!reviews.length) return null
@@ -370,10 +144,8 @@ export function FeedbackView({
     return firstSubmittedRubricId
   })
 
-  // Prefer the review linked to the selected rubric; fall back to the first submitted review
   const review = reviews.find(r => r.rubric?.id === selectedRubricId) ?? reviews[0] ?? null
 
-  // Filter scores to the selected rubric's items (handles a single review covering all rubrics)
   const selectedItemIds = new Set(
     allRubrics.find(r => r.id === selectedRubricId)?.itemIds ?? []
   )
@@ -385,7 +157,6 @@ export function FeedbackView({
     : []
 
   const reviewerName = review?.reviewer?.display_name ?? review?.reviewer?.email ?? 'Anonymous Reviewer'
-  // Prefer the selected rubric's own release date; fall back to the review-level date.
   const selectedRubricSubmittedAt =
     review?.review_rubric_submissions?.find(s => s.rubric_id === selectedRubricId)?.submitted_at
     ?? review?.submitted_at
@@ -424,9 +195,20 @@ export function FeedbackView({
     [review]
   )
 
+  const handleCriterionClick = (rubricItemId: string) => {
+    setExpandedCards(prev => ({ ...prev, [rubricItemId]: true }))
+    setTimeout(() => {
+      window.document.getElementById(`criterion-${rubricItemId}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 50)
+  }
+
   return (
     <div className="flex-1 min-h-0">
       <style>{`
+        [data-print-header] { display: none; }
         @media print {
           nav,
           .back-link,
@@ -451,10 +233,37 @@ export function FeedbackView({
           body {
             background: white !important;
           }
+          [data-panel-root] {
+            overflow: visible !important;
+            height: auto !important;
+          }
+          [data-panel-right] {
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            width: 100% !important;
+          }
+          [data-print-header] {
+            display: flex !important;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--color-border);
+          }
+          [data-rating="exemplifies"],
+          [data-rubric-tab-selected] {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            background-color: transparent !important;
+            border-color: var(--color-primary) !important;
+            color: var(--color-primary) !important;
+          }
         }
       `}</style>
 
       <ResizablePanelLayout
+        defaultLeftPercent={50}
         leftPanelCollapsed={leftPanelCollapsed}
         onLeftPanelCollapsedChange={setLeftPanelCollapsed}
         leftPanelLabel={document.platform === 'OLI Torus' ? 'View Torus' : 'View OER'}
@@ -500,7 +309,23 @@ export function FeedbackView({
         }
         rightPanel={
           <div className="h-full overflow-y-auto">
-            <div className="mx-auto max-w-2xl px-6 py-10">
+            <div className="mx-auto max-w-6xl px-6 py-10">
+
+        {/* Print-only branding header */}
+        <div
+          data-print-header
+          style={{ alignItems: 'center', gap: '12px', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border)' }}
+        >
+          <img src="/logo.svg" alt="" style={{ height: '32px', width: 'auto' }} />
+          <span style={{ fontFamily: 'var(--font-newsreader), Newsreader, Georgia, serif', fontWeight: 700, fontSize: '18px', color: 'var(--color-primary)' }}>
+            Open 4 Peer Review Hub
+          </span>
+        </div>
+
+        {/* Decision slot — rendered by parent (e.g. CoordinatorDecisionBar on the coordinator route) */}
+        {decisionSlot && (
+          <div className="mb-6">{decisionSlot}</div>
+        )}
 
         {/* Back link */}
         <Button
@@ -514,6 +339,13 @@ export function FeedbackView({
           </svg>
           Back to Dashboard
         </Button>
+
+        {/* View tag */}
+        <div className="mb-3" data-print-hide>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-sm bg-[var(--color-surface-container-high)] text-[var(--color-text-muted)] text-label-sm font-label font-medium uppercase tracking-widest">
+            Review Report
+          </span>
+        </div>
 
         {/* Page header */}
         <div className="flex items-start justify-between gap-6 mb-6">
@@ -539,6 +371,7 @@ export function FeedbackView({
                       key={rubric.id}
                       disabled={!isSubmitted}
                       onClick={() => isSubmitted && setSelectedRubricId(rubric.id)}
+                      {...(isSelected ? { 'data-rubric-tab-selected': '' } : {})}
                       className={[
                         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-sm font-label font-semibold border transition-colors',
                         isSelected
@@ -564,7 +397,21 @@ export function FeedbackView({
               variant="secondary"
               size="sm"
               className="export-pdf-btn shrink-0"
-              onClick={() => window.print()}
+              onClick={() => {
+                const sanitize = (s: string) => s.replace(/[/\\:*?"<>|]/g, '-')
+                const sub = sanitize(document.title)
+                const rub = review.rubric?.title ? sanitize(review.rubric.title) : ''
+                const rev = sanitize(reviewerName)
+                const filename = rub ? `${sub} (${rub}) - ${rev}` : `${sub} - ${rev}`
+                const orig = window.document.title
+                window.document.title = filename
+                const restore = () => {
+                  window.document.title = orig
+                  window.removeEventListener('afterprint', restore)
+                }
+                window.addEventListener('afterprint', restore)
+                window.print()
+              }}
             >
               <PrintIcon />
               Export PDF
@@ -582,37 +429,6 @@ export function FeedbackView({
 
         {review && (
           <>
-            {/* Author publish / revise / keep-private decision (all rubrics released) */}
-            {showReportDecision && (
-              <ReportDecisionBar
-                className="mb-6"
-                status={reportStatus}
-                onPublish={() => applyReportStatus('published')}
-                onRevise={() => applyReportStatus('revising')}
-                onKeepPrivate={() => applyReportStatus('private')}
-                revisedLink={document.revised_link ?? null}
-                onSaveRevisedLink={applyRevisedLink}
-              />
-            )}
-
-            {/* Coordinator approval decision (org submissions awaiting release) */}
-            {actingAsCoordinator && (
-              <CoordinatorDecisionBar
-                className="mb-6"
-                approval={(review.coordinator_approval ?? null) as 'pending' | 'approved' | 'changes_requested' | null}
-                reviewerName={reviewerName}
-                onApprove={async () => {
-                  await approveReview(review.id)
-                  router.refresh()
-                }}
-                onReturn={async (note) => {
-                  await returnReviewToReviewer(review.id, note)
-                  router.push('/coordinator')
-                  router.refresh()
-                }}
-              />
-            )}
-
             {/* Reviewer's summary */}
             {review.overall_comment && (
               <div className="rounded-lg bg-[var(--color-surface-container)] px-5 py-4 mb-6">
@@ -622,14 +438,6 @@ export function FeedbackView({
                 <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed">
                   {review.overall_comment}
                 </p>
-                {canLeaveNotes && (
-                  <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
-                    <AddressStatusControl
-                      status={statusFor('overall_comment', review.id)}
-                      onChange={s => handleStatusChange('overall_comment', review.id, review.id, s)}
-                    />
-                  </div>
-                )}
               </div>
             )}
 
@@ -663,14 +471,6 @@ export function FeedbackView({
                   <p className="text-body-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap">
                     {review.notes}
                   </p>
-                  {canLeaveNotes && (
-                    <div className="pt-3 mt-3 border-t border-[var(--color-border)]">
-                      <AddressStatusControl
-                        status={statusFor('general_comment', review.id)}
-                        onChange={s => handleStatusChange('general_comment', review.id, review.id, s)}
-                      />
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -692,12 +492,6 @@ export function FeedbackView({
                         }}
                         goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                         screenshotNumber={annotationIndexMap.get(ann.id)}
-                        showStatusControl={canLeaveNotes}
-                        status={statusFor('annotation', ann.id)}
-                        onStatusChange={s => handleStatusChange('annotation', ann.id, review.id, s)}
-                        showComment={canLeaveNotes}
-                        comment={commentFor('annotation', ann.id)}
-                        onCommentChange={body => handleCommentChange('annotation', ann.id, review.id, body)}
                       />
                     ))}
                   </div>
@@ -736,26 +530,9 @@ export function FeedbackView({
                   }}
                   goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}
                   annotationIndexMap={annotationIndexMap}
-                  showStatusControls={canLeaveNotes}
-                  statusFor={statusFor}
-                  onStatusChange={(targetType, targetId, s) => handleStatusChange(targetType, targetId, review.id, s)}
-                  commentFor={commentFor}
-                  onCommentChange={(targetType, targetId, body) => handleCommentChange(targetType, targetId, review.id, body)}
                 />
               ))}
             </div>
-
-            {/* Revision Notes — author-only (coordinators only read/approve) */}
-            {canLeaveNotes && (
-              <div className="mt-6">
-                <RevisionNotes
-                  notes={revisionNotes}
-                  onAdd={body => handleAddNote(body, null)}
-                  onUpdate={handleUpdateNote}
-                  onDelete={handleDeleteNote}
-                />
-              </div>
-            )}
           </>
         )}
 

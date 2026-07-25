@@ -17,17 +17,20 @@ export interface TaskPoolCardProps {
   ccLicense: string
   description: string
   submittedAt: string
+  publicReview?: boolean
   rubrics: { rubricId: string; rubricTitle: string }[]
   onAccept?: (id: string) => void
-  onDecline?: (id: string, reason: string, note: string) => void
+  onDecline?: (id: string, declineNote: string) => void
 }
 
-const DECLINE_REASONS = [
-  { value: 'outside-expertise',    label: 'Outside my area of expertise' },
-  { value: 'conflict-of-interest', label: 'Conflict of interest' },
+const DECLINE_REASONS: { value: string; label: string; publicOnly?: boolean }[] = [
+  { value: 'outside-expertise',     label: 'Outside my area of expertise' },
+  { value: 'conflict-of-interest',  label: 'Conflict of interest' },
   { value: 'insufficient-capacity', label: 'Insufficient capacity at this time' },
-  { value: 'duplicate-assignment', label: 'Duplicate assignment' },
-  { value: 'other',                label: 'Other' },
+  // 'public-submissions' is only offered for documents open to public review (see publicReview prop)
+  { value: 'public-submissions',    label: 'Prefer not to review public submissions', publicOnly: true },
+  { value: 'duplicate-assignment',  label: 'Duplicate assignment' },
+  { value: 'other',                 label: 'Other' },
 ]
 
 export function TaskPoolCard({
@@ -40,6 +43,7 @@ export function TaskPoolCard({
   ccLicense,
   description,
   submittedAt,
+  publicReview = false,
   rubrics,
   onAccept,
   onDecline,
@@ -47,6 +51,9 @@ export function TaskPoolCard({
   const [declineMode, setDeclineMode] = useState(false)
   const [declineReason, setDeclineReason] = useState('')
   const [declineNote, setDeclineNote] = useState('')
+
+  // Only surface the "public submissions" reason when the document is open to public review.
+  const declineReasons = DECLINE_REASONS.filter(r => !r.publicOnly || publicReview)
 
   const formattedDate = new Date(submittedAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -57,6 +64,27 @@ export function TaskPoolCard({
 
       {/* Left column (full width — no right column) */}
       <div className="flex-1 min-w-0">
+
+        {/* Row 1: public/private pill */}
+        <div className="flex items-center gap-2 mb-3">
+          {publicReview ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none bg-[var(--color-primary)] text-[var(--color-on-primary)] text-label-sm font-label font-semibold uppercase tracking-widest">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 2a8.5 8.5 0 010 12M8 2a8.5 8.5 0 000 12M2 8h12"/>
+              </svg>
+              Public
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none border border-[var(--color-status-unassigned-text)] bg-[var(--color-surface-card)] text-[var(--color-status-unassigned-text)] text-label-sm font-label font-semibold uppercase tracking-widest">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 shrink-0">
+                <rect x="3" y="8" width="10" height="7" rx="1"/>
+                <path d="M5 8V5a3 3 0 016 0v3"/>
+              </svg>
+              Private
+            </span>
+          )}
+        </div>
 
         {/* Row 2: title */}
         <h2 className="font-heading text-title-lg text-text-primary leading-snug truncate">
@@ -158,7 +186,7 @@ export function TaskPoolCard({
               }}
             >
               <option value="" disabled>Select a reason…</option>
-              {DECLINE_REASONS.map(r => (
+              {declineReasons.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </Select>
@@ -175,10 +203,15 @@ export function TaskPoolCard({
                 variant="primary"
                 size="sm"
                 onClick={() => {
-                  onDecline?.(id, declineReason, declineNote)
+                  // Store the human-readable reason; for "Other", use the typed note.
+                  const selected = declineReasons.find(r => r.value === declineReason)
+                  const finalNote = declineReason === 'other'
+                    ? (declineNote.trim() || 'Other')
+                    : (selected?.label ?? declineReason)
+                  onDecline?.(id, finalNote)
                   setDeclineMode(false)
                 }}
-                disabled={!declineReason}
+                disabled={!declineReason || (declineReason === 'other' && !declineNote.trim())}
               >
                 Confirm Decline
               </Button>

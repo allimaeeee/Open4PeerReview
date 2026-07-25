@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { assignAndReleaseDocument } from '../actions'
 import { releaseDocument } from '../actions'
 
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function PendingDocActions({ documentId, orgReviewers }: Props) {
+  const router = useRouter()
   const [mode, setMode] = useState<'idle' | 'assign'>('idle')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
@@ -35,6 +37,7 @@ export function PendingDocActions({ documentId, orgReviewers }: Props) {
     startTransition(async () => {
       try {
         await releaseDocument(documentId)
+        router.refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to release document.')
       }
@@ -46,6 +49,7 @@ export function PendingDocActions({ documentId, orgReviewers }: Props) {
     startTransition(async () => {
       try {
         await assignAndReleaseDocument(documentId, Array.from(selected))
+        router.refresh()
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to assign reviewers.')
       }

@@ -91,6 +91,7 @@ export async function uploadDocument(
   submissionScope: string[] = ['public'],
   isDraft = false,
   coordinatorUpload = false,
+  publicReview = false,
 ) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -128,6 +129,7 @@ export async function uploadDocument(
       submission_scope: submissionScope,
       is_draft: isDraft,
       coordinator_upload: coordinatorUpload,
+      public_review: publicReview,
     })
     .select()
     .single()
@@ -153,6 +155,7 @@ export async function submitOpenStaxLink(
     submissionScope: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    publicReview?: boolean
     additionalPages?: Array<{ url: string; fingerprint: string; storagePath: string }>
   }
 ) {
@@ -177,6 +180,7 @@ export async function submitOpenStaxLink(
       submission_scope: opts.submissionScope,
       is_draft: opts.isDraft ?? false,
       coordinator_upload: opts.coordinatorUpload ?? false,
+      public_review: opts.publicReview ?? false,
       pages: opts.additionalPages?.length ? (opts.additionalPages as import('@/types/database.types').Json) : null,
     })
     .select()
@@ -255,6 +259,7 @@ export async function submitTorusLink(
     submissionScope: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    publicReview?: boolean
   }
 ) {
   const { data: { user } } = await supabase.auth.getUser()
@@ -277,6 +282,7 @@ export async function submitTorusLink(
       submission_scope: opts.submissionScope,
       is_draft: opts.isDraft ?? false,
       coordinator_upload: opts.coordinatorUpload ?? false,
+      public_review: opts.publicReview ?? false,
     })
     .select()
     .single()
@@ -324,6 +330,82 @@ export async function saveDraftDocument(
 
   if (error) throw error
   return data
+}
+
+/** Insert a PDF draft row (metadata only — skips file upload) */
+export async function savePdfDraft(
+  supabase: Client,
+  opts: {
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: CreativeCommonsLicense
+    thirdPartyDisclosure: string | null
+    submissionScope: string[]
+    publicReview: boolean
+    rubricIds: string[]
+  }
+) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('documents')
+    .insert({
+      author_id: user.id,
+      title: opts.title,
+      file_type: 'pdf',
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      submission_scope: opts.submissionScope,
+      is_draft: true,
+      coordinator_upload: false,
+      public_review: opts.publicReview,
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  if (opts.rubricIds.length > 0) {
+    await assignRubrics(supabase, data.id, opts.rubricIds)
+  }
+  return data
+}
+
+/** Update metadata fields on an existing draft without touching file/storage columns */
+export async function updateDraftMetadata(
+  supabase: Client,
+  documentId: string,
+  opts: {
+    title: string
+    authors: string
+    subjectMatter: string
+    ccLicense: string
+    thirdPartyDisclosure: string | null
+    submissionScope: string[]
+    publicReview: boolean
+    sourceUrl?: string | null
+    courseAccessCode?: string | null
+  }
+) {
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      title: opts.title,
+      authors: opts.authors,
+      subject_matter: opts.subjectMatter,
+      creative_commons_license: opts.ccLicense as CreativeCommonsLicense,
+      third_party_content_disclosure: opts.thirdPartyDisclosure,
+      submission_scope: opts.submissionScope,
+      public_review: opts.publicReview,
+      ...(opts.sourceUrl !== undefined ? { source_url: opts.sourceUrl, file_url: opts.sourceUrl } : {}),
+      ...(opts.courseAccessCode !== undefined ? { course_access_code: opts.courseAccessCode } : {}),
+    })
+    .eq('id', documentId)
+
+  if (error) throw error
 }
 
 /** Assign specific reviewers to a document (upserts, ignores duplicates) */
@@ -407,9 +489,9 @@ export async function getMyDocumentsWithStats(supabase: Client) {
     .select(`
       id, title, file_type, platform, created_at, authors, subject_matter,
       creative_commons_license, third_party_content_disclosure, source_url,
-      submission_scope, coordinator_released_at, is_draft,
+      submission_scope, coordinator_released_at, is_draft, report_status, public_review,
       document_rubrics ( rubric:rubrics ( id, title ) ),
-      reviews ( id, status, submitted_at, rubric_id, review_rubric_submissions ( rubric_id ) )
+      reviews ( id, status, submitted_at, rubric_id, coordinator_approval, review_rubric_submissions ( rubric_id ) )
     `)
     .eq('author_id', user.id)
     .eq('coordinator_upload', false)
@@ -426,7 +508,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const { data: doc, error: docError } = await supabase
     .from('documents')
-    .select('id, title, author_id, storage_path, file_type, content_fingerprint, platform, source_url, course_access_code, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
+    .select('id, title, author_id, storage_path, file_type, content_fingerprint, pages, platform, source_url, course_access_code, submission_scope, report_status, revised_link, author:users!author_id(institution), document_rubrics(rubric:rubrics(id, title, rubric_items(id)))')
     .eq('id', documentId)
     .single()
 
@@ -434,39 +516,43 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
 
   const isAuthor = doc.author_id === user.id
 
-  if (!isAuthor) {
-    const { data: viewer } = await supabase
-      .from('users')
-      .select('roles, institution')
-      .eq('id', user.id)
-      .single()
+  // A viewer can hold several roles at once (e.g. author of this document AND the
+  // org coordinator, per the multi-role model). Compute coordinator status
+  // independently of authorship so a coordinator who also authored the document
+  // still gets the coordinator view — seeing pending reviews and able to
+  // approve/return them — rather than being locked into the author view.
+  const { data: viewer } = await supabase
+    .from('users')
+    .select('roles, institution')
+    .eq('id', user.id)
+    .single()
 
-    const viewerRoles = (viewer?.roles ?? []) as string[]
-    const authorInstitution = (doc.author as { institution: string | null } | null)?.institution
-    const isCoordinator =
-      viewerRoles.includes('coordinator') &&
-      !!viewer?.institution &&
-      viewer.institution === authorInstitution
+  const viewerRoles = (viewer?.roles ?? []) as string[]
+  const authorInstitution = (doc.author as { institution: string | null } | null)?.institution
+  const isCoordinator =
+    viewerRoles.includes('coordinator') &&
+    !!viewer?.institution &&
+    viewer.institution === authorInstitution
 
-    // Reviewers can view feedback for documents they have reviewed
+  if (!isAuthor && !isCoordinator) {
+    // Otherwise the viewer must be a reviewer of this document to see its feedback.
     const { count: reviewCount } = await supabase
       .from('reviews')
       .select('id', { count: 'exact', head: true })
       .eq('document_id', documentId)
       .eq('reviewer_id', user.id)
 
-    const isReviewer = (reviewCount ?? 0) > 0
-
-    if (!isCoordinator && !isReviewer) throw new Error('Not authorised')
+    if ((reviewCount ?? 0) === 0) throw new Error('Not authorised')
   }
 
   const { data, error } = await supabase
     .from('reviews')
     .select(`
       id, status, overall_comment, notes, submitted_at,
+      coordinator_approval, coordinator_note, coordinator_decided_at,
       reviewer:users!reviewer_id ( display_name, email ),
       rubric:rubrics ( id, title ),
-      review_rubric_submissions!inner ( rubric_id, submitted_at ),
+      review_rubric_submissions ( rubric_id, submitted_at ),
       review_scores (
         id, score, criterion_scores, comment,
         rubric_item:rubric_items ( id, label, sort_order, description )
@@ -478,6 +564,31 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     .order('submitted_at', { ascending: true })
 
   if (error) throw error
+
+  // Only surface reviews that have actually been released for reading. Per-rubric
+  // submission creates a review_rubric_submissions row; a review may still be
+  // 'in_progress' overall while some rubrics are released. Extension-submitted
+  // (OLI Torus) and legacy whole-review submissions set status='submitted' without
+  // creating per-rubric rows — include those too. (Previously an !inner join on
+  // review_rubric_submissions handled the first case but silently dropped the
+  // second, so extension-reviewed submissions never appeared to coordinators.)
+  const releasedReviews = (data ?? []).filter(r => {
+    const row = r as { status?: string; review_rubric_submissions?: unknown[] }
+    return (row.review_rubric_submissions?.length ?? 0) > 0 || row.status === 'submitted'
+  })
+
+  // Hold org-scoped reviews back from the author until a coordinator approves.
+  // (RLS also enforces this; the filter keeps the returned payload clean and
+  // covers the both-scoped edge case defensively.) Coordinators and reviewers
+  // see submitted reviews regardless of approval so they can act on them — this
+  // includes a coordinator who also authored the document.
+  const docScope = ((doc as { submission_scope?: string[] | null }).submission_scope ?? [])
+  const requiresApproval = docScope.includes('organization')
+  const visibleReviews = (isAuthor && !isCoordinator && requiresApproval)
+    ? releasedReviews.filter(
+        r => (r as { coordinator_approval?: string | null }).coordinator_approval === 'approved'
+      )
+    : releasedReviews
 
   // Author-side response state. RLS restricts these tables to the document author,
   // so non-authors (coordinators/reviewers) simply receive empty arrays.
@@ -492,17 +603,25 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     .eq('document_id', documentId)
     .order('created_at', { ascending: true })
 
+  const { data: feedbackComments } = await supabase
+    .from('author_feedback_comments')
+    .select('id, target_type, target_id, body, review_id')
+    .eq('document_id', documentId)
+
+
   const allRubrics = ((doc as { document_rubrics?: { rubric: { id: string; title: string; rubric_items?: { id: string }[] } | null }[] }).document_rubrics ?? [])
     .map(dr => dr.rubric)
     .filter((r): r is { id: string; title: string; rubric_items?: { id: string }[] } => r !== null)
     .map(r => ({ id: r.id, title: r.title, itemIds: (r.rubric_items ?? []).map(item => item.id) }))
   return {
     document: doc,
-    reviews: data ?? [],
+    reviews: visibleReviews,
     isAuthor,
+    isCoordinator,
     allRubrics,
     feedbackResponses: feedbackResponses ?? [],
     revisionNotes: revisionNotes ?? [],
+    feedbackComments: feedbackComments ?? [],
   }
 }
 
@@ -522,10 +641,10 @@ export async function getAllDocumentsWithRubrics(supabase: Client) {
     .from('documents')
     .select(`
       id, title, file_type, platform, created_at, subject_matter,
-      creative_commons_license, third_party_content_disclosure, source_url, course_access_code,
+      creative_commons_license, third_party_content_disclosure, source_url, course_access_code, public_review,
       author:users!author_id ( id, display_name, email ),
       document_rubrics ( rubric:rubrics ( id, title, rubric_items ( id ) ) ),
-      reviews ( id, status, reviewer_id, submitted_at, rubric_id, notes, review_scores ( id, rubric_item_id, criterion_scores ) )
+      reviews ( id, status, reviewer_id, submitted_at, rubric_id, notes, review_scores ( id, rubric_item_id, criterion_scores ), review_rubric_submissions ( rubric_id ) )
     `)
     .order('created_at', { ascending: false })
 
@@ -668,9 +787,10 @@ export async function getCoordinatorDashboardData(supabase: Client) {
           .from('documents')
           .select(`
             id, title, file_type, created_at, submission_scope, coordinator_released_at, is_draft, coordinator_upload,
+            authors, platform, subject_matter, creative_commons_license, public_review,
             author:users!author_id ( id, display_name, email, institution ),
             document_rubrics ( rubric:rubrics ( id, title ) ),
-            reviews ( id, status )
+            reviews ( id, status, coordinator_approval, submitted_at, rubric_id, reviewer:users!reviewer_id ( id, display_name, email ) )
           `)
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
@@ -697,6 +817,21 @@ export async function getCoordinatorDashboardData(supabase: Client) {
   // All non-draft released docs
   const released = allOrgDocs.filter(doc => !!doc.coordinator_released_at && !doc.is_draft)
 
+  // Released docs with at least one completed (submitted) review that has not yet
+  // been released to the author — i.e. ready for the coordinator to release.
+  // A submitted org review is awaiting release unless it's been approved or sent
+  // back. Treat a null coordinator_approval as pending: the extension's submit
+  // path (and any pre-approval-feature submissions) leave it null rather than
+  // stamping 'pending'.
+  const readyToRelease = released.filter(doc =>
+    ((doc.reviews ?? []) as { status: string; coordinator_approval: string | null }[])
+      .some(r =>
+        r.status === 'submitted' &&
+        r.coordinator_approval !== 'approved' &&
+        r.coordinator_approval !== 'changes_requested'
+      )
+  )
+
   // Fetch assignments for released and pending docs
   const managedDocIds = [...released, ...pending].map(d => d.id)
   const assignmentsResult = managedDocIds.length > 0
@@ -716,6 +851,7 @@ export async function getCoordinatorDashboardData(supabase: Client) {
     customSubjectMatters: allSubjectMatters,
     pending,
     released,
+    readyToRelease,
     assignments: assignmentsResult.data ?? [],
   }
 }

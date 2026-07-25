@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { acceptDocument, declineDocument } from '@/app/coordinator/actions'
 import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Select } from '@/components/ui/Select'
+
+type SortOrder = 'az' | 'recent' | 'oldest'
 import { DashboardShell } from '@/components/patterns/DashboardShell'
 import { DashboardSidebar } from '@/components/patterns/DashboardSidebar'
 import { FilterPillGroup } from '@/components/patterns/FilterPillGroup'
@@ -14,6 +18,7 @@ import type { CompletedReviewCardProps } from '@/components/patterns/CompletedRe
 import { TaskPoolCard } from '@/components/patterns/TaskPoolCard'
 import type { TaskPoolCardProps } from '@/components/patterns/TaskPoolCard'
 import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
 
 interface Props {
   displayName: string
@@ -22,14 +27,6 @@ interface Props {
   taskCards: Omit<TaskPoolCardProps, 'onAccept' | 'onDecline'>[]
 }
 
-function EmptyState({ message, sub }: { message: string; sub: string }) {
-  return (
-    <div className="rounded-lg border-2 border-dashed border-[var(--color-border)] py-16 text-center">
-      <p className="text-body-md font-medium text-text-secondary">{message}</p>
-      <p className="text-body-sm text-text-muted mt-1">{sub}</p>
-    </div>
-  )
-}
 
 export function ReviewerDashboardClient({ displayName: _displayName, activeCards, completedCards, taskCards }: Props) {
   const searchParams = useSearchParams()
@@ -37,6 +34,8 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
   const initialTab = (searchParams.get('tab') ?? 'my-reviews') as 'my-reviews' | 'completed' | 'task-pool'
   const [activeTab, setActiveTab] = useState<'my-reviews' | 'completed' | 'task-pool'>(initialTab)
   const [confirmModal, setConfirmModal] = useState<'accepted' | 'declined' | null>(null)
+  const [acceptConfirm, setAcceptConfirm] = useState<{ id: string; publicReview: boolean } | null>(null)
+  const [sortBy, setSortBy] = useState<SortOrder>('az')
   const [showSubmittedModal, setShowSubmittedModal] = useState(searchParams.get('submitted') === 'true')
 
   // Clear ?submitted from the URL so a refresh doesn't re-show the modal
@@ -162,71 +161,171 @@ export function ReviewerDashboardClient({ displayName: _displayName, activeCards
         </div>
 
         {/* My Reviews tab */}
-        {activeTab === 'my-reviews' && (
-          <>
-            <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} size="sm" />
-            <div className="mt-6 space-y-4">
-              {filteredActiveCards.length === 0 ? (
-                <EmptyState message="No active reviews." sub="Check the Task Pool to find new assignments." />
-              ) : (
-                filteredActiveCards.map(card => <ReviewerCard key={card.id} {...card} />)
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'my-reviews' && (() => {
+          const sortedCards = [...filteredActiveCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.claimedAt).getTime()
+            const db = new Date(b.claimedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                <FilterPillGroup options={filterOptions} value={activeFilter} onChange={setActiveFilter} size="sm" />
+              </div>
+              <div className="mt-6 space-y-4">
+                {sortedCards.length === 0 ? (
+                  <EmptyState message="No active reviews." sub="Check the Task Pool to find new assignments." />
+                ) : (
+                  sortedCards.map(card => <ReviewerCard key={card.id} {...card} />)
+                )}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Completed tab */}
-        {activeTab === 'completed' && (
-          <>
-            {completedCards.length > 0 && (
-              <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
-            )}
-            <div className="mt-6 space-y-4">
-              {completedCards.length === 0 ? (
-                <EmptyState message="No completed reviews yet." sub="Completed reviews will appear here once submitted." />
-              ) : (
-                filteredCompletedCards.map(card => <CompletedReviewCard key={card.id} {...card} />)
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'completed' && (() => {
+          const sortedCards = [...filteredCompletedCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.completedAt).getTime()
+            const db = new Date(b.completedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                {completedCards.length > 0 && (
+                  <FilterPillGroup options={completedFilterOptions} value={completedFilter} onChange={setCompletedFilter} size="sm" />
+                )}
+              </div>
+              <div className="mt-6 space-y-4">
+                {completedCards.length === 0 ? (
+                  <EmptyState message="No completed reviews yet." sub="Completed reviews will appear here once submitted." />
+                ) : (
+                  sortedCards.map(card => <CompletedReviewCard key={card.id} {...card} />)
+                )}
+              </div>
+            </>
+          )
+        })()}
 
         {/* Task Pool tab */}
-        {activeTab === 'task-pool' && (
-          <>
-            {taskCards.length > 0 && (
-              <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} size="sm" />
-            )}
-            <div className="mt-6 space-y-4">
-              {taskCards.length === 0 ? (
-                <EmptyState message="No tasks available." sub="Check back later for new assignments." />
-              ) : filteredTaskCards.length === 0 ? (
-                <EmptyState message="No tasks match the selected filters." sub="Try adjusting the filters above." />
-              ) : (
-                filteredTaskCards.map(card => (
-                  <TaskPoolCard
-                    key={card.id}
-                    {...card}
-                    onAccept={async (id) => {
-                      await acceptDocument(id)
-                      router.refresh()
-                      setActiveTab('my-reviews')
-                      setConfirmModal('accepted')
-                    }}
-                    onDecline={async (id, reason, note) => {
-                      const fullNote = [reason, note].filter(Boolean).join(': ')
-                      await declineDocument(id, fullNote)
-                      router.refresh()
-                      setConfirmModal('declined')
-                    }}
-                  />
-                ))
-              )}
-            </div>
-          </>
-        )}
+        {activeTab === 'task-pool' && (() => {
+          const sortedCards = [...filteredTaskCards].sort((a, b) => {
+            if (sortBy === 'az') return a.title.localeCompare(b.title)
+            const da = new Date(a.submittedAt).getTime()
+            const db = new Date(b.submittedAt).getTime()
+            return sortBy === 'recent' ? db - da : da - db
+          })
+          return (
+            <>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-sans font-medium text-xs text-text-secondary whitespace-nowrap">Sort:</span>
+                  <div className="w-44">
+                    <Select size="compact" value={sortBy} onChange={e => setSortBy(e.target.value as SortOrder)}>
+                      <option value="az">A–Z</option>
+                      <option value="recent">Most Recent First</option>
+                      <option value="oldest">Oldest First</option>
+                    </Select>
+                  </div>
+                </div>
+                {taskCards.length > 0 && (
+                  <FilterPillGroup options={poolRubricOptions} value={poolRubricFilter} onChange={setPoolRubricFilter} size="sm" />
+                )}
+              </div>
+              <div className="mt-6 space-y-4">
+                {taskCards.length === 0 ? (
+                  <EmptyState message="No tasks available." sub="Check back later for new assignments." />
+                ) : sortedCards.length === 0 ? (
+                  <EmptyState message="No tasks match the selected filters." sub="Try adjusting the filters above." />
+                ) : (
+                  sortedCards.map(card => (
+                    <TaskPoolCard
+                      key={card.id}
+                      {...card}
+                      onAccept={() => {
+                        setAcceptConfirm({ id: card.id, publicReview: card.publicReview ?? false })
+                      }}
+                      onDecline={async (id, declineNote) => {
+                        await declineDocument(id, declineNote)
+                        router.refresh()
+                        setConfirmModal('declined')
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            </>
+          )
+        })()}
 
       </div>
+      {/* Accept confirmation modal */}
+      <Modal open={acceptConfirm !== null} onClose={() => setAcceptConfirm(null)}>
+        <div
+          onClick={e => e.stopPropagation()}
+          className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface-card rounded-lg shadow-4 p-6"
+        >
+          <button
+            type="button"
+            onClick={() => setAcceptConfirm(null)}
+            aria-label="Close"
+            className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 4L4 12M4 4l8 8" />
+            </svg>
+          </button>
+          <h2 className="font-heading text-title-md text-text-primary mb-3 pr-6">Accept this review?</h2>
+          <p className="text-body-md text-text-secondary mb-6">
+            {acceptConfirm?.publicReview
+              ? 'This is a public review. If the author chooses to publish it, your feedback, ratings, and comments may appear on the O4PR public site alongside the OER. Once accepted, this task moves to your active reviews.'
+              : 'This is a private review. Your feedback, ratings, and comments will only be visible to the author and coordinators, and won\'t appear on the public site. Once accepted, this task moves to your active reviews.'}
+          </p>
+          <div className="flex items-center justify-end gap-3">
+            <Button variant="secondary" size="md" onClick={() => setAcceptConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={async () => {
+                if (!acceptConfirm) return
+                await acceptDocument(acceptConfirm.id)
+                setAcceptConfirm(null)
+                router.refresh()
+                setActiveTab('my-reviews')
+                setConfirmModal('accepted')
+              }}
+            >
+              Accept review
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={showSubmittedModal} onClose={() => setShowSubmittedModal(false)}>
         <div
           onClick={e => e.stopPropagation()}

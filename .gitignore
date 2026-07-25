@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Claude Code agent working files
+.claude/worktrees/
+
 # dependencies
 /node_modules
 /.pnp
@@ -44,16 +47,14 @@ yarn-error.log*
 next-env.d.ts
 
 # extension build output
-/extension/dist/
 .archiver_shadow/
 .snapshots/
 .gstack/
 
-/extension/dist.zip
-/extension/dist.crx
-
-# Claude testing environments
 .claude/
+
+extension/dist.zip
+extension/dist.crx
 
 # Supabase CLI internal cache
 /supabase/.temp/

@@ -76,6 +76,8 @@ export interface Review {
   notes: string | null
   last_saved_at: string | null
   rubric_id: string
+  coordinator_approval: string | null
+  coordinator_note: string | null
   rubric: Rubric
   review_scores: ReviewScore[]
   annotations: AnnotationRecord[]
@@ -89,9 +91,10 @@ interface ReviewerAppProps {
   document: OERDocument | null
   rubrics: Rubric[]
   existingReview: Review | null
+  requiresCoordinatorApproval?: boolean
 }
 
-export function ReviewerApp({ userId, document, rubrics, existingReview }: ReviewerAppProps) {
+export function ReviewerApp({ userId, document, rubrics, existingReview, requiresCoordinatorApproval = false }: ReviewerAppProps) {
   const [review, setReview] = useState<Review | null>(existingReview)
   const [creating, setCreating] = useState(false)
 
@@ -99,6 +102,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
 
   const reviewSelect = `
     id, status, overall_comment, notes, last_saved_at, rubric_id,
+    coordinator_approval, coordinator_note,
     rubric:rubrics ( id, title, description, operational_definition ),
     review_scores ( id, rubric_item_id, score, criterion_scores, comment ),
     annotations ( id, rubric_item_id, anchor, body, tag, created_at ),
@@ -190,6 +194,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview }: Revie
       review={review}
       rubrics={rubrics}
       onReviewUpdate={setReview}
+      requiresCoordinatorApproval={requiresCoordinatorApproval}
     />
   )
 }

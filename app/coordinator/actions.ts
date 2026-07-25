@@ -431,3 +431,111 @@ export async function updateAndSubmitDraft(
   await assignRubrics(supabase, documentId, data.rubricIds)
   revalidatePath('/coordinator')
 }
+
+// ── Review approval (org submissions) ─────────────────────────────────────────
+// After a reviewer submits, an org submission is held for coordinator approval
+// before the author can see it. The coordinator either approves it (releases it
+// to the author) or sends it back to the reviewer with a note.
+
+type CoordSupabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Verify the current user is a coordinator whose institution matches the review's
+ * document author, and return the review's document id. Mirrors releaseDocument's
+ * institution check; RLS enforces the same rule as a second line of defense.
+ */
+async function assertCoordinatorForReview(
+  supabase: CoordSupabase,
+  userId: string,
+  reviewId: string
+): Promise<string> {
+  const { data: coord } = await supabase
+    .from('users')
+    .select('institution, roles')
+    .eq('id', userId)
+    .single()
+
+  if (!coord?.roles?.includes('coordinator')) throw new Error('Not authorized')
+
+  const { data: review } = await supabase
+    .from('reviews')
+    .select('document_id, document:documents!document_id ( author:users!author_id ( institution ) )')
+    .eq('id', reviewId)
+    .single()
+
+  if (!review) throw new Error('Review not found')
+
+  const authorInstitution = (
+    (review.document as { author: { institution: string | null } | null } | null)?.author
+  )?.institution
+
+  if (!coord.institution || !authorInstitution || authorInstitution !== coord.institution) {
+    throw new Error('Review does not belong to your organization')
+  }
+
+  return review.document_id
+}
+
+/** Coordinator approves a submitted review — releases it to the document author. */
+export async function approveReview(reviewId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const documentId = await assertCoordinatorForReview(supabase, user.id, reviewId)
+
+  const { error } = await supabase
+    .from('reviews')
+    .update({
+      coordinator_approval: 'approved',
+      coordinator_note: null,
+      coordinator_decided_at: new Date().toISOString(),
+    })
+    .eq('id', reviewId)
+
+  if (error) throw error
+
+  revalidatePath('/coordinator')
+  revalidatePath(`/author/feedback/${documentId}`)
+}
+
+/**
+ * Coordinator sends a submitted review back to the reviewer with a required note.
+ * Fully re-opens the review: status → in_progress (restores the reviewer's write
+ * access) and the per-rubric release rows are deleted so the author can't see it
+ * and the reviewer can edit and re-submit.
+ */
+export async function returnReviewToReviewer(reviewId: string, note: string) {
+  const trimmed = (note ?? '').trim()
+  if (!trimmed) throw new Error('A note explaining the requested changes is required')
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const documentId = await assertCoordinatorForReview(supabase, user.id, reviewId)
+
+  const { error: updateError } = await supabase
+    .from('reviews')
+    .update({
+      status: 'in_progress',
+      coordinator_approval: 'changes_requested',
+      coordinator_note: trimmed,
+      coordinator_decided_at: new Date().toISOString(),
+      submitted_at: null,
+    })
+    .eq('id', reviewId)
+
+  if (updateError) throw updateError
+
+  const { error: deleteError } = await supabase
+    .from('review_rubric_submissions')
+    .delete()
+    .eq('review_id', reviewId)
+
+  if (deleteError) throw deleteError
+
+  revalidatePath('/coordinator')
+  revalidatePath('/reviewer')
+  revalidatePath(`/author/feedback/${documentId}`)
+}

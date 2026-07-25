@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { CriterionScore, FeedbackResponseStatus, FeedbackTargetType } from '@/types'
 import { EvidenceCard } from '@/components/ui/EvidenceCard'
 import { AddressStatusControl } from '@/components/ui/AddressStatusControl'
+import { AuthorCommentField } from '@/components/ui/AuthorCommentField'
 
 function cx(...classes: (string | undefined | false | null)[]) {
   return classes.filter(Boolean).join(' ')
@@ -51,6 +52,9 @@ interface CriterionReportCardProps {
   showStatusControls?: boolean
   statusFor?: (targetType: FeedbackTargetType, targetId: string) => FeedbackResponseStatus | null
   onStatusChange?: (targetType: FeedbackTargetType, targetId: string, status: FeedbackResponseStatus | null) => void
+  /** Author-only free-text comment boxes (on this criterion + each evidence annotation). */
+  commentFor?: (targetType: FeedbackTargetType, targetId: string) => string
+  onCommentChange?: (targetType: FeedbackTargetType, targetId: string, body: string) => void | Promise<void>
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -76,17 +80,34 @@ const RATING_CONFIG: Record<CriterionScore, { label: string; bg: string; text: s
   },
 }
 
-const POLARITY_CONFIG: Record<'does_not_meet' | 'exceeds', { label: string; border: string; text: string }> = {
+const POLARITY_CONFIG: Record<'does_not_meet' | 'exceeds' | 'exemplifies', { label: string; border: string; text: string }> = {
   does_not_meet: {
     label:  'Does Not Meet Standard',
     border: 'var(--color-rating-dnm-border)',
     text:   'var(--color-rating-dnm-text)',
+  },
+  exemplifies: {
+    label:  'Exemplifies Standard',
+    border: 'var(--color-primary)',
+    text:   'var(--color-primary)',
   },
   exceeds: {
     label:  'Exceeds Standard',
     border: 'var(--color-rating-exceeds-border)',
     text:   'var(--color-rating-exceeds-text)',
   },
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+function GlobeIcon() {
+  return (
+    <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" />
+      <path d="M2 8h12" />
+      <path d="M8 2a9.6 9.6 0 0 1 2.5 6A9.6 9.6 0 0 1 8 14 9.6 9.6 0 0 1 5.5 8 9.6 9.6 0 0 1 8 2z" />
+    </svg>
+  )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -108,7 +129,7 @@ function ScoreCommentBlock({
   onStatusChange,
 }: {
   comments: ScoreComment[]
-  level: 'does_not_meet' | 'exceeds'
+  level: 'does_not_meet' | 'exceeds' | 'exemplifies'
   showStatusControls?: boolean
   statusFor?: (targetType: FeedbackTargetType, targetId: string) => FeedbackResponseStatus | null
   onStatusChange?: (targetType: FeedbackTargetType, targetId: string, status: FeedbackResponseStatus | null) => void
@@ -165,6 +186,8 @@ export function CriterionReportCard({
   showStatusControls,
   statusFor,
   onStatusChange,
+  commentFor,
+  onCommentChange,
 }: CriterionReportCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultExpanded)
   const isControlled = isOpenProp !== undefined
@@ -180,17 +203,27 @@ export function CriterionReportCard({
 
   const SCORE_ORDER: CriterionScore[] = ['exceeds', 'exemplifies', 'does_not_meet']
   const uniqueScores = SCORE_ORDER.filter(s => criterionScores.includes(s))
-  const dnmComments    = scoreComments.filter(c => c.score_level === 'does_not_meet')
-  const exceedsComments = scoreComments.filter(c => c.score_level === 'exceeds')
-  const hasComments    = scoreComments.length > 0
-  const bothPolarities = dnmComments.length > 0 && exceedsComments.length > 0
+  const dnmComments         = scoreComments.filter(c => c.score_level === 'does_not_meet')
+  const exemplifiesComments = scoreComments.filter(c => c.score_level === 'exemplifies')
+  const exceedsComments     = scoreComments.filter(c => c.score_level === 'exceeds')
+  const hasComments         = scoreComments.length > 0
+
+  // Required-comment indicator: any annotation or score comment marked Addressed means
+  // the author should leave a public revision comment on this criterion.
+  const hasAddressed = !!(showStatusControls && statusFor && (
+    scoreComments.some(c => statusFor('score_comment', c.id) === 'addressed') ||
+    annotations.some(a => statusFor('annotation', a.id) === 'addressed')
+  ))
+  const criterionComment = commentFor?.('criterion', rubricItem.id) ?? ''
+  const commentRequired = hasAddressed
+  const commentFilled = criterionComment.trim().length > 0
 
   return (
     <div
       id={id}
       data-criterion-card
       className={cx(
-        'rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-card)] shadow-[var(--shadow-1)]',
+        'rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-card)] shadow-[var(--shadow-1)] overflow-hidden',
         className
       )}
     >
@@ -216,6 +249,7 @@ export function CriterionReportCard({
             return (
               <span
                 key={score}
+                data-rating={score}
                 className="inline-flex items-center px-2 py-0.5 rounded text-label-sm font-label font-semibold border"
                 style={{ backgroundColor: cfg.bg, color: cfg.text, borderColor: cfg.border }}
               >
@@ -267,20 +301,17 @@ export function CriterionReportCard({
                 <span className="block text-label-sm font-label font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">
                   Reviewer Comments
                 </span>
-                {bothPolarities ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <ScoreCommentBlock comments={exceedsComments} level="exceeds" showStatusControls={showStatusControls} statusFor={statusFor} onStatusChange={onStatusChange} />
+                <div className="flex flex-col gap-4">
+                  {exceedsComments.length > 0 && (
+                    <ScoreCommentBlock comments={exceedsComments} level="exceeds" showStatusControls={false} statusFor={statusFor} onStatusChange={onStatusChange} />
+                  )}
+                  {exemplifiesComments.length > 0 && (
+                    <ScoreCommentBlock comments={exemplifiesComments} level="exemplifies" showStatusControls={false} statusFor={statusFor} onStatusChange={onStatusChange} />
+                  )}
+                  {dnmComments.length > 0 && (
                     <ScoreCommentBlock comments={dnmComments} level="does_not_meet" showStatusControls={showStatusControls} statusFor={statusFor} onStatusChange={onStatusChange} />
-                  </div>
-                ) : (
-                  <ScoreCommentBlock
-                    comments={dnmComments.length > 0 ? dnmComments : exceedsComments}
-                    level={dnmComments.length > 0 ? 'does_not_meet' : 'exceeds'}
-                    showStatusControls={showStatusControls}
-                    statusFor={statusFor}
-                    onStatusChange={onStatusChange}
-                  />
-                )}
+                  )}
+                </div>
               </div>
             )}
 
@@ -305,6 +336,11 @@ export function CriterionReportCard({
                       onStatusChange={
                         onStatusChange ? s => onStatusChange('annotation', annotation.id, s) : undefined
                       }
+                      showComment={showStatusControls}
+                      comment={commentFor?.('annotation', annotation.id) ?? ''}
+                      onCommentChange={
+                        onCommentChange ? body => onCommentChange('annotation', annotation.id, body) : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -312,6 +348,45 @@ export function CriterionReportCard({
             )}
 
           </div>
+          {/* Section 4 — Criterion Revision Comment (full-width, outside the padded flex container) */}
+          {showStatusControls && onCommentChange && (
+            <div data-print-hide>
+              <hr className="border-[var(--color-border)]" />
+              <div className="px-5 pt-4 pb-5 bg-[var(--color-surface-container-low)]">
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="block text-body-md font-heading font-semibold text-text-primary">
+                      Criterion Revision Comment
+                    </span>
+                    {commentRequired && (
+                      commentFilled ? (
+                        <span className="text-label-sm font-label font-semibold px-1.5 py-0.5 rounded bg-[var(--color-success-container)] text-[var(--color-success)]">
+                          Added
+                        </span>
+                      ) : (
+                        <span className="text-label-sm font-label font-semibold px-1.5 py-0.5 rounded bg-[var(--color-error-container)] text-[var(--color-error)]">
+                          Required
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-label-sm font-label text-[var(--color-text-muted)] bg-[var(--color-surface-card)] border border-[var(--color-border)]">
+                    <GlobeIcon />
+                    Public once published
+                  </span>
+                </div>
+                <p className="text-body-sm text-[var(--color-text-muted)] mb-3">
+                  Describe the revisions you made for this criterion — visible on the public page once published.
+                </p>
+                <AuthorCommentField
+                  label=""
+                  placeholder="Add a public response to this criterion's feedback…"
+                  value={criterionComment}
+                  onSave={body => onCommentChange('criterion', rubricItem.id, body)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

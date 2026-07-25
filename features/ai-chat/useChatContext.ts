@@ -251,6 +251,7 @@ export function useChatContext(): {
     return result.data
   }, [pageRole, documentId, supabase])
 
+
   // ── Reviewer shortcuts ────────────────────────────────────────────────────
 
   const reviewerShortcuts: Shortcut[] = useMemo(() => [

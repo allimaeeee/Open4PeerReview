@@ -40,6 +40,7 @@ export async function callAI(request: AIChatRequest): Promise<string> {
   const controller = new AbortController()
   activeController = controller
 
+
   const res = await fetch('/api/ai-chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

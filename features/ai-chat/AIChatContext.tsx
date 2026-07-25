@@ -187,6 +187,7 @@ export function AIChatProvider({ children }: { children: ReactNode }) {
     }
   }, [clearChat])
 
+
   // Lazily creates the session row on the first message of a conversation;
   // concurrent calls (e.g. a user message immediately followed by the AI
   // response) share the same in-flight creation promise rather than racing

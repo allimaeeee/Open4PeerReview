@@ -22,7 +22,7 @@ export function AIOrbButton() {
   }
 
   return (
-    <div className="ai-orb-wrapper">
+    <div className="ai-orb-wrapper" data-print-hide>
       <button
         onClick={handleClick}
         aria-label="Open AI assistant"

@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     submissionScope?: string[]
     isDraft?: boolean
     coordinatorUpload?: boolean
+    publicReview?: boolean
     documentId?: string
     additionalPageUrls?: string[]
   }
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, documentId, additionalPageUrls } = body
+  const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, publicReview, documentId, additionalPageUrls } = body
 
   if (!url || !isKnownOerUrl(url)) {
     return NextResponse.json(
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       submissionScope: submissionScope ?? ['public'],
       isDraft: isDraft ?? false,
       coordinatorUpload: coordinatorUpload ?? false,
+      publicReview: publicReview ?? false,
       additionalPages: additionalPages.length ? additionalPages : undefined,
     })
     return NextResponse.json({ documentId: doc.id, fingerprint })

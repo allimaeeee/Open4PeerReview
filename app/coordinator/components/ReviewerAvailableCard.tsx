@@ -12,6 +12,7 @@ interface ReviewerAvailableCardProps {
     subject_matter: string | null
     creative_commons_license: string | null
     third_party_content_disclosure: string | null
+    public_review?: boolean | null
     author: { display_name: string | null; email: string } | null
     rubrics: { id: string; title: string }[]
   }
@@ -19,6 +20,16 @@ interface ReviewerAvailableCardProps {
   licenseLabel: string | null
   isAccepted: boolean
 }
+
+const DECLINE_REASONS: { value: string; label: string; publicOnly?: boolean }[] = [
+  { value: 'outside-expertise',     label: 'Outside my area of expertise' },
+  { value: 'conflict-of-interest',  label: 'Conflict of interest' },
+  { value: 'insufficient-capacity', label: 'Insufficient capacity at this time' },
+  // 'public-submissions' is only offered for documents open to public review.
+  { value: 'public-submissions',    label: 'Prefer not to review public submissions', publicOnly: true },
+  { value: 'duplicate-assignment',  label: 'Duplicate assignment' },
+  { value: 'other',                 label: 'Other' },
+]
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -28,8 +39,11 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
   const [accepted, setAccepted] = useState(isAccepted)
   const [declining, setDeclining] = useState(false)
   const [declined, setDeclined] = useState(false)
+  const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string | null>(null)
+
+  const declineReasons = DECLINE_REASONS.filter(r => !r.publicOnly || doc.public_review)
   const [isPending, startTransition] = useTransition()
   const [isStarting, setIsStarting] = useState(false)
   const router = useRouter()
@@ -50,13 +64,22 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
   }
 
   function handleDeclineSubmit() {
-    if (!note.trim()) {
-      setNoteError('Please provide a reason for declining.')
+    if (!reason) {
+      setNoteError('Please select a reason for declining.')
+      return
+    }
+    if (reason === 'other' && !note.trim()) {
+      setNoteError('Please describe your reason.')
       return
     }
     setNoteError(null)
+    // Store the human-readable reason; for "Other", use the typed note.
+    const selected = declineReasons.find(r => r.value === reason)
+    const finalNote = reason === 'other'
+      ? note.trim()
+      : (selected?.label ?? reason)
     startTransition(async () => {
-      await declineDocument(doc.id, note.trim())
+      await declineDocument(doc.id, finalNote)
       setDeclined(true)
     })
   }
@@ -148,18 +171,30 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
       {declining && (
         <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
           <p className="text-xs font-medium text-slate-700">Why are you declining this review?</p>
-          <textarea
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="e.g. Outside my area of expertise, scheduling conflict…"
-            rows={3}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f] resize-none"
-          />
+          <select
+            value={reason}
+            onChange={e => { setReason(e.target.value); setNote(''); setNoteError(null) }}
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]"
+          >
+            <option value="" disabled>Select a reason…</option>
+            {declineReasons.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          {reason === 'other' && (
+            <input
+              type="text"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Please describe your reason…"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 focus:border-[#1e3a5f]"
+            />
+          )}
           {noteError && <p className="text-xs text-red-600">{noteError}</p>}
           <div className="flex items-center gap-2 justify-end">
             <button
               type="button"
-              onClick={() => { setDeclining(false); setNote(''); setNoteError(null) }}
+              onClick={() => { setDeclining(false); setReason(''); setNote(''); setNoteError(null) }}
               disabled={isPending}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
@@ -168,7 +203,7 @@ export function ReviewerAvailableCard({ doc, subjectLabel, licenseLabel, isAccep
             <button
               type="button"
               onClick={handleDeclineSubmit}
-              disabled={isPending || !note.trim()}
+              disabled={isPending || !reason || (reason === 'other' && !note.trim())}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isPending ? 'Declining…' : 'Confirm Decline'}

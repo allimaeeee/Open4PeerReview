@@ -88,7 +88,11 @@ export function useReviewAutoSave({
         )
 
       if (error) {
-        console.error('[useReviewAutoSave] upsertScore error:', error)
+        console.error('[useReviewAutoSave] upsertScore error:', error.message, {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        })
         setSaveStatus('error')
         return
       }
@@ -155,7 +159,7 @@ export function useReviewAutoSave({
           .eq('id', annotation.id)
 
         if (error) {
-          console.error('[useReviewAutoSave] updateAnnotation error:', error)
+          console.error('[useReviewAutoSave] updateAnnotation error:', error.message, { code: error.code, details: error.details })
           setSaveStatus('error')
           return null
         }
@@ -176,7 +180,7 @@ export function useReviewAutoSave({
           .single()
 
         if (error) {
-          console.error('[useReviewAutoSave] insertAnnotation error:', error)
+          console.error('[useReviewAutoSave] insertAnnotation error:', error.message, { code: error.code, details: error.details })
           setSaveStatus('error')
           return null
         }
@@ -199,7 +203,7 @@ export function useReviewAutoSave({
         })
         .eq('id', annotationId)
       if (error) {
-        console.error('[useReviewAutoSave] updateAnnotation error:', error)
+        console.error('[useReviewAutoSave] updateAnnotation error:', error.message, { code: error.code, details: error.details })
         setSaveStatus('error')
         return
       }
@@ -217,7 +221,7 @@ export function useReviewAutoSave({
         .eq('id', annotationId)
 
       if (error) {
-        console.error('[useReviewAutoSave] deleteAnnotation error:', error)
+        console.error('[useReviewAutoSave] deleteAnnotation error:', error.message, { code: error.code, details: error.details })
         setSaveStatus('error')
         return
       }

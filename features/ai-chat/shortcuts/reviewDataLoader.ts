@@ -18,6 +18,7 @@ function fail<T>(context: string, error: { message: string }): LoadResult<T> {
   return { ok: false, error: "Couldn't load review data. Please try again." }
 }
 
+
 // ── Reviewer console (/review?document=<id>) ──────────────────────────────────
 
 export async function loadReviewerData(
