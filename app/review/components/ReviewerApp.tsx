@@ -69,6 +69,12 @@ export interface ScoreComment {
   body: string
 }
 
+export interface ReviewNotesRow {
+  id: string
+  rubric_id: string
+  notes: string | null
+}
+
 export interface Review {
   id: string
   status: 'unassigned' | 'assigned' | 'in_progress' | 'submitted'
@@ -91,10 +97,11 @@ interface ReviewerAppProps {
   document: OERDocument | null
   rubrics: Rubric[]
   existingReview: Review | null
+  reviewNotesRows?: ReviewNotesRow[]
   requiresCoordinatorApproval?: boolean
 }
 
-export function ReviewerApp({ userId, document, rubrics, existingReview, requiresCoordinatorApproval = false }: ReviewerAppProps) {
+export function ReviewerApp({ userId, document, rubrics, existingReview, reviewNotesRows, requiresCoordinatorApproval = false }: ReviewerAppProps) {
   const [review, setReview] = useState<Review | null>(existingReview)
   const [creating, setCreating] = useState(false)
 
@@ -194,6 +201,7 @@ export function ReviewerApp({ userId, document, rubrics, existingReview, require
       review={review}
       rubrics={rubrics}
       onReviewUpdate={setReview}
+      reviewNotesRows={reviewNotesRows}
       requiresCoordinatorApproval={requiresCoordinatorApproval}
     />
   )

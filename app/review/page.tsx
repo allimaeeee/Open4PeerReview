@@ -120,6 +120,18 @@ export default async function ReviewerPage({
         : { data: null }
     : { data: null }
 
+  // Lightweight per-rubric review rows used by the console to bind General Comments
+  // to the correct row when the reviewer switches rubric tabs.
+  const { data: reviewNotesRows } = document && rubricIds.length > 0
+    ? await supabase
+        .from('reviews')
+        .select('id, rubric_id, notes')
+        .eq('document_id', document.id)
+        .eq('reviewer_id', user.id)
+        .in('rubric_id', rubricIds)
+        .in('status', ['assigned', 'in_progress', 'submitted'])
+    : { data: null }
+
   // Org submissions are held for coordinator approval once the review completes;
   // public submissions go straight to the author.
   const requiresCoordinatorApproval =
@@ -131,6 +143,7 @@ export default async function ReviewerPage({
       document={document ?? null}
       rubrics={rubrics}
       existingReview={existingReview as Review | null}
+      reviewNotesRows={reviewNotesRows ?? []}
       requiresCoordinatorApproval={requiresCoordinatorApproval}
     />
   )

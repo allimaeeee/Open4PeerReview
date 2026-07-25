@@ -19,7 +19,7 @@ import { Modal, ModalContent } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useReviewSaveStatus } from '@/lib/review-save-context'
 import ResizablePanelLayout from '@/components/layout/ResizablePanelLayout'
-import type { OERDocument, Review, Rubric, RubricItem, ScoreComment } from './ReviewerApp'
+import type { OERDocument, Review, Rubric, RubricItem, ScoreComment, ReviewNotesRow } from './ReviewerApp'
 
 type AnyTextSelection = TextSelection | HtmlTextSelection
 
@@ -30,6 +30,9 @@ interface ReviewerConsoleProps {
   review: Review
   rubrics: Rubric[]
   onReviewUpdate: (r: Review) => void
+  /** All per-rubric review rows for this document/reviewer (lightweight: id, rubric_id, notes).
+   *  Used to bind General Comments to the correct DB row when switching rubric tabs. */
+  reviewNotesRows?: ReviewNotesRow[]
   /** True when this OER was submitted to an organization, so completing the
    *  review holds it for coordinator approval before the author can see it. */
   requiresCoordinatorApproval?: boolean
@@ -75,6 +78,7 @@ export function ReviewerConsole({
   review,
   rubrics,
   onReviewUpdate,
+  reviewNotesRows,
   requiresCoordinatorApproval = false,
 }: ReviewerConsoleProps) {
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
@@ -98,6 +102,13 @@ export function ReviewerConsole({
   // General-comment live refresh: serverNotes seeds the field; bumping notesKey remounts it.
   const [serverNotes, setServerNotes] = useState<string | null>(review.notes)
   const [notesKey, setNotesKey] = useState(0)
+  // Per-rubric notes: which review row's notes field should the General Comments textarea
+  // read/write? Defaults to the primary review's row; switches when the reviewer changes tabs.
+  const [activeNotesReviewId, setActiveNotesReviewId] = useState<string>(
+    reviewNotesRows?.find(r => r.rubric_id === review.rubric_id)?.id ?? review.id
+  )
+  // Guards the per-rubric notes reset so it doesn't fire on the first render.
+  const isFirstNotesMountRef = useRef(true)
 
   const isSubmitted = review.status === 'submitted'
   const router = useRouter()
@@ -185,7 +196,7 @@ export function ReviewerConsole({
   const {
     saveStatus, onScoreChange, onGeneralCommentChange, saveAnnotation, updateAnnotation, deleteAnnotation,
     addScoreComment, updateScoreComment, deleteScoreComment, saveDraft,
-  } = useReviewAutoSave({ supabase, reviewId: review.id })
+  } = useReviewAutoSave({ supabase, reviewId: review.id, notesReviewId: activeNotesReviewId })
 
   // ── Broadcast save status to Navbar via context ────────────────────────────
   const { setSaveStatus: setNavSaveStatus, setLastSavedAt: setNavLastSavedAt } = useReviewSaveStatus()
@@ -220,6 +231,9 @@ export function ReviewerConsole({
   // appear without a manual reload. Guards prevent clobbering in-progress edits.
   const saveStatusRef = useRef(saveStatus)
   useEffect(() => { saveStatusRef.current = saveStatus }, [saveStatus])
+  // Keeps the live-refresh closure from reading a stale notes review ID.
+  const activeNotesReviewIdRef = useRef(activeNotesReviewId)
+  useEffect(() => { activeNotesReviewIdRef.current = activeNotesReviewId }, [activeNotesReviewId])
   const refreshInFlight = useRef(false)
 
   const refreshCommentsFromServer = useCallback(async () => {
@@ -243,7 +257,7 @@ export function ReviewerConsole({
         supabase
           .from('reviews')
           .select('notes')
-          .eq('id', review.id)
+          .eq('id', activeNotesReviewIdRef.current)
           .single(),
       ])
       // Re-check guards — the reviewer may have started editing during the fetch.
@@ -393,7 +407,7 @@ export function ReviewerConsole({
       const validItemId = rubricItemId && scores[rubricItemId] ? rubricItemId : null
 
       if (!validItemId) {
-        const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: null, anchor, body, tag })
+        const newId = await saveAnnotation({ reviewId: activeNotesReviewIdRef.current, rubricItemId: null, anchor, body, tag })
         if (!newId) return 'Failed to save evidence. Please try again.'
         track('annotation_create', { annotation_id: newId, rubric_item_id: null, tag, char_count: body.length })
         setGeneralAnnotations((prev) => [{ id: newId, anchor, body, tag }, ...prev])
@@ -401,7 +415,7 @@ export function ReviewerConsole({
         return null
       }
 
-      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId: validItemId, anchor, body, tag })
+      const newId = await saveAnnotation({ reviewId: activeNotesReviewIdRef.current, rubricItemId: validItemId, anchor, body, tag })
       if (!newId) return 'Failed to save evidence. Please try again.'
       track('annotation_create', { annotation_id: newId, rubric_item_id: validItemId, tag, char_count: body.length })
       setScores((prev) => ({
@@ -414,12 +428,12 @@ export function ReviewerConsole({
       setPendingSelection(null)
       return null
     },
-    [pendingSelection, scores, review.id, saveAnnotation, setGeneralAnnotations, track]
+    [pendingSelection, scores, saveAnnotation, setGeneralAnnotations, track]
   )
 
   const handleAddGeneralNote = useCallback(
     async (body: string, tag: HighlightTag | null, rubricItemId: string | null): Promise<string | null> => {
-      const newId = await saveAnnotation({ reviewId: review.id, rubricItemId, anchor: {}, body, tag })
+      const newId = await saveAnnotation({ reviewId: activeNotesReviewIdRef.current, rubricItemId, anchor: {}, body, tag })
       if (!newId) return 'Failed to save note. Please try again.'
       track('note_add', { annotation_id: newId, char_count: body.length, rubric_item_id: rubricItemId })
       if (rubricItemId && scoresRef.current[rubricItemId]) {
@@ -438,7 +452,7 @@ export function ReviewerConsole({
       }
       return null
     },
-    [review.id, saveAnnotation, track]
+    [saveAnnotation, track]
   )
 
   const handleDeleteGeneralAnnotation = useCallback(async (annotationId: string) => {
@@ -871,7 +885,8 @@ export function ReviewerConsole({
     return null
   }, [rubricItems])
 
-  const [activeRubricId, setActiveRubricId] = useState<string | null>(firstRubricId)
+  // Initialize to the review's own rubric so the ?review=X deep-link always opens that tab.
+  const [activeRubricId, setActiveRubricId] = useState<string | null>(review.rubric_id)
 
   // Per-rubric submission derived state (allRubricIds is declared above, near the submit handler).
   const activeRubricSubmitted = activeRubricId ? submittedRubricIds.has(activeRubricId) : false
@@ -894,6 +909,38 @@ export function ReviewerConsole({
       setActiveRubricId(firstRubricId)
     }
   }, [firstRubricId])
+
+  // When the reviewer switches rubric tabs, update the active notes review row,
+  // reset the General Comments textarea, and re-fetch unlinked annotations for the
+  // new tab — matching the extension's selectReview() full-reload pattern.
+  useEffect(() => {
+    if (isFirstNotesMountRef.current) { isFirstNotesMountRef.current = false; return }
+    if (activeRubricId === null) return
+    const notesRow = reviewNotesRows?.find(r => r.rubric_id === activeRubricId)
+    const newReviewId = notesRow?.id ?? review.id
+    setActiveNotesReviewId(newReviewId)
+    setServerNotes(notesRow ? notesRow.notes : null)
+    setNotesKey(k => k + 1)
+    supabase
+      .from('annotations')
+      .select('id, rubric_item_id, anchor, body, tag, created_at')
+      .eq('review_id', newReviewId)
+      .is('rubric_item_id', null)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setGeneralAnnotations(
+          (data ?? []).map(a => ({
+            id: a.id,
+            anchor: a.anchor as Record<string, unknown>,
+            body: a.body,
+            tag: a.tag,
+            created_at: a.created_at,
+          }))
+        )
+      })
+  // reviewNotesRows and review.id are stable server-side data; intentionally excluded from deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRubricId, supabase])
 
   // Scroll the rubric panel to the target annotation card, expanding its criterion if needed
   useEffect(() => {

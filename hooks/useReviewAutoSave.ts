@@ -45,6 +45,9 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 interface UseReviewAutoSaveOptions {
   supabase: SupabaseClient<Database>
   reviewId: string
+  /** When the console has per-rubric review rows, pass the active tab's review id here.
+   *  General-comment saves go to this row; score/annotation saves always use reviewId. */
+  notesReviewId?: string
   /** How long to wait after the last keystroke before auto-saving. Default 1500 ms. */
   debounceMs?: number
 }
@@ -52,6 +55,7 @@ interface UseReviewAutoSaveOptions {
 export function useReviewAutoSave({
   supabase,
   reviewId,
+  notesReviewId,
   debounceMs = 1500,
 }: UseReviewAutoSaveOptions) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
@@ -64,6 +68,36 @@ export function useReviewAutoSave({
   // Notes debounce
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedNotes = useRef<string | null>(null)
+  // Ref always holds the current target review id for notes saves.
+  const notesReviewIdRef = useRef<string>(notesReviewId ?? reviewId)
+  // Tracks any text that is waiting to be flushed (so we can save to the OLD row on tab switch).
+  const pendingNotesText = useRef<string | null>(null)
+
+  // When the active rubric tab changes, flush any pending notes to the OLD review row
+  // before switching the ref to the new one.
+  useEffect(() => {
+    const newId = notesReviewId ?? reviewId
+    const oldId = notesReviewIdRef.current
+    if (oldId === newId) return
+
+    if (
+      notesTimer.current &&
+      pendingNotesText.current !== null &&
+      lastSavedNotes.current !== pendingNotesText.current
+    ) {
+      clearTimeout(notesTimer.current)
+      notesTimer.current = null
+      const textToSave = pendingNotesText.current
+      supabase
+        .from('reviews')
+        .update({ notes: textToSave })
+        .eq('id', oldId)
+        .then(({ error }) => { if (!error) lastSavedNotes.current = textToSave })
+    }
+
+    notesReviewIdRef.current = newId
+    lastSavedNotes.current = null  // treat the new row as a fresh slate
+  }, [notesReviewId, reviewId, supabase])
 
   // ── Core upsert ────────────────────────────────────────────────────────────
 
@@ -129,6 +163,7 @@ export function useReviewAutoSave({
 
   const onGeneralCommentChange = useCallback(
     (notes: string) => {
+      pendingNotesText.current = notes
       if (notesTimer.current) clearTimeout(notesTimer.current)
       setSaveStatus('saving')
       notesTimer.current = setTimeout(async () => {
@@ -136,13 +171,13 @@ export function useReviewAutoSave({
         const { error } = await supabase
           .from('reviews')
           .update({ notes })
-          .eq('id', reviewId)
+          .eq('id', notesReviewIdRef.current)
         if (error) { setSaveStatus('error'); return }
         lastSavedNotes.current = notes
         setSaveStatus('saved')
       }, debounceMs)
     },
-    [supabase, reviewId, debounceMs]
+    [supabase, debounceMs]
   )
 
   // ── Auto-save: immediate annotation operations ─────────────────────────────
