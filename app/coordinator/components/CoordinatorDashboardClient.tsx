@@ -23,7 +23,7 @@ export interface AssignmentDocShape {
   file_type: string | null
   created_at: string
   submission_scope: string[]
-  author: { display_name: string | null; email: string } | null
+  author: { id: string; display_name: string | null; email: string } | null
   document_rubrics: { rubric: { id: string; title: string } | null }[]
   preAssigned: { id: string; display_name: string | null; email: string }[]
 }

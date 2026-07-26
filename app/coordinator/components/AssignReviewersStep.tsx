@@ -12,10 +12,12 @@ interface OrgReviewer {
 interface Props {
   documentId: string
   orgReviewers: OrgReviewer[]
+  authorId?: string
   onDone: () => void
 }
 
-export function AssignReviewersStep({ documentId, orgReviewers, onDone }: Props) {
+export function AssignReviewersStep({ documentId, orgReviewers, authorId, onDone }: Props) {
+  const eligibleReviewers = authorId ? orgReviewers.filter(r => r.id !== authorId) : orgReviewers
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -54,13 +56,13 @@ export function AssignReviewersStep({ documentId, orgReviewers, onDone }: Props)
         </p>
       </div>
 
-      {orgReviewers.length === 0 ? (
+      {eligibleReviewers.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-slate-200 py-8 text-center mb-5">
           <p className="text-sm text-slate-500">No reviewers found in your organization.</p>
         </div>
       ) : (
         <div className="space-y-2 max-h-64 overflow-y-auto mb-5 pr-1">
-          {orgReviewers.map(r => (
+          {eligibleReviewers.map(r => (
             <label
               key={r.id}
               className={[

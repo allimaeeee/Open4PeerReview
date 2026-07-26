@@ -31,7 +31,7 @@ export interface NeedAssignmentCardProps {
     file_type: string | null
     created_at: string
     submission_scope?: string[] | null
-    author: { display_name: string | null; email: string } | null
+    author: { id: string; display_name: string | null; email: string } | null
     document_rubrics: { rubric: { id: string; title: string } | null }[]
   }
   orgReviewers: OrgReviewer[]
@@ -39,6 +39,7 @@ export interface NeedAssignmentCardProps {
 }
 
 export function NeedAssignmentCard({ doc, orgReviewers, preAssigned = [] }: NeedAssignmentCardProps) {
+  const eligibleReviewers = orgReviewers.filter(r => r.id !== doc.author?.id)
   const router = useRouter()
   const [showAssign, setShowAssign] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -173,13 +174,13 @@ export function NeedAssignmentCard({ doc, orgReviewers, preAssigned = [] }: Need
             Assign reviewers before releasing
           </p>
 
-          {orgReviewers.length === 0 ? (
+          {eligibleReviewers.length === 0 ? (
             <p className="text-body-sm text-text-muted italic">
               No reviewers in your organization yet.
             </p>
           ) : (
             <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-              {orgReviewers.map(r => (
+              {eligibleReviewers.map(r => (
                 <label
                   key={r.id}
                   className={cx(

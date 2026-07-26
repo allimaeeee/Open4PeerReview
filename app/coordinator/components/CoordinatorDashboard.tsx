@@ -59,7 +59,7 @@ export async function CoordinatorDashboard() {
     file_type: doc.file_type ?? null,
     created_at: doc.created_at,
     submission_scope: (doc.submission_scope ?? []) as string[],
-    author: doc.author as { display_name: string | null; email: string } | null,
+    author: doc.author as { id: string; display_name: string | null; email: string } | null,
     document_rubrics: (doc.document_rubrics ?? []) as { rubric: { id: string; title: string } | null }[],
     preAssigned: assignmentsByDoc.get(doc.id) ?? [],
   }))
