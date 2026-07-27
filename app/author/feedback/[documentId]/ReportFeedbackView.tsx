@@ -50,7 +50,7 @@ interface ReviewRow {
   submitted_at: string | null
   coordinator_approval?: string | null
   coordinator_note?: string | null
-  reviewer: { display_name: string | null; email: string } | null
+  reviewer: { display_name: string | null; email: string; reviewer_type: string | null } | null
   rubric: { id: string; title: string } | null
   review_rubric_submissions?: { rubric_id: string; submitted_at: string }[]
   review_scores: ReviewScoreRow[]
@@ -157,6 +157,7 @@ export function ReportFeedbackView({
     : []
 
   const reviewerName = review?.reviewer?.display_name ?? review?.reviewer?.email ?? 'Anonymous Reviewer'
+  const reviewerType = review?.reviewer?.reviewer_type ?? null
   const selectedRubricSubmittedAt =
     review?.review_rubric_submissions?.find(s => s.rubric_id === selectedRubricId)?.submitted_at
     ?? review?.submitted_at
@@ -357,7 +358,7 @@ export function ReportFeedbackView({
             {review && (
               <p className="mt-1.5 text-body-sm text-[var(--color-text-muted)]">
                 {submittedDate && <>Review submitted {submittedDate} · </>}
-                Reviewed by {reviewerName}
+                Reviewed by {reviewerName}{reviewerType === 'student' ? ' (Student Reviewer)' : ''}
               </p>
             )}
 

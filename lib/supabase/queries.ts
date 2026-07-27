@@ -550,7 +550,7 @@ export async function getDocumentFeedback(supabase: Client, documentId: string) 
     .select(`
       id, status, overall_comment, notes, submitted_at,
       coordinator_approval, coordinator_note, coordinator_decided_at,
-      reviewer:users!reviewer_id ( display_name, email ),
+      reviewer:users!reviewer_id ( display_name, email, reviewer_type ),
       rubric:rubrics ( id, title ),
       review_rubric_submissions ( rubric_id, submitted_at ),
       review_scores (

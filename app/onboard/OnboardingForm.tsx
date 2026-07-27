@@ -32,7 +32,7 @@ interface Props {
   defaultInstitution: string
   defaultDiscipline: string
   defaultProfession: string
-  defaultRoles: ('author' | 'reviewer' | 'coordinator')[]
+  defaultRoles: ('author' | 'reviewer' | 'coordinator' | 'student')[]
   defaultReviewerType: string
   defaultExpertiseTags: string[]
   defaultRubricSpecializations: string[]
@@ -40,7 +40,7 @@ interface Props {
   rubrics: { id: string; title: string }[]
 }
 
-// â”€â”€ Icons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Icons ──────────────────────────────────────────────────────────────────
 
 function AuthorIcon() {
   return (
@@ -97,7 +97,19 @@ function IndustryIcon() {
   )
 }
 
-// â”€â”€ Shared panel sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function StudentIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" className="w-5 h-5">
+      <path d="M10 2L1.5 7 10 12l8.5-5L10 2z"
+        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M5 9.5V14c0 1.657 2.239 3 5 3s5-1.343 5-3V9.5"
+        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M17.5 7v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+// ── Shared panel sub-components ────────────────────────────────────────────
 
 function ReviewerEyebrow({ n }: { n: number }) {
   return (
@@ -144,7 +156,7 @@ function PanelFooter({
   )
 }
 
-// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main component ─────────────────────────────────────────────────────────
 
 export function OnboardingForm({
   userId,
@@ -163,14 +175,14 @@ export function OnboardingForm({
   const isKnownDiscipline = DISCIPLINE_OPTIONS.some(d => d.value === defaultDiscipline)
   const isKnownProfession = PROFESSION_OPTIONS.some(p => p.value === defaultProfession)
 
-  // â”€â”€ State (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── State (preserved exactly) ──────────────────────────────────────────
   const [displayName, setDisplayName]         = useState(defaultDisplayName)
   const [institution, setInstitution]         = useState(defaultInstitution)
   const [discipline, setDiscipline]           = useState(isKnownDiscipline ? defaultDiscipline : (defaultDiscipline ? 'other' : ''))
   const [disciplineOther, setDisciplineOther] = useState(isKnownDiscipline ? '' : defaultDiscipline)
   const [profession, setProfession]           = useState(isKnownProfession ? defaultProfession : (defaultProfession ? 'other' : ''))
   const [professionOther, setProfessionOther] = useState(isKnownProfession ? '' : defaultProfession)
-  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer' | 'coordinator'>>(new Set(defaultRoles))
+  const [roles, setRoles]                     = useState<Set<'author' | 'reviewer' | 'coordinator' | 'student'>>(new Set(defaultRoles))
   const [reviewerType, setReviewerType]       = useState(defaultReviewerType)
   const [expertiseTags, setExpertiseTags]     = useState<Set<string>>(new Set(defaultExpertiseTags))
   const [tagInput, setTagInput]               = useState('')
@@ -187,8 +199,9 @@ export function OnboardingForm({
   const sub      = parseInt(searchParams.get('sub')  ?? '0', 10)
   const isReviewer = roles.has('reviewer')
   const isCoordinator = roles.has('coordinator')
+  const isStudent = roles.has('student')
 
-  // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Navigation ─────────────────────────────────────────────────────────
   function navigate(step: number, subStep?: number) {
     const params = new URLSearchParams()
     params.set('step', String(step))
@@ -196,16 +209,26 @@ export function OnboardingForm({
     router.push(`/onboard?${params.toString()}`, { scroll: false })
   }
 
-  // â”€â”€ Event handlers (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Event handlers (preserved exactly) ────────────────────────────────
   function clearError(key: string) {
     setErrors(prev => { const next = { ...prev }; delete next[key]; return next })
   }
 
-  function toggleRole(role: 'author' | 'reviewer' | 'coordinator') {
+  function toggleRole(role: 'author' | 'reviewer' | 'coordinator' | 'student') {
     setRoles(prev => {
       const next = new Set(prev)
-      if (next.has(role)) next.delete(role)
-      else next.add(role)
+      if (role === 'student') {
+        if (next.has('student')) {
+          next.delete('student')
+        } else {
+          next.clear()
+          next.add('student')
+        }
+      } else {
+        next.delete('student')
+        if (next.has(role)) next.delete(role)
+        else next.add(role)
+      }
       return next
     })
     clearError('roles')
@@ -245,16 +268,18 @@ export function OnboardingForm({
     clearError('rubricSpecs')
   }
 
-  // â”€â”€ Validation (preserved exactly) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Validation (preserved exactly) ────────────────────────────────────
   function validate() {
     const errs: Record<string, string> = {}
     if (!displayName.trim())    errs.displayName     = 'Display name is required.'
-    if (!discipline)            errs.discipline      = 'Please select a discipline.'
-    if (discipline === 'other' && !disciplineOther.trim())
-                                errs.disciplineOther = 'Please specify your discipline.'
-    if (!profession)            errs.profession      = 'Please select a profession.'
-    if (profession === 'other' && !professionOther.trim())
-                                errs.professionOther = 'Please specify your profession.'
+    if (!isStudent) {
+      if (!discipline)            errs.discipline      = 'Please select a discipline.'
+      if (discipline === 'other' && !disciplineOther.trim())
+                                  errs.disciplineOther = 'Please specify your discipline.'
+      if (!profession)            errs.profession      = 'Please select a profession.'
+      if (profession === 'other' && !professionOther.trim())
+                                  errs.professionOther = 'Please specify your profession.'
+    }
     if (roles.size === 0)       errs.roles           = 'Please select at least one role.'
     if (isCoordinator && !institution.trim())
                                 errs.institution     = 'Coordinators must belong to an organization.'
@@ -266,7 +291,7 @@ export function OnboardingForm({
     return Object.keys(errs).length === 0
   }
 
-  // â”€â”€ Submission (preserved sequence, triggered by button click) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Submission (preserved sequence, triggered by button click) ─────────
   async function submit() {
     if (!validate()) return
 
@@ -289,10 +314,10 @@ export function OnboardingForm({
         email,
         display_name:             displayName.trim(),
         institution:              institutionName || null,
-        primary_discipline:       finalDiscipline,
-        profession:               finalProfession,
-        roles:                    Array.from(roles),
-        reviewer_type:            isReviewer ? reviewerType : null,
+        primary_discipline:       isStudent ? null : finalDiscipline,
+        profession:               isStudent ? null : finalProfession,
+        roles:                    isStudent ? ['student'] : Array.from(roles),
+        reviewer_type:            isStudent ? 'student' : (isReviewer ? reviewerType : null),
         expertise_tags:           isReviewer ? Array.from(expertiseTags) : [],
         rubric_specializations:   isReviewer ? Array.from(rubricSpecs) : [],
         onboarding_completed:     true,
@@ -310,19 +335,22 @@ export function OnboardingForm({
     navigate(4)
   }
 
-  // â”€â”€ Derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived values ─────────────────────────────────────────────────────
   const predefinedTagValues = new Set(DISCIPLINE_OPTIONS.map(d => d.value))
   const customTags = Array.from(expertiseTags).filter(t => !predefinedTagValues.has(t))
 
-  const canContinuePanel3 =
-    !!displayName.trim() &&
-    !!discipline &&
-    (discipline !== 'other' || !!disciplineOther.trim()) &&
-    !!profession &&
-    (profession !== 'other' || !!professionOther.trim()) &&
-    (!isCoordinator || !!institution.trim())
+  const canContinuePanel3 = isStudent
+    ? !!displayName.trim()
+    : (
+        !!displayName.trim() &&
+        !!discipline &&
+        (discipline !== 'other' || !!disciplineOther.trim()) &&
+        !!profession &&
+        (profession !== 'other' || !!professionOther.trim()) &&
+        (!isCoordinator || !!institution.trim())
+      )
 
-  // â”€â”€ Panel renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Panel renderer ─────────────────────────────────────────────────────
   function renderPanel() {
 
     // Panel 1 — Welcome
@@ -354,7 +382,7 @@ export function OnboardingForm({
             selectionMode="checkbox"
             isSelected={roles.has('author')}
             onChange={() => toggleRole('author')}
-            disabled={loading}
+            disabled={isStudent || loading}
             icon={<AuthorIcon />}
             title="Author"
             description="You create Open Educational Resources and want structured expert feedback to improve your work and pursue certification."
@@ -363,7 +391,7 @@ export function OnboardingForm({
             selectionMode="checkbox"
             isSelected={roles.has('reviewer')}
             onChange={() => toggleRole('reviewer')}
-            disabled={loading}
+            disabled={isStudent || loading}
             icon={<ReviewerIcon />}
             title="Reviewer"
             description="You're a subject-matter expert who evaluates OERs against professional rubrics and provides evidence-based feedback."
@@ -372,9 +400,24 @@ export function OnboardingForm({
             selectionMode="checkbox"
             isSelected={roles.has('coordinator')}
             onChange={() => toggleRole('coordinator')}
+            disabled={isStudent || loading}
             icon={<CoordinatorIcon />}
             title="Coordinator"
             description="You oversee review pipelines, match reviewers to resources, and ensure feedback quality before it reaches authors."
+          />
+          <div className="flex items-center gap-3 my-1">
+            <div className="flex-1 h-px bg-[var(--color-border)]" />
+            <span className="text-label-sm font-label text-text-muted uppercase tracking-widest">or</span>
+            <div className="flex-1 h-px bg-[var(--color-border)]" />
+          </div>
+          <SelectionCard
+            selectionMode="checkbox"
+            isSelected={roles.has('student')}
+            onChange={() => toggleRole('student')}
+            disabled={(!isStudent && roles.size > 0) || loading}
+            icon={<StudentIcon />}
+            title="Student"
+            description="You're a learner using OER for coursework or self-study and want to track and reflect on the materials you engage with."
           />
         </div>
 
@@ -491,7 +534,7 @@ export function OnboardingForm({
             <div className="flex-1 min-w-0">
               <Input
                 type="text"
-                placeholder="Add a custom tagâ€¦"
+                placeholder="Add a custom tag…"
                 value={tagInput}
                 onChange={e => setTagInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag() } }}
@@ -556,7 +599,58 @@ export function OnboardingForm({
       </>
     )
 
-    // Panel 3 — Personal info
+    // Panel 3 — Personal info (Student: name + institution only)
+    if (mainStep === 3 && isStudent) return (
+      <>
+        <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
+        <p className="text-body-md text-text-muted mt-2">
+          Just a couple of details to finish setting up your account.
+        </p>
+
+        <div className="space-y-5 mt-6">
+          <Input
+            id="displayName"
+            type="text"
+            label="Display name"
+            required
+            autoComplete="name"
+            placeholder="Your name"
+            value={displayName}
+            onChange={e => { setDisplayName(e.target.value); clearError('displayName') }}
+            disabled={loading}
+            error={errors.displayName}
+          />
+
+          <div>
+            <Input
+              id="institution"
+              type="text"
+              label="Institution"
+              list="institutions-list"
+              autoComplete="organization"
+              placeholder="Your university or organization"
+              value={institution}
+              onChange={e => setInstitution(e.target.value)}
+              disabled={loading}
+            />
+            <datalist id="institutions-list">
+              {institutions.map(name => <option key={name} value={name} />)}
+            </datalist>
+          </div>
+        </div>
+
+        {serverError && <Alert variant="error" message={serverError} className="mt-4" />}
+
+        <PanelFooter
+          onBack={() => navigate(2)}
+          onContinue={async () => { await submit() }}
+          continueDisabled={!canContinuePanel3}
+          loading={loading}
+        />
+      </>
+    )
+
+    // Panel 3 — Personal info (standard flow)
     if (mainStep === 3) return (
       <>
         <h1 className="text-heading-sm font-semibold font-heading text-text-primary">Tell us about yourself</h1>
@@ -607,7 +701,7 @@ export function OnboardingForm({
               disabled={loading}
               error={errors.discipline}
             >
-              <option value="">Select a disciplineâ€¦</option>
+              <option value="">Select a discipline…</option>
               {DISCIPLINE_OPTIONS.map(d => (
                 <option key={d.value} value={d.value}>{d.label}</option>
               ))}
@@ -635,7 +729,7 @@ export function OnboardingForm({
               disabled={loading}
               error={errors.profession}
             >
-              <option value="">Select your professionâ€¦</option>
+              <option value="">Select your profession…</option>
               {PROFESSION_OPTIONS.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
@@ -673,12 +767,12 @@ export function OnboardingForm({
         </p>
 
         {(() => {
-          const priorityOrder = ['coordinator', 'author', 'reviewer'] as const
+          const priorityOrder = ['coordinator', 'author', 'reviewer', 'student'] as const
           const selected = priorityOrder.filter(r => roles.has(r))
           const primary = selected[0]
           const secondary = selected[1]
-          const routes = { coordinator: '/coordinator', author: '/author', reviewer: '/reviewer' }
-          const labels = { coordinator: 'Go to coordinator dashboard', author: 'Go to author dashboard', reviewer: 'Go to reviewer dashboard' }
+          const routes = { coordinator: '/coordinator', author: '/author', reviewer: '/reviewer', student: '/reviewer' }
+          const labels = { coordinator: 'Go to coordinator dashboard', author: 'Go to author dashboard', reviewer: 'Go to reviewer dashboard', student: 'Go to dashboard' }
           return (
             <div className="flex justify-end gap-3 mt-8">
               {secondary && (
@@ -700,7 +794,7 @@ export function OnboardingForm({
     return null
   }
 
-  // â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Shell ──────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-surface py-12 px-4">
       <div className="max-w-[600px] mx-auto">
