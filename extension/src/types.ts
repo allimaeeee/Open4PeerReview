@@ -115,6 +115,7 @@ export interface ReviewAssignment {
   rubric_id: string;
   status: string;
   notes: string | null;
+  updated_at: string | null;
   documents: { title: string; source_url: string | null } | null;
   rubrics: { title: string } | null;
 }

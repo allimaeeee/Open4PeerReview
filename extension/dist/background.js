@@ -402,14 +402,20 @@ async function upsertScore(payload, token) {
   return { success: true };
 }
 async function getAssignments(auth) {
-  return get(
-    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+  const resp = await get(
+    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress,submitted)&select=id,document_id,rubric_id,status,notes,updated_at,documents(title,source_url),rubrics(title)`,
     auth.access_token
   );
+  if (!resp.success) return resp;
+  const rows = resp.data;
+  const activeDocIds = new Set(
+    rows.filter((r) => r.status === "assigned" || r.status === "in_progress").map((r) => r.document_id)
+  );
+  return { success: true, data: rows.filter((r) => activeDocIds.has(r.document_id)) };
 }
 async function getReview(reviewId, auth) {
   const resp = await get(
-    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,updated_at,documents(title,source_url),rubrics(title)`,
     auth.access_token
   );
   if (!resp.success) return resp;

@@ -522,21 +522,34 @@ async function upsertScore(payload: SaveScorePayload, token: string): Promise<Ba
 }
 
 async function getAssignments(auth: StoredAuth): Promise<BackgroundResponse> {
-  return get(
-    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress)&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+  const resp = await get(
+    `reviews?reviewer_id=eq.${auth.user_id}&status=in.(assigned,in_progress,submitted)&select=id,document_id,rubric_id,status,notes,updated_at,documents(title,source_url),rubrics(title)`,
     auth.access_token,
   );
+  if (!resp.success) return resp;
+
+  // Keep submitted rows only for documents that still have at least one
+  // assigned/in_progress row. A document where every rubric is submitted is
+  // intentionally complete — the extension should show no active assignment for
+  // it, exactly as it did before submitted rows were included in the query.
+  const rows = resp.data as Array<{ document_id: string; status: string }>;
+  const activeDocIds = new Set(
+    rows
+      .filter(r => r.status === 'assigned' || r.status === 'in_progress')
+      .map(r => r.document_id)
+  );
+  return { success: true, data: rows.filter(r => activeDocIds.has(r.document_id)) };
 }
 
-// Fetch a single review by id, regardless of status. getAssignments() only
-// returns assigned/in_progress reviews, so a deep link to a submitted (or
-// otherwise excluded) review would resolve to nothing and the console would
-// silently open the wrong review. This lets routeToReview() honor the exact
-// oer_review_id it was handed. Scoped to the reviewer's own rows via RLS + the
-// reviewer_id filter, so it can only ever return a review the caller owns.
+// Fetch a single review by id, regardless of status. getAssignments() excludes
+// fully-submitted documents, so a deep link to a submitted review in a completed
+// document would resolve to nothing and the console would silently open the wrong
+// review. This lets routeToReview() honor the exact oer_review_id it was handed.
+// Scoped to the reviewer's own rows via RLS + the reviewer_id filter, so it can
+// only ever return a review the caller owns.
 async function getReview(reviewId: string, auth: StoredAuth): Promise<BackgroundResponse> {
   const resp = await get(
-    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,documents(title,source_url),rubrics(title)`,
+    `reviews?id=eq.${reviewId}&reviewer_id=eq.${auth.user_id}&select=id,document_id,rubric_id,status,notes,updated_at,documents(title,source_url),rubrics(title)`,
     auth.access_token,
   );
   if (!resp.success) return resp;

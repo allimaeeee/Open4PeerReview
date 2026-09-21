@@ -82,7 +82,49 @@ export function ReviewerConsole({
   requiresCoordinatorApproval = false,
 }: ReviewerConsoleProps) {
   const [rubricItems, setRubricItems] = useState<RubricItem[]>([])
-  const [scores, setScores] = useState<Record<string, LocalScore>>({})
+  const [scores, setScores] = useState<Record<string, LocalScore>>(() => {
+    // Synchronously seed from server-provided data so criterion-linked annotations are
+    // present when the iframe first becomes ready — closing the timing race where the
+    // highlight effect fired before the async rubric-items query resolved.
+    // Covers all rubric rows (via reviewNotesRows); the async effect below extends this
+    // to include all rubric items (including those never yet scored).
+    const seed: Record<string, LocalScore> = {}
+    ;(reviewNotesRows ?? []).forEach(notesRow => {
+      ;(notesRow.review_scores ?? []).forEach(rs => {
+        const linkedAnnotations = (reviewNotesRows ?? [])
+          .flatMap(row => row.annotations ?? [])
+          .filter(a => a.rubric_item_id === rs.rubric_item_id)
+          .sort((a, b) => new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime())
+        const itemScoreComments = (notesRow.score_comments ?? []).filter(sc => sc.rubric_item_id === rs.rubric_item_id)
+        const niComments = itemScoreComments.filter(sc => sc.score_level === 'does_not_meet').map(sc => ({ id: sc.id, body: sc.body }))
+        const exceedsComments = itemScoreComments.filter(sc => sc.score_level === 'exceeds').map(sc => ({ id: sc.id, body: sc.body }))
+        const exemplifiesComments = itemScoreComments.filter(sc => sc.score_level === 'exemplifies').map(sc => ({ id: sc.id, body: sc.body }))
+        const proficientSelected = (rs.criterion_scores ?? []).includes('exemplifies')
+        const derivedScores: CriterionScore[] = [...(rs.criterion_scores ?? [])]
+        if (exceedsComments.length > 0 && !derivedScores.includes('exceeds')) derivedScores.push('exceeds')
+        if (niComments.length > 0 && !derivedScores.includes('does_not_meet')) derivedScores.push('does_not_meet')
+        if (proficientSelected && !derivedScores.includes('exemplifies')) derivedScores.push('exemplifies')
+        if (exemplifiesComments.length > 0 && !derivedScores.includes('exemplifies')) derivedScores.push('exemplifies')
+        seed[rs.rubric_item_id] = {
+          rubricItemId: rs.rubric_item_id,
+          scores: derivedScores,
+          comment: rs.comment ?? '',
+          proficientSelected,
+          niComments,
+          exceedsComments,
+          exemplifiesComments,
+          annotations: linkedAnnotations.map(a => ({
+            id: a.id,
+            anchor: a.anchor as Record<string, unknown>,
+            body: a.body,
+            tag: a.tag,
+            created_at: a.created_at,
+          })),
+        }
+      })
+    })
+    return seed
+  })
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
   const [pendingSelection, setPendingSelection] = useState<AnyTextSelection | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(review.last_saved_at)
@@ -95,9 +137,15 @@ export function ReviewerConsole({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [generalAnnotations, setGeneralAnnotations] = useState<
     { id: string; anchor: Record<string, unknown>; body: string; tag: string | null; created_at?: string }[]
-  >(
-    (review.annotations ?? []).filter((a) => a.rubric_item_id === null).reverse()
-  )
+  >(() => {
+    // Seed from the reviewNotesRows entry for the initial rubric tab so general
+    // annotations are correct even when the primary review row is not this rubric's row.
+    const notesRow = reviewNotesRows?.find(r => r.rubric_id === review.rubric_id)
+    return (notesRow?.annotations ?? review.annotations ?? [])
+      .filter((a) => a.rubric_item_id === null)
+      .sort((a, b) => new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime())
+      .map((a) => ({ id: a.id, anchor: a.anchor as Record<string, unknown>, body: a.body, tag: a.tag, created_at: a.created_at }))
+  })
   const [annotationIndexMap, setAnnotationIndexMap] = useState<Map<string, number>>(new Map())
   // General-comment live refresh: serverNotes seeds the field; bumping notesKey remounts it.
   const [serverNotes, setServerNotes] = useState<string | null>(review.notes)
@@ -138,11 +186,15 @@ export function ReviewerConsole({
         // Hydrate local scores from existing review_scores, annotations, and score_comments
         const initialScores: Record<string, LocalScore> = {}
         items.forEach((item) => {
-          const existingScore = review.review_scores.find((rs) => rs.rubric_item_id === item.id)
-          const existingAnnotations = (review.annotations ?? []).filter(
-            (a) => a.rubric_item_id === item.id
-          )
-          const itemScoreComments = (review.score_comments ?? []).filter(
+          // Pull scores, annotations, and score_comments from the review row that owns
+          // this item's rubric — so all rubric tabs are populated correctly regardless
+          // of which row is the anchor row passed via ?review=<id>.
+          const notesRowForItem = reviewNotesRows?.find(r => r.rubric_id === item.rubric_id)
+          const existingScore = notesRowForItem?.review_scores?.find((rs) => rs.rubric_item_id === item.id)
+          const existingAnnotations = (notesRowForItem?.annotations ?? review.annotations ?? [])
+            .filter((a) => a.rubric_item_id === item.id)
+            .sort((a, b) => new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime())
+          const itemScoreComments = (notesRowForItem?.score_comments ?? []).filter(
             (sc) => sc.rubric_item_id === item.id
           )
           const niComments = itemScoreComments
@@ -172,12 +224,12 @@ export function ReviewerConsole({
             niComments,
             exceedsComments,
             exemplifiesComments,
-            annotations: [...existingAnnotations].reverse(),
+            annotations: existingAnnotations.map((a) => ({ id: a.id, anchor: a.anchor as Record<string, unknown>, body: a.body, tag: a.tag, created_at: a.created_at })),
           }
         })
         setScores(initialScores)
       })
-  // rubrics is stable (set once from server props); review.review_scores seeds initial UI only
+  // rubrics and reviewNotesRows are stable (set once from server props)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, rubrics])
 
@@ -209,6 +261,42 @@ export function ReviewerConsole({
   const generalAnnotationsRef = useRef(generalAnnotations)
   useEffect(() => { scoresRef.current = scores }, [scores])
   useEffect(() => { generalAnnotationsRef.current = generalAnnotations }, [generalAnnotations])
+
+  // Per-tab cache for general (unlinked) annotations, keyed by review row ID.
+  // Seeded from reviewNotesRows (server data); the leaving tab's state is written back
+  // here on each tab switch so newly-added annotations survive without a DB re-fetch.
+  const generalAnnotationsMapRef = useRef<Record<string, LocalScore['annotations']>>(
+    Object.fromEntries(
+      (reviewNotesRows ?? []).map(row => [
+        row.id,
+        (row.annotations ?? [])
+          .filter((a) => a.rubric_item_id === null)
+          .sort((a, b) => new Date(b.created_at ?? '').getTime() - new Date(a.created_at ?? '').getTime())
+          .map((a) => ({ id: a.id, anchor: a.anchor as Record<string, unknown>, body: a.body, tag: a.tag, created_at: a.created_at ?? undefined })),
+      ])
+    )
+  )
+
+  // Per-tab cache for the General Comments textarea text, keyed by review row ID.
+  // Mirrors generalAnnotationsMapRef — seeded from server data, updated on every keystroke
+  // via handleGeneralCommentChange, and read back on tab switch so typed text is never lost.
+  const notesTextMapRef = useRef<Record<string, string>>(
+    Object.fromEntries(
+      (reviewNotesRows ?? []).map(row => [row.id, row.notes ?? ''])
+    )
+  )
+
+  // Wrapper around the hook's onGeneralCommentChange — keeps notesTextMapRef current so
+  // the tab-switch effect can restore the live typed value rather than stale SSR data.
+  const handleGeneralCommentChange = useCallback(
+    (val: string) => {
+      notesTextMapRef.current[activeNotesReviewIdRef.current] = val
+      onGeneralCommentChange(val)
+    },
+    // onGeneralCommentChange is stable (useCallback in the hook); activeNotesReviewIdRef is a ref (no dep needed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onGeneralCommentChange]
+  )
 
   // ── Interaction tracking ───────────────────────────────────────────────────
   const { track, flush } = useReviewTracking({ supabase, reviewId: review.id, reviewerId: userId })
@@ -298,9 +386,13 @@ export function ReviewerConsole({
       // General comment: if the stored notes changed externally, remount the field
       // with the fresh value. Safe here — the guards above ensure it isn't focused
       // and no save is pending, so no in-progress text is lost.
+      // Also keep notesTextMapRef in sync so a subsequent tab-switch restores the fresh value.
       const freshNotes = rev?.notes ?? null
       setServerNotes((prevNotes) => {
-        if (freshNotes !== prevNotes) setNotesKey((k) => k + 1)
+        if (freshNotes !== prevNotes) {
+          notesTextMapRef.current[activeNotesReviewIdRef.current] = freshNotes ?? ''
+          setNotesKey((k) => k + 1)
+        }
         return freshNotes
       })
     } finally {
@@ -558,7 +650,7 @@ export function ReviewerConsole({
       const results = await Promise.all(
         insertIds.map(id =>
           saveAnnotation({
-            reviewId: review.id,
+            reviewId: activeNotesReviewIdRef.current,
             rubricItemId: id,
             anchor: target.anchor as Json,
             body: updates.body,
@@ -610,7 +702,8 @@ export function ReviewerConsole({
         ])
       }
     },
-    [deleteAnnotation, saveAnnotation, track, review.id]
+    [deleteAnnotation, saveAnnotation, track]
+    // activeNotesReviewIdRef is a ref — intentionally excluded from deps (stable identity, read via .current)
   )
 
   const handleEditFreeNote = useCallback(
@@ -911,36 +1004,27 @@ export function ReviewerConsole({
   }, [firstRubricId])
 
   // When the reviewer switches rubric tabs, update the active notes review row,
-  // reset the General Comments textarea, and re-fetch unlinked annotations for the
-  // new tab — matching the extension's selectReview() full-reload pattern.
+  // reset the General Comments textarea, and swap in the new tab's general annotations
+  // from the upfront-loaded cache (no DB round-trip needed).
   useEffect(() => {
     if (isFirstNotesMountRef.current) { isFirstNotesMountRef.current = false; return }
     if (activeRubricId === null) return
+    // Persist the leaving tab's current general annotations so they survive the switch.
+    generalAnnotationsMapRef.current[activeNotesReviewIdRef.current] = generalAnnotationsRef.current
     const notesRow = reviewNotesRows?.find(r => r.rubric_id === activeRubricId)
     const newReviewId = notesRow?.id ?? review.id
     setActiveNotesReviewId(newReviewId)
-    setServerNotes(notesRow ? notesRow.notes : null)
+    // Restore the live cached notes text for the incoming tab — notesTextMapRef holds the
+    // last typed value (updated on every keystroke), so typed-but-not-yet-saved text survives
+    // the switch instead of being replaced by the stale SSR value from reviewNotesRows.
+    const restoredNotes = notesTextMapRef.current[newReviewId] ?? notesRow?.notes ?? null
+    setServerNotes(restoredNotes)
     setNotesKey(k => k + 1)
-    supabase
-      .from('annotations')
-      .select('id, rubric_item_id, anchor, body, tag, created_at')
-      .eq('review_id', newReviewId)
-      .is('rubric_item_id', null)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setGeneralAnnotations(
-          (data ?? []).map(a => ({
-            id: a.id,
-            anchor: a.anchor as Record<string, unknown>,
-            body: a.body,
-            tag: a.tag,
-            created_at: a.created_at,
-          }))
-        )
-      })
+    // All annotations loaded upfront — read from the per-tab cache instead of the network.
+    setGeneralAnnotations(generalAnnotationsMapRef.current[newReviewId] ?? [])
   // reviewNotesRows and review.id are stable server-side data; intentionally excluded from deps.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRubricId, supabase])
+  }, [activeRubricId])
 
   // Scroll the rubric panel to the target annotation card, expanding its criterion if needed
   useEffect(() => {
@@ -975,13 +1059,35 @@ export function ReviewerConsole({
   const scoredCount = Object.values(scores).filter((s) => s.scores.length > 0).length
   const totalCount = rubricItems.length
 
-  // Flatten all saved annotations for PDF highlight overlays
+  // Maps each rubric item ID to its parent rubric ID so savedAnnotations can be
+  // scoped to the active rubric tab only.
+  // Seeded from reviewNotesRows annotations (available at mount, covers all annotated
+  // items) and extended from rubricItems state once the async query resolves.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rubricItemIdToRubricId = useMemo<Record<string, string>>(() => {
+    const fromNotes = Object.fromEntries(
+      (reviewNotesRows ?? []).flatMap(row =>
+        (row.annotations ?? [])
+          .filter((a): a is typeof a & { rubric_item_id: string } => a.rubric_item_id !== null)
+          .map(a => [a.rubric_item_id, row.rubric_id] as [string, string])
+      )
+    )
+    const fromItems = Object.fromEntries(rubricItems.map(item => [item.id, item.rubric_id]))
+    // fromItems wins over fromNotes (authoritative once rubricItems is loaded)
+    return { ...fromNotes, ...fromItems }
+  // reviewNotesRows is stable SSR data; intentionally excluded from deps
+  }, [rubricItems])
+
+  // Flatten saved annotations for OER highlight overlays — filtered to the active rubric
+  // only, so criterion-linked highlights from other rubric tabs don't bleed through.
   const savedAnnotations = useMemo(() => [
-    ...Object.entries(scores).flatMap(([rubricItemId, s]) =>
-      s.annotations.map((ann) => ({ ...ann, rubricItemId }))
-    ),
+    ...Object.entries(scores)
+      .filter(([rubricItemId]) => rubricItemIdToRubricId[rubricItemId] === activeRubricId)
+      .flatMap(([rubricItemId, s]) =>
+        s.annotations.map((ann) => ({ ...ann, rubricItemId }))
+      ),
     ...generalAnnotations.map((ann) => ({ ...ann, rubricItemId: null })),
-  ], [scores, generalAnnotations])
+  ], [scores, generalAnnotations, rubricItemIdToRubricId, activeRubricId])
 
   function handleViewFullComment(annotationId: string) {
     const ann = savedAnnotations.find(a => a.id === annotationId)
@@ -1104,7 +1210,7 @@ export function ReviewerConsole({
               onDeleteAnnotation={handleAnnotationDeleteFromPDF}
               expandToAnnotationId={panelScrollAnnotationId}
               initialNotes={serverNotes}
-              onGeneralCommentChange={onGeneralCommentChange}
+              onGeneralCommentChange={handleGeneralCommentChange}
               saveStatus={saveStatus}
               notesKey={notesKey}
               goToLabel={document.platform === 'OLI Torus' ? 'Go to screenshot' : undefined}

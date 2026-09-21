@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getSignedUrl } from '@/lib/supabase/queries'
-import { ReviewerApp, type Review, type OERPage } from './components/ReviewerApp'
+import { ReviewerApp, type Review, type OERPage, type ReviewNotesRow } from './components/ReviewerApp'
 
 export default async function ReviewerPage({
   searchParams,
@@ -125,7 +125,7 @@ export default async function ReviewerPage({
   const { data: reviewNotesRows } = document && rubricIds.length > 0
     ? await supabase
         .from('reviews')
-        .select('id, rubric_id, notes')
+        .select('id, rubric_id, notes, annotations ( id, rubric_item_id, anchor, body, tag, created_at ), review_scores ( id, rubric_item_id, score, criterion_scores, comment ), score_comments ( id, rubric_item_id, score_level, body )')
         .eq('document_id', document.id)
         .eq('reviewer_id', user.id)
         .in('rubric_id', rubricIds)
@@ -143,7 +143,7 @@ export default async function ReviewerPage({
       document={document ?? null}
       rubrics={rubrics}
       existingReview={existingReview as Review | null}
-      reviewNotesRows={reviewNotesRows ?? []}
+      reviewNotesRows={(reviewNotesRows ?? []) as ReviewNotesRow[]}
       requiresCoordinatorApproval={requiresCoordinatorApproval}
     />
   )

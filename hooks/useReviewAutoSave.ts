@@ -81,12 +81,13 @@ export function useReviewAutoSave({
     if (oldId === newId) return
 
     if (
-      notesTimer.current &&
       pendingNotesText.current !== null &&
       lastSavedNotes.current !== pendingNotesText.current
     ) {
-      clearTimeout(notesTimer.current)
-      notesTimer.current = null
+      if (notesTimer.current) {
+        clearTimeout(notesTimer.current)
+        notesTimer.current = null
+      }
       const textToSave = pendingNotesText.current
       supabase
         .from('reviews')
@@ -96,7 +97,8 @@ export function useReviewAutoSave({
     }
 
     notesReviewIdRef.current = newId
-    lastSavedNotes.current = null  // treat the new row as a fresh slate
+    lastSavedNotes.current = null   // treat the new row as a fresh slate
+    pendingNotesText.current = null // the old text was just flushed; clear so saveDraft/unmount don't re-write it to the new row
   }, [notesReviewId, reviewId, supabase])
 
   // ── Core upsert ────────────────────────────────────────────────────────────
@@ -268,20 +270,41 @@ export function useReviewAutoSave({
   // ── Manual save-draft: flush all pending debounced saves ───────────────────
 
   const saveDraft = useCallback(async (): Promise<void> => {
-    // Cancel all pending timers
+    // Cancel all pending score timers
     debounceTimers.current.forEach((timer) => clearTimeout(timer))
     debounceTimers.current.clear()
 
-    const pending = Array.from(pendingScores.current.values())
-    if (pending.length === 0) {
+    // Cancel pending notes timer and capture any unsaved text
+    if (notesTimer.current) {
+      clearTimeout(notesTimer.current)
+      notesTimer.current = null
+    }
+    const pendingNotes =
+      pendingNotesText.current !== null &&
+      lastSavedNotes.current !== pendingNotesText.current
+        ? pendingNotesText.current
+        : null
+
+    const pendingScoreList = Array.from(pendingScores.current.values())
+    if (pendingScoreList.length === 0 && pendingNotes === null) {
       setSaveStatus('saved')
       return
     }
 
     setSaveStatus('saving')
-    await Promise.all(pending.map(upsertScore))
+    const writes: PromiseLike<unknown>[] = pendingScoreList.map(upsertScore)
+    if (pendingNotes !== null) {
+      writes.push(
+        supabase
+          .from('reviews')
+          .update({ notes: pendingNotes })
+          .eq('id', notesReviewIdRef.current)
+          .then(({ error }) => { if (!error) lastSavedNotes.current = pendingNotes })
+      )
+    }
+    await Promise.all(writes)
     pendingScores.current.clear()
-  }, [upsertScore])
+  }, [upsertScore, supabase])
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
 
@@ -294,8 +317,19 @@ export function useReviewAutoSave({
       if (notesTimer.current) clearTimeout(notesTimer.current)
       pendingScores.current.forEach(draft => { upsertScore(draft) })
       pendingScores.current.clear()
+      if (
+        pendingNotesText.current !== null &&
+        lastSavedNotes.current !== pendingNotesText.current
+      ) {
+        const text = pendingNotesText.current
+        supabase
+          .from('reviews')
+          .update({ notes: text })
+          .eq('id', notesReviewIdRef.current)
+          .then(({ error }) => { if (!error) lastSavedNotes.current = text })
+      }
     }
-  }, [upsertScore])
+  }, [upsertScore, supabase])
 
   // ── Warn before tab close / browser refresh when saves are pending ──────────
 

@@ -890,7 +890,12 @@
       } catch {
         return { a, score: 0 };
       }
-    }).filter((s) => s.score > 0).sort((x, y) => y.score - x.score || (x.a.status === "in_progress" ? -1 : 1));
+    }).filter((s) => s.score > 0).sort((x, y) => {
+      if (y.score !== x.score) return y.score - x.score;
+      const tA = x.a.updated_at ? new Date(x.a.updated_at).getTime() : 0;
+      const tB = y.a.updated_at ? new Date(y.a.updated_at).getTime() : 0;
+      return tB - tA;
+    });
     return scored.length > 0 ? scored[0].a : null;
   }
   var TORUS_LOGIN_PATTERNS = [

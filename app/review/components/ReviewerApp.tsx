@@ -73,6 +73,9 @@ export interface ReviewNotesRow {
   id: string
   rubric_id: string
   notes: string | null
+  annotations: AnnotationRecord[]
+  review_scores: ReviewScore[]
+  score_comments: ScoreComment[]
 }
 
 export interface Review {
