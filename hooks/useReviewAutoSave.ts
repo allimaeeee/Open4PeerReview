@@ -24,6 +24,11 @@ import type { PdfTextAnchor } from '@/lib/supabase/types'
 
 export interface ScoreDraft {
   rubricItemId: string
+  /** The review row (one exists per rubric) this item's rubric belongs to —
+   *  resolved by the caller via the item→row lookup. Never the hook's own
+   *  `reviewId`, which is only the console's anchor row and may belong to a
+   *  different rubric than this item. */
+  reviewId: string
   scores: CriterionScore[]
   comment: string
 }
@@ -114,7 +119,10 @@ export function useReviewAutoSave({
         .from('review_scores')
         .upsert(
           {
-            review_id: reviewId,
+            // draft.reviewId is the row owning this item's rubric (resolved by
+            // the caller) — never the hook's own `reviewId`, which is only the
+            // console's anchor row and may belong to a different rubric.
+            review_id: draft.reviewId,
             rubric_item_id: draft.rubricItemId,
             criterion_scores: draft.scores,
             score: draft.scores[0] ?? null,
@@ -136,7 +144,7 @@ export function useReviewAutoSave({
       lastSaved.current.set(draft.rubricItemId, key)
       setSaveStatus('saved')
     },
-    [supabase, reviewId]
+    [supabase]
   )
 
   // ── Auto-save: debounced score/comment change ───────────────────────────────

@@ -233,15 +233,63 @@ export function ReviewerConsole({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, rubrics])
 
-  // ── Load already-submitted rubrics ─────────────────────────────────────────
+  // ── Rubric → owning review row ID (single shared resolver) ─────────────────
+  // A document has one independent review row per rubric (reviewNotesRows,
+  // loaded server-side — see Dimension A). This is the single source of truth
+  // for resolving which row a given rubric — or, via `getReviewRowIdForItem`,
+  // a given rubric item — actually belongs to. Every score and score-comment
+  // write below resolves through here; never the console's anchor `review.id`,
+  // which only belongs to whichever rubric happened to be passed via
+  // `?review=<id>` and may not be the rubric currently being edited.
+  const rubricToReviewRowIdRef = useRef<Record<string, string>>({})
   useEffect(() => {
+    rubricToReviewRowIdRef.current = Object.fromEntries(
+      (reviewNotesRows ?? []).map(row => [row.rubric_id, row.id])
+    )
+  // reviewNotesRows is stable server-side data; intentionally excluded from deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const getReviewRowIdForRubric = useCallback(
+    (rubricId: string | null | undefined): string =>
+      (rubricId && rubricToReviewRowIdRef.current[rubricId]) || review.id,
+    [review.id]
+  )
+
+  // rubric_item_id → rubric_id, kept in sync as rubricItems loads (empty until
+  // the async query above resolves). Ref-based (like scoresRef/
+  // activeNotesReviewIdRef below) so write-path callbacks declared before
+  // rubricItems finishes loading always read the latest mapping instead of
+  // closing over a stale/empty one.
+  const itemToRubricIdRef = useRef<Record<string, string>>({})
+  useEffect(() => {
+    itemToRubricIdRef.current = Object.fromEntries(rubricItems.map(item => [item.id, item.rubric_id]))
+  }, [rubricItems])
+
+  const getReviewRowIdForItem = useCallback(
+    (rubricItemId: string): string => getReviewRowIdForRubric(itemToRubricIdRef.current[rubricItemId]),
+    [getReviewRowIdForRubric]
+  )
+
+  // ── Load already-submitted rubrics ─────────────────────────────────────────
+  // A submission row is filed under the review row for the rubric that was
+  // actually submitted (see handleSubmit below), not necessarily the anchor
+  // row — so this must read across every rubric row this reviewer has for
+  // the document, not just review.id, or a non-anchor rubric's prior
+  // submission would never show as submitted here.
+  useEffect(() => {
+    const allReviewRowIds = Array.from(
+      new Set([review.id, ...(reviewNotesRows ?? []).map((r) => r.id)])
+    )
     supabase
       .from('review_rubric_submissions')
       .select('rubric_id')
-      .eq('review_id', review.id)
+      .in('review_id', allReviewRowIds)
       .then(({ data }) => {
         if (data) setSubmittedRubricIds(new Set(data.map((r) => r.rubric_id)))
       })
+  // reviewNotesRows is stable server-side data; intentionally excluded from deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, review.id])
 
   // ── Auto-save hook ─────────────────────────────────────────────────────────
@@ -332,16 +380,23 @@ export function ReviewerConsole({
 
     refreshInFlight.current = true
     try {
+      // Pull from every rubric's review row, not just the anchor — a document
+      // has one independent row per rubric, and score_comments/review_scores
+      // for a non-anchor rubric live under that rubric's own row.
+      const allReviewRowIds = Array.from(
+        new Set([review.id, ...(reviewNotesRows ?? []).map((r) => r.id)])
+      )
+
       const [{ data: sc }, { data: rs }, { data: rev }] = await Promise.all([
         supabase
           .from('score_comments')
           .select('id, rubric_item_id, score_level, body')
-          .eq('review_id', review.id)
+          .in('review_id', allReviewRowIds)
           .order('created_at', { ascending: true }),
         supabase
           .from('review_scores')
           .select('rubric_item_id, criterion_scores, score, comment')
-          .eq('review_id', review.id),
+          .in('review_id', allReviewRowIds),
         supabase
           .from('reviews')
           .select('notes')
@@ -358,6 +413,9 @@ export function ReviewerConsole({
         const next: Record<string, LocalScore> = {}
         for (const itemId of Object.keys(prev)) {
           const existing = prev[itemId]
+          // rubric_item_id belongs to exactly one rubric, so filtering the
+          // all-rows result by itemId alone already scopes each item to its
+          // own rubric's data — no further per-row lookup needed here.
           const itemComments = (sc ?? []).filter((c) => c.rubric_item_id === itemId)
           const niComments = itemComments.filter((c) => c.score_level === 'does_not_meet').map((c) => ({ id: c.id, body: c.body }))
           const exceedsComments = itemComments.filter((c) => c.score_level === 'exceeds').map((c) => ({ id: c.id, body: c.body }))
@@ -398,6 +456,8 @@ export function ReviewerConsole({
     } finally {
       refreshInFlight.current = false
     }
+  // reviewNotesRows is stable server-side data; intentionally excluded from deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, review.id, isSubmitted])
 
   useEffect(() => {
@@ -436,7 +496,12 @@ export function ReviewerConsole({
       setScores((prev) => {
         const updated = { ...prev[rubricItemId], ...changes }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(onScoreChange as any)({ rubricItemId, scores: updated.scores, comment: updated.comment })
+        ;(onScoreChange as any)({
+          rubricItemId,
+          reviewId: getReviewRowIdForItem(rubricItemId),
+          scores: updated.scores,
+          comment: updated.comment,
+        })
         if ('scores' in changes) {
           track('score_set', {
             rubric_item_id: rubricItemId,
@@ -446,7 +511,7 @@ export function ReviewerConsole({
         return { ...prev, [rubricItemId]: updated }
       })
     },
-    [onScoreChange, track]
+    [onScoreChange, track, getReviewRowIdForItem]
   )
 
   // ── Annotation from text selection (PDF or HTML) ─────────────────────────
@@ -817,7 +882,8 @@ export function ReviewerConsole({
   // ── Score comments ────────────────────────────────────────────────────────
   const handleAddScoreComment = useCallback(
     async (rubricItemId: string, scoreLevel: CriterionScore, body: string) => {
-      const id = await addScoreComment(review.id, rubricItemId, scoreLevel, body)
+      const reviewId = getReviewRowIdForItem(rubricItemId)
+      const id = await addScoreComment(reviewId, rubricItemId, scoreLevel, body)
       if (!id) return
       track('score_comment_add', { rubric_item_id: rubricItemId, score_level: scoreLevel, char_count: body.length })
       setScores((prev) => {
@@ -833,11 +899,11 @@ export function ReviewerConsole({
           [key]: [...existing[key], { id: item.id, body: item.body }],
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(onScoreChange as any)({ rubricItemId, scores: updatedScores, comment: existing.comment })
+        ;(onScoreChange as any)({ rubricItemId, reviewId, scores: updatedScores, comment: existing.comment })
         return { ...prev, [rubricItemId]: updated }
       })
     },
-    [review.id, addScoreComment, onScoreChange, track]
+    [addScoreComment, onScoreChange, track, getReviewRowIdForItem]
   )
 
   const handleDeleteScoreComment = useCallback(
@@ -852,7 +918,12 @@ export function ReviewerConsole({
           ? existing.scores.filter((s) => s !== scoreLevel)
           : existing.scores
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(onScoreChange as any)({ rubricItemId, scores: updatedScores, comment: existing.comment })
+        ;(onScoreChange as any)({
+          rubricItemId,
+          reviewId: getReviewRowIdForItem(rubricItemId),
+          scores: updatedScores,
+          comment: existing.comment,
+        })
         return {
           ...prev,
           [rubricItemId]: {
@@ -863,7 +934,7 @@ export function ReviewerConsole({
         }
       })
     },
-    [deleteScoreComment, onScoreChange, track]
+    [deleteScoreComment, onScoreChange, track, getReviewRowIdForItem]
   )
 
   // Distinct rubric ids in play (used by the submit flow and per-rubric read-only state).
@@ -881,6 +952,12 @@ export function ReviewerConsole({
     async (rubricId: string, finalOverallComment: string): Promise<string | null> => {
       await saveDraft()
 
+      // The review row that owns the rubric actually being submitted — a
+      // document has one independent row per rubric, and rubricId here is
+      // whichever tab the reviewer was on when they clicked Submit (captured
+      // via submitRubricId at click time, not necessarily the anchor row).
+      const submittedReviewId = getReviewRowIdForRubric(rubricId)
+
       const isFirstSubmission = submittedRubricIds.size === 0
       const willAllBeSubmitted = allRubricIds.every(
         (id) => id === rubricId || submittedRubricIds.has(id)
@@ -890,7 +967,7 @@ export function ReviewerConsole({
       const { error: subError } = await supabase
         .from('review_rubric_submissions')
         .upsert(
-          { review_id: review.id, rubric_id: rubricId },
+          { review_id: submittedReviewId, rubric_id: rubricId },
           { onConflict: 'review_id,rubric_id', ignoreDuplicates: true }
         )
       if (subError) return subError.message ?? 'Submit failed — please try again'
@@ -916,7 +993,7 @@ export function ReviewerConsole({
       const { error } = await supabase
         .from('reviews')
         .update(reviewUpdate)
-        .eq('id', review.id)
+        .eq('id', submittedReviewId)
       if (error) return error.message ?? 'Submit failed — please try again'
 
       const rubricScoredCount = rubricItems.filter(
@@ -943,7 +1020,7 @@ export function ReviewerConsole({
       })
       return null
     },
-    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval]
+    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval, getReviewRowIdForRubric]
   )
 
   const handleConfirmSubmit = useCallback(async () => {
