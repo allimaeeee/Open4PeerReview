@@ -962,7 +962,6 @@ export function ReviewerConsole({
       const willAllBeSubmitted = allRubricIds.every(
         (id) => id === rubricId || submittedRubricIds.has(id)
       )
-
       // Record this rubric as released (idempotent on the unique constraint).
       const { error: subError } = await supabase
         .from('review_rubric_submissions')
@@ -996,6 +995,35 @@ export function ReviewerConsole({
         .eq('id', submittedReviewId)
       if (error) return error.message ?? 'Submit failed — please try again'
 
+      // When this is the final rubric, every OTHER row for this reviewer+document
+      // is also done — willAllBeSubmitted only becomes true once each of them has
+      // its own review_rubric_submissions entry — but each of THEM was submitted
+      // while willAllBeSubmitted was still false, so its own status update (above)
+      // never ran at the time. Flip status on those sibling rows now, so the
+      // document actually reads as fully submitted: the reviewer dashboard's
+      // "Completed" tab and the coordinator dashboard's per-rubric status both
+      // derive from each row's own status column, not from review_rubric_submissions
+      // alone. overall_comment is per-rubric and belongs only to submittedReviewId,
+      // so this is a separate, narrower update rather than folding into the one
+      // above (which would incorrectly overwrite siblings' own overall_comment).
+      if (willAllBeSubmitted) {
+        const siblingUpdate: { status: 'submitted'; coordinator_approval?: 'pending'; coordinator_note?: null } = {
+          status: 'submitted',
+        }
+        if (requiresCoordinatorApproval) {
+          siblingUpdate.coordinator_approval = 'pending'
+          siblingUpdate.coordinator_note = null
+        }
+        const { error: siblingsError } = await supabase
+          .from('reviews')
+          .update(siblingUpdate)
+          .eq('document_id', document.id)
+          .eq('reviewer_id', userId)
+          .eq('status', 'in_progress')
+          .neq('id', submittedReviewId)
+        if (siblingsError) return siblingsError.message ?? 'Submit failed — please try again'
+      }
+
       const rubricScoredCount = rubricItems.filter(
         (i) => i.rubric_id === rubricId && (scores[i.id]?.scores.length ?? 0) > 0
       ).length
@@ -1020,7 +1048,7 @@ export function ReviewerConsole({
       })
       return null
     },
-    [saveDraft, supabase, review, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval, getReviewRowIdForRubric]
+    [saveDraft, supabase, review, document, userId, onReviewUpdate, track, flush, scores, rubricItems, submittedRubricIds, allRubricIds, requiresCoordinatorApproval, getReviewRowIdForRubric]
   )
 
   const handleConfirmSubmit = useCallback(async () => {
