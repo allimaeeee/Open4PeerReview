@@ -57,9 +57,32 @@ None of these live in the repo. Without them the system cannot be deployed or ch
 | **Figma** (Design System file) | Token foundations, logos and icons | Read access is enough for most work. |
 | **Domain / DNS** | Currently `*.vercel.app` | No custom domain exists. If one is added, see 2.6. |
 | **OLI Torus access** (`proton.oli.cmu.edu`) | Testing the extension against real content | Needs a CMU/OLI-provided test account **[VERIFY]**. |
+| **Claude Code team membership** | Shared AI-assisted dev workflow (project `CLAUDE.md`, `.claude/settings.json`, read-only Supabase MCP server) | A new owner should request membership in the owning Claude Code team/organization, and request access to the Supabase MCP server's credentials separately. |
 | **Partner agreements** | Maricopa/OLI data and pilot terms | Funded by the U.S. Dept. of Education per `PRIVACY.md`. Confirm data-handling obligations transfer with the system. |
 
 **Rotate on transfer:** Supabase anon and service keys, the Gemini key, and any Vercel tokens. Remove departing members from all of the above.
+
+#### Formal request: Claude Code team membership
+
+The new owner submits this request to the admin of the Claude Code team or organization that owns the project's workflow. Fill in the bracketed fields.
+
+> **To:** [Claude Code team admin]
+> **From:** [Requester name, email, role]
+> **Date:** [YYYY-MM-DD]
+> **Subject:** Request for Claude Code team membership: Open4PeerReview / OER Certification Hub
+>
+> I request membership in the [team/organization name] Claude Code team so that I can maintain and extend the Open4PeerReview repository (`allimaeeee/Open4PeerReview`) after handoff from Team Mask'd.
+>
+> **Access requested**
+> 1. A seat on the Claude Code team, at the [member / admin] level.
+> 2. Access to the shared project configuration: `CLAUDE.md` and `.claude/settings.json`.
+> 3. Read and write access to the Supabase MCP server. Credentials are issued separately by the Supabase project Owner. 
+>
+> **Justification:** The repo's development conventions, permissions, and MCP setup assume Claude Code. Without a seat, the new owner cannot reproduce the documented workflow.
+>
+> **Requester confirms:** they will keep secrets (Supabase, Gemini, Vercel) out of the repo and chat, and will not use the MCP server for writes.
+>
+> **Approver:** [name] **Decision:** [approved / denied] **Date:** [YYYY-MM-DD]
 
 ### 2.2 Local environment
 
