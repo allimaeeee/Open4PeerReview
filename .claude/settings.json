@@ -12,7 +12,19 @@
       "Bash(grep -r \"\\\\.role\\\\|\\\\.roles\\\\|user_role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" -n)",
       "Bash(grep -r \"roles\\\\|role\" /Users/allisondayton/Open4PeerReview --include=\"*.ts\" --include=\"*.tsx\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/.archiver_shadow/*\" ! -path \"*/.git/*\")",
       "mcp__claude_ai_Supabase__get_logs",
-      "mcp__claude_ai_Supabase__get_publishable_keys"
+      "mcp__claude_ai_Supabase__get_publishable_keys",
+      "mcp__plugin_figma_figma__get_screenshot",
+      "Read(//private/tmp/**)",
+      "Bash(curl -sL -o v6.png \"https://www.figma.com/api/mcp/asset/681503e0-de08-472f-b856-c30cbf29d138\")",
+      "Bash(curl -sL -o v8.png \"https://www.figma.com/api/mcp/asset/8fbc3691-8e35-4bcd-a5ed-44456107a8e4\")",
+      "Bash(curl -sL -o v9.png \"https://www.figma.com/api/mcp/asset/3658a8b9-4ff4-4b51-ab85-ed1a511030f8\")",
+      "Bash(curl -sL -o v10.png \"https://www.figma.com/api/mcp/asset/c999a508-852c-4497-a2ca-d45f5beec816\")",
+      "Read(//tmp/**)",
+      "mcp__plugin_figma_figma__use_figma",
+      "Bash(curl -sL -o w1.png \"https://www.figma.com/api/mcp/asset/22c7be1f-733d-4d87-9a01-9dcb8dd3a1df\")",
+      "Bash(curl -sL -o w2.png \"https://www.figma.com/api/mcp/asset/1bdb9647-84ec-4e1c-a97a-d6daa22c1656\")",
+      "Bash(curl -sL -o w3.png \"https://www.figma.com/api/mcp/asset/9e3b6ba4-f8fb-45ae-a365-472e0bc97786\")",
+      "Bash(curl -sL -o w4.png \"https://www.figma.com/api/mcp/asset/d44924a8-cda8-49eb-8c57-f289117f8cb6\")"
     ]
   }
 }
