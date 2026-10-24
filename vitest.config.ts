@@ -4,7 +4,11 @@ import path from 'path'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['features/ai-chat/__tests__/**/*.test.ts'],
+    include: [
+      'features/ai-chat/__tests__/**/*.test.ts',
+      'lib/__tests__/**/*.test.ts',
+      'app/api/snapshot/__tests__/**/*.test.ts',
+    ],
   },
   resolve: {
     alias: {

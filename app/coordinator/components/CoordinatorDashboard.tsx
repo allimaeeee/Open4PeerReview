@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCoordinatorDashboardData } from '@/lib/supabase/queries'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS } from '@/types'
 import type { ExpertDomain } from '@/types'
+import { getHostname } from '@/lib/oer-platform'
 import type { AssignmentDocShape, ReviewDocShape } from './CoordinatorDashboardClient'
 import { CoordinatorDashboardClient } from './CoordinatorDashboardClient'
 
@@ -30,6 +31,7 @@ export async function CoordinatorDashboard() {
   const {
     institution,
     members,
+    memberDocs,
     rubrics: rubricsList,
     pending,
     released,
@@ -39,6 +41,20 @@ export async function CoordinatorDashboard() {
   const orgReviewers = members
     .filter(m => ((m.roles ?? []) as string[]).includes('reviewer'))
     .map(m => ({ id: m.id, display_name: m.display_name, email: m.email }))
+
+  // Domains submitted by members, grouped by hostname
+  const memberName = new Map(members.map(m => [m.id, m.display_name ?? m.email]))
+  const domainMap = new Map<string, { host: string; platform: string; count: number; submitters: Set<string>; last: string }>()
+  for (const d of memberDocs) {
+    const host = d.source_url ? getHostname(d.source_url) : null
+    if (!host) continue
+    const row = domainMap.get(host) ?? { host, platform: d.platform ?? 'Other', count: 0, submitters: new Set<string>(), last: d.created_at }
+    row.count++
+    row.submitters.add(memberName.get(d.author_id) ?? 'Unknown')
+    if (d.created_at > row.last) row.last = d.created_at
+    domainMap.set(host, row)
+  }
+  const domains = [...domainMap.values()].sort((a, b) => b.count - a.count || a.host.localeCompare(b.host))
 
   const rubricMap = new Map(rubricsList.map(r => [r.id, r.title]))
 
@@ -210,6 +226,37 @@ export async function CoordinatorDashboard() {
                         </tr>
                       )
                     })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <h2 className="mt-10 mb-1 text-heading-md font-semibold font-heading text-text-primary">Submitted domains</h2>
+            <p className="text-body-md text-text-secondary mb-4">Every site your members have submitted OER from.</p>
+            {domains.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center">
+                <p className="text-sm text-slate-500">No OER URLs submitted yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      {['Domain', 'Platform', 'Submissions', 'Submitted by', 'Last submitted'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {domains.map(d => (
+                      <tr key={d.host} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-900">{d.host}</td>
+                        <td className="px-4 py-3 text-slate-600">{d.platform}</td>
+                        <td className="px-4 py-3 text-slate-600">{d.count}</td>
+                        <td className="px-4 py-3 text-slate-500">{[...d.submitters].join(', ')}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDate(d.last)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

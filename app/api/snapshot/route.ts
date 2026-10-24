@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { submitOpenStaxLink, updateDocumentContent } from '@/lib/supabase/queries'
-import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
+import { detectPlatform, detectPlatformFromHtml, isValidOerUrl, platformLabel } from '@/lib/oer-platform'
 import { fetchAndSnapshot } from '@/lib/snapshot-utils'
 
 export async function POST(req: NextRequest) {
@@ -34,29 +34,32 @@ export async function POST(req: NextRequest) {
 
   const { url, title, authors, subjectMatter, ccLicense, thirdPartyDisclosure, rubricIds, submissionScope, isDraft, coordinatorUpload, publicReview, documentId, additionalPageUrls } = body
 
-  if (!url || !isKnownOerUrl(url)) {
+  if (!url || !isValidOerUrl(url)) {
     return NextResponse.json(
-      { error: 'URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula)' },
+      { error: 'URL must be a valid public https link.' },
       { status: 400 }
     )
   }
 
   const validAdditionalUrls = (additionalPageUrls ?? []).filter(u => u.trim())
   for (const pageUrl of validAdditionalUrls) {
-    if (!isKnownOerUrl(pageUrl)) {
+    if (!isValidOerUrl(pageUrl)) {
       return NextResponse.json(
-        { error: `Additional page URL is not from a supported OER platform: ${pageUrl}` },
+        { error: `Additional page URL is not a valid public https link: ${pageUrl}` },
         { status: 400 }
       )
     }
   }
 
-  const platform = detectPlatform(url)
-
   // Snapshot primary page
   const primary = await fetchAndSnapshot(supabase, url)
   if ('error' in primary) return NextResponse.json({ error: primary.error }, { status: primary.status })
   const { fingerprint, storagePath } = primary
+
+  // Known host first; otherwise sniff the page (Pressbooks on a custom domain); else "Other".
+  const basePlat = detectPlatform(url) !== 'Other' ? detectPlatform(url) : (detectPlatformFromHtml(primary.html) ?? 'Other')
+  const { data: submitter } = await supabase.from('users').select('institution').eq('id', user.id).single()
+  const platform = platformLabel(basePlat, submitter?.institution)
 
   // Snapshot each additional page URL
   const additionalPages: Array<{ url: string; fingerprint: string; storagePath: string }> = []

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { detectPlatform, isKnownOerUrl } from '@/lib/oer-platform'
+import { detectPlatform, detectPlatformFromHtml, isValidOerUrl } from '@/lib/oer-platform'
 
 // Origin used when a snapshot is served without a ?src= hint (legacy snapshots).
 const DEFAULT_ORIGIN = 'https://openstax.org'
@@ -87,7 +87,7 @@ export async function GET(
   let origin = DEFAULT_ORIGIN
   let platform = 'OpenStax'
   const src = req.nextUrl.searchParams.get('src')
-  if (src && isKnownOerUrl(src)) {
+  if (src && isValidOerUrl(src)) {
     try {
       origin = new URL(src).origin
       platform = detectPlatform(src)
@@ -120,6 +120,8 @@ export async function GET(
   }
 
   const html = await fileRes.text()
+  // Custom-domain Pressbooks isn't recognised by hostname; sniff the markup for nav rules.
+  if (platform === 'Other') platform = detectPlatformFromHtml(html) ?? platform
   const rewritten = rewriteHtml(html, origin, platform)
 
   return new NextResponse(rewritten, {

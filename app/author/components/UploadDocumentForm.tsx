@@ -8,7 +8,7 @@ import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { Select } from '@/components/ui/Select'
 import { SelectionCard } from '@/components/ui/SelectionCard'
-import { isKnownOerUrl, isTorusUrl } from '@/lib/oer-platform'
+import { isValidOerUrl, isTorusUrl } from '@/lib/oer-platform'
 
 type SourceTab = 'pdf' | 'url' | 'torus'
 
@@ -101,14 +101,14 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
         if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Only PDF files are supported.'); return }
       } else if (sourceTab === 'url') {
         if (!oerUrl.trim()) { setError('Please enter an OER URL.'); return }
-        if (!isKnownOerUrl(oerUrl.trim())) {
-          setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+        if (!isValidOerUrl(oerUrl.trim())) {
+          setError('URL must be a valid public https link.')
           return
         }
         for (const pageUrl of additionalPageUrls) {
           if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
-          if (!isKnownOerUrl(pageUrl.trim())) {
-            setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
+          if (!isValidOerUrl(pageUrl.trim())) {
+            setError(`Additional page URL must be a valid public https link: ${pageUrl.trim()}`)
             return
           }
         }
@@ -131,7 +131,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
       let docId: string
 
       const hasFile = sourceTab === 'pdf' && !!file
-      const hasUrl = sourceTab === 'url' && !!oerUrl.trim() && isKnownOerUrl(oerUrl.trim())
+      const hasUrl = sourceTab === 'url' && !!oerUrl.trim() && isValidOerUrl(oerUrl.trim())
       const hasTorus = sourceTab === 'torus' && !!torusUrl.trim() && isTorusUrl(torusUrl.trim())
 
       if (hasFile) {
@@ -472,7 +472,7 @@ export function UploadDocumentForm({ rubrics, customSubjectMatters, authorInstit
                 className={inputBase}
               />
               <p className="mt-1 text-xs text-slate-400">
-                Supported: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
+                Any public https link works. Pressbooks books on custom domains are detected automatically; other sites are labelled "Other".
               </p>
             </div>
 

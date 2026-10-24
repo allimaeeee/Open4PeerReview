@@ -843,10 +843,21 @@ export async function getCoordinatorDashboardData(supabase: Client) {
 
   const allSubjectMatters = [...new Set((subjectMattersResult.data ?? []).map(d => d.subject_matter).filter(Boolean))]
 
+  // Every OER URL submitted by members of the coordinator's institution (for the Domains view)
+  const memberIds = (membersResult.data ?? []).map(m => m.id)
+  const { data: memberDocs } = memberIds.length
+    ? await supabase
+        .from('documents')
+        .select('id, author_id, source_url, platform, created_at')
+        .in('author_id', memberIds)
+        .not('source_url', 'is', null)
+    : { data: [] as { id: string; author_id: string; source_url: string | null; platform: string | null; created_at: string }[] }
+
   return {
     institution,
     coordinatorUserId,
     members: membersResult.data ?? [],
+    memberDocs: memberDocs ?? [],
     rubrics: (rubricsResult.data ?? []) as { id: string; title: string }[],
     customSubjectMatters: allSubjectMatters,
     pending,

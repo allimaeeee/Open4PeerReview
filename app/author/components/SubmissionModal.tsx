@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { SelectionCard } from '@/components/ui/SelectionCard'
 import { StepIndicator } from '@/components/ui/StepIndicator'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
-import { isKnownOerUrl, isTorusUrl } from '@/lib/oer-platform'
+import { isValidOerUrl, isTorusUrl } from '@/lib/oer-platform'
 
 type SourceTab = 'pdf' | 'openstax' | 'torus'
 
@@ -310,8 +310,8 @@ export function SubmissionModal({
       }
     } else {
       if (!openstaxUrl.trim()) { setError('Please enter an OER URL.'); return }
-      if (!isKnownOerUrl(openstaxUrl.trim())) {
-        setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+      if (!isValidOerUrl(openstaxUrl.trim())) {
+        setError('URL must be a valid public https link.')
         return
       }
       for (const pageUrl of additionalPageUrls) {
@@ -321,8 +321,8 @@ export function SubmissionModal({
         } catch {
           setError('Please enter a valid URL for each additional page.'); return
         }
-        if (!isKnownOerUrl(pageUrl.trim())) {
-          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`); return
+        if (!isValidOerUrl(pageUrl.trim())) {
+          setError(`Additional page URL must be a valid public https link: ${pageUrl.trim()}`); return
         }
       }
     }

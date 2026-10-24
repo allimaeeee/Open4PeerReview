@@ -4,7 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import { EXPERT_DOMAIN_LABELS, CC_LICENSE_LABELS, CC_LICENSE_DESCRIPTIONS } from '@/types'
 import type { ExpertDomain, CreativeCommonsLicense } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import { isKnownOerUrl } from '@/lib/oer-platform'
+import { isValidOerUrl } from '@/lib/oer-platform'
 import { updateDraft, updateAndSubmitDraft, updateDraftPdf } from '../actions'
 
 interface RubricOption {
@@ -130,8 +130,8 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
       return true
     } else {
       if (!oerUrl.trim()) return false
-      if (!isKnownOerUrl(oerUrl.trim())) {
-        throw new Error('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+      if (!isValidOerUrl(oerUrl.trim())) {
+        throw new Error('URL must be a valid public https link.')
       }
       const res = await fetch('/api/snapshot', {
         method: 'POST',
@@ -175,15 +175,15 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
     const willHaveContent = hasContent || (showContentReplace && (!!file || !!oerUrl.trim()))
     if (!willHaveContent) { setError('Please add a PDF or OER URL before submitting for review.'); return }
 
-    if (showContentReplace && sourceTab === 'url' && oerUrl.trim() && !isKnownOerUrl(oerUrl.trim())) {
-      setError('URL must be from a supported OER platform (OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, or Siyavula).')
+    if (showContentReplace && sourceTab === 'url' && oerUrl.trim() && !isValidOerUrl(oerUrl.trim())) {
+      setError('URL must be a valid public https link.')
       return
     }
     if (showContentReplace && sourceTab === 'url') {
       for (const pageUrl of additionalPageUrls) {
         if (!pageUrl.trim()) { setError('Remove empty page URL fields or fill them in.'); return }
-        if (!isKnownOerUrl(pageUrl.trim())) {
-          setError(`Additional page URL must be from a supported OER platform: ${pageUrl.trim()}`)
+        if (!isValidOerUrl(pageUrl.trim())) {
+          setError(`Additional page URL must be a valid public https link: ${pageUrl.trim()}`)
           return
         }
       }
@@ -387,7 +387,7 @@ export function EditDraftForm({ documentId, initial, rubrics, authorInstitution,
                     className={inputBase}
                   />
                   <p className="mt-1 text-xs text-slate-400">
-                    Supported: OpenStax, Pressbooks, OER Commons, LibreTexts, MERLOT, Open Textbook Library, Siyavula.
+                    Any public https link works. Pressbooks books on custom domains are detected automatically; other sites are labelled "Other".
                   </p>
                 </div>
                 <div>

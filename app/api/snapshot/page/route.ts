@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { isKnownOerUrl } from '@/lib/oer-platform'
+import { isValidOerUrl } from '@/lib/oer-platform'
 import { fetchAndSnapshot } from '@/lib/snapshot-utils'
 
 // Lazily snapshot a single OER page URL on demand.
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  if (!url || !isKnownOerUrl(url)) {
+  if (!url || !isValidOerUrl(url)) {
     return NextResponse.json(
-      { error: 'URL must be from a supported OER platform' },
+      { error: 'URL must be a valid public https link' },
       { status: 400 }
     )
   }
