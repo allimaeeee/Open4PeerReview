@@ -1,0 +1,64 @@
+{
+  "id": "accessibility",
+  "name": "Accessibility",
+  "description": "Evaluates how well an OER meets accessibility standards for diverse learners, including those using assistive technologies.",
+  "preamble": "Accessibility in OER is not merely a compliance requirement — it is a commitment to universal participation in knowledge. This rubric evaluates whether the resource is perceivable, operable, understandable, and robust for all learners, including those who use assistive technologies such as screen readers, voice control, and alternative input devices.\n\nReviewers should consider the lived experience of a student with a visual, auditory, motor, or cognitive disability attempting to engage fully with this resource in an academic setting.",
+  "criteria": [
+    {
+      "id": "C1",
+      "title": "Text Structure & Screen Reader Navigation",
+      "standard": "Document uses proper heading hierarchy (H1–H6), meaningful landmark regions, and logical reading order. Screen reader users can navigate efficiently using headings and skip navigation.",
+      "needsImprovementPrompt": "Heading structure is absent, illogical, or decorative. No skip navigation. Reading order is unclear.",
+      "exceedsPrompt": "Exemplary semantic structure with ARIA landmarks, skip links, meaningful page titles, and fully logical DOM order matching visual layout."
+    },
+    {
+      "id": "C2",
+      "title": "Visual Design & Color Contrast",
+      "standard": "All text meets WCAG 2.1 AA contrast ratio (4.5:1 for normal text, 3:1 for large text). Color is not the sole conveyor of information.",
+      "needsImprovementPrompt": "Text fails contrast thresholds. Color used exclusively to convey meaning (e.g., red = wrong) with no alternative cue.",
+      "exceedsPrompt": "Meets WCAG 2.1 AAA contrast ratios. Multiple visual cues (pattern, icon, text) reinforce color-based information. High-contrast mode tested."
+    },
+    {
+      "id": "C3",
+      "title": "Alternative Text & Image Accessibility",
+      "standard": "All informational images have descriptive alt text. Decorative images use empty alt text (alt=\"\"). Complex images include extended descriptions.",
+      "needsImprovementPrompt": "Images lack alt text, use file names, or have generic descriptions. Complex diagrams have no extended description.",
+      "exceedsPrompt": "Alt text is precise and contextually rich. Complex figures include full textual equivalents. Infographics are fully described in surrounding text."
+    },
+    {
+      "id": "C4",
+      "title": "Multimedia (Video/Audio) Accessibility",
+      "standard": "All video content includes accurate closed captions and a text transcript. Audio content has a full transcript. Captions are synchronized and complete.",
+      "needsImprovementPrompt": "Videos lack captions or use auto-generated captions with significant errors. No transcripts provided.",
+      "exceedsPrompt": "Captions are professionally edited, speaker-identified, and include non-speech audio cues. Transcripts include timestamps and are fully searchable."
+    },
+    {
+      "id": "C5",
+      "title": "Interactive Elements & Forms",
+      "standard": "All interactive elements are keyboard-accessible with visible focus indicators. Form fields have associated labels. Error messages are descriptive and accessible.",
+      "needsImprovementPrompt": "Interactive elements are mouse-only. Form fields lack labels. Errors are indicated only by color.",
+      "exceedsPrompt": "Full keyboard and switch-access support. Focus management is explicit. Error prevention and recovery guidance follows WCAG 3.3 success criteria."
+    },
+    {
+      "id": "C6",
+      "title": "Table Structure & Data Presentation",
+      "standard": "Data tables use proper markup (<th> with scope). Complex tables include summaries. Tables are not used for layout.",
+      "needsImprovementPrompt": "Tables lack header markup. Layout tables used. No summaries for complex data tables.",
+      "exceedsPrompt": "All tables include captions, scoped headers, and extended summaries. Data is also provided in an alternative accessible format."
+    },
+    {
+      "id": "C7",
+      "title": "Link Quality & Context",
+      "standard": "Link text is descriptive and meaningful out of context. No 'click here' or bare URL links. Links to external content indicate new window/tab behavior.",
+      "needsImprovementPrompt": "Links use generic text ('click here', 'read more'). Identical link text goes to different destinations. No new-window warnings.",
+      "exceedsPrompt": "All links are uniquely descriptive. External links include context for destination and behavior. Broken links verified as absent."
+    },
+    {
+      "id": "C8",
+      "title": "Technical Format & Compatibility",
+      "standard": "File formats are accessible (accessible PDF with tagged content, or HTML). Document language is specified. Compatible with common assistive technologies.",
+      "needsImprovementPrompt": "Files are scanned images of text (not OCR'd). PDF is untagged. Language attribute absent. Tested on only one platform.",
+      "exceedsPrompt": "Accessible PDF with full tag tree, logical structure, and language metadata. HTML validated. Tested across multiple browsers, OS, and screen reader combinations."
+    }
+  ]
+}

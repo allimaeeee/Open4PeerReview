@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Claude Code agent working files
+.claude/worktrees/
+
 # dependencies
 /node_modules
 /.pnp
@@ -31,7 +34,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+
+.env
+.env.local
+.env*.local
 
 # vercel
 .vercel
@@ -39,3 +45,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# extension build output
+.archiver_shadow/
+.snapshots/
+.gstack/
+
+.claude/
+
+extension/dist.zip
+extension/dist.crx
+
+# Supabase CLI internal cache
+/supabase/.temp/

@@ -1,0 +1,56 @@
+{
+  "id": "udl",
+  "name": "Universal Design for Learning (UDL)",
+  "description": "Evaluates the degree to which the OER proactively removes barriers to learning through multiple means of representation, expression, and engagement.",
+  "preamble": "Universal Design for Learning (UDL) is a framework grounded in the neuroscience of learning. It asks us to design resources that are flexible enough to meet the needs of every learner from the outset — not as an accommodation but as a foundational design principle.\n\nReviewers should ask: could a student with dyslexia, ADHD, anxiety, limited prior knowledge, or a non-Western cultural background engage fully and successfully with this resource as designed?",
+  "criteria": [
+    {
+      "id": "C1", "title": "Multiple Options for Representation & Perception",
+      "standard": "Content is presented in multiple formats (text, audio, visual, interactive) to support diverse perceptual needs.",
+      "needsImprovementPrompt": "Content exists only in one modality (e.g., text only). No alternatives for learners who process differently.",
+      "exceedsPrompt": "Content is available in three or more modalities with seamless transitions between them."
+    },
+    {
+      "id": "C2", "title": "Learner Choice in Expression & Demonstration",
+      "standard": "Assessment options allow learners to demonstrate knowledge through varied means (written, oral, visual, etc.).",
+      "needsImprovementPrompt": "All assessment is in a single format with no alternatives offered.",
+      "exceedsPrompt": "Learners have genuine agency in selecting how they demonstrate mastery across a range of options."
+    },
+    {
+      "id": "C3", "title": "Engagement, Relevance & Cultural Responsiveness",
+      "standard": "Content connects to diverse learner backgrounds and contexts. Examples and scenarios reflect varied cultures and experiences.",
+      "needsImprovementPrompt": "Examples and scenarios center a narrow demographic. Cultural context is assumed or invisible.",
+      "exceedsPrompt": "Resource actively centers underrepresented perspectives and invites learners to bring their own context."
+    },
+    {
+      "id": "C4", "title": "Transparent Expectations & Actionable Feedback",
+      "standard": "Learning objectives are clearly stated. Feedback mechanisms are formative, specific, and actionable.",
+      "needsImprovementPrompt": "Objectives are vague or absent. Feedback is summative only, without guidance for improvement.",
+      "exceedsPrompt": "Objectives are co-constructed with learner input. Feedback loops are embedded and support self-regulation."
+    },
+    {
+      "id": "C5", "title": "Collaboration, Communication & Community",
+      "standard": "Opportunities for peer interaction and collaborative learning are intentionally designed into the resource.",
+      "needsImprovementPrompt": "Resource is entirely individualized with no collaborative learning opportunities.",
+      "exceedsPrompt": "Community of practice is embedded. Collaborative activities are structured, supported, and culturally responsive."
+    },
+    {
+      "id": "C6", "title": "Metacognition, Self-Regulation & Strategic Learning",
+      "standard": "Resource includes tools or prompts to support learner self-monitoring, goal setting, and reflection.",
+      "needsImprovementPrompt": "No metacognitive scaffolding. Learners have no tools to monitor their own understanding.",
+      "exceedsPrompt": "Reflection and goal-setting are woven throughout. Learners are explicitly taught to use metacognitive strategies."
+    },
+    {
+      "id": "C7", "title": "Equity, Bias Awareness & Inclusive Environments",
+      "standard": "Resource is free from stereotypes and actively works to create a psychologically safe learning environment.",
+      "needsImprovementPrompt": "Implicit or explicit biases are present. Language or examples exclude or stereotype learner groups.",
+      "exceedsPrompt": "Resource actively names and interrogates bias and privilege within the discipline and content."
+    },
+    {
+      "id": "C8", "title": "OER-Specific UDL Considerations",
+      "standard": "The open nature of the resource enables customization for diverse learner needs by instructors and institutions.",
+      "needsImprovementPrompt": "OER format prevents meaningful adaptation for diverse contexts or learner populations.",
+      "exceedsPrompt": "Resource is explicitly designed for remixing, with modular structure and an instructor guide for UDL-based customization."
+    }
+  ]
+}

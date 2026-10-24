@@ -1,0 +1,62 @@
+{
+  "id": "elearning",
+  "name": "eLearning Review",
+  "description": "Evaluates the technical quality, usability, and digital infrastructure of the OER for online and blended learning environments.",
+  "preamble": "eLearning review evaluates the resource not just as content but as a digital artifact that must function reliably across platforms, devices, and institutional infrastructures. Reviewers consider the experience of a student accessing the resource on a mobile phone, through a screen reader, or via a slow internet connection in a rural area.",
+  "criteria": [
+    {
+      "id": "C1", "title": "Usability and Technical Functionality",
+      "standard": "All features function correctly. Navigation is intuitive and consistent. No broken links or missing assets.",
+      "needsImprovementPrompt": "Broken links, missing media, or non-functional interactive elements found.",
+      "exceedsPrompt": "Exceptional usability with clear wayfinding, consistent interaction patterns, and zero technical errors."
+    },
+    {
+      "id": "C2", "title": "Technical Support and Documentation",
+      "standard": "Technical requirements and setup instructions are documented for both instructors and students.",
+      "needsImprovementPrompt": "No documentation of technical requirements or how to troubleshoot common issues.",
+      "exceedsPrompt": "Comprehensive instructor and student guides; troubleshooting FAQ included."
+    },
+    {
+      "id": "C3", "title": "Mobile Accessibility and Cross-Platform Compatibility",
+      "standard": "Resource functions correctly on major mobile platforms and browsers without loss of content or functionality.",
+      "needsImprovementPrompt": "Resource is desktop-only or breaks on mobile devices.",
+      "exceedsPrompt": "Responsive design optimized for mobile-first. Tested across iOS, Android, and desktop environments."
+    },
+    {
+      "id": "C4", "title": "LMS Integration and Interoperability",
+      "standard": "Resource can be integrated into common LMS platforms (Canvas, Blackboard, Moodle) via standard protocols (LTI, SCORM).",
+      "needsImprovementPrompt": "No LMS integration pathway documented. Proprietary format not interoperable.",
+      "exceedsPrompt": "Multiple integration pathways documented and tested. IMS Global compliance verified."
+    },
+    {
+      "id": "C5", "title": "Data Privacy, Security, and Ownership",
+      "standard": "Resource does not collect student data beyond what is disclosed. Privacy policy is accessible. FERPA compliance addressed.",
+      "needsImprovementPrompt": "Student data collection is undisclosed or undocumented. No privacy policy.",
+      "exceedsPrompt": "Privacy practices are exemplary and explicitly documented. Students retain ownership of their data."
+    },
+    {
+      "id": "C6", "title": "Cost, Sustainability, and Resource Requirements",
+      "standard": "Resource is free to access and use. No hidden costs. Dependencies on paid services are disclosed.",
+      "needsImprovementPrompt": "Resource requires paid subscriptions or software not disclosed to students.",
+      "exceedsPrompt": "Fully free and open-source. Sustainable without institutional subscriptions. Offline version available."
+    },
+    {
+      "id": "C8", "title": "Accessibility Integration",
+      "standard": "eLearning features meet WCAG 2.1 AA standards. Accessibility documentation is provided.",
+      "needsImprovementPrompt": "Interactive features are inaccessible to keyboard or screen reader users.",
+      "exceedsPrompt": "Full WCAG 2.1 AAA compliance for all interactive features. VPAT documentation available."
+    },
+    {
+      "id": "C9", "title": "Pedagogical Effectiveness and Learning Enhancement",
+      "standard": "Digital features enhance learning beyond what print would provide. Interactions are purposeful, not decorative.",
+      "needsImprovementPrompt": "Digital features add no pedagogical value beyond a static document.",
+      "exceedsPrompt": "Digital affordances are used innovatively to enable learning experiences impossible in print."
+    },
+    {
+      "id": "C10", "title": "Learning Analytics and Customization",
+      "standard": "Instructors can customize the resource for their course context. Basic analytics are available where appropriate.",
+      "needsImprovementPrompt": "Resource is a closed, uncustomizable package. No instructor controls.",
+      "exceedsPrompt": "Full customization with instructor dashboard, learner progress tracking, and ethical analytics."
+    }
+  ]
+}
