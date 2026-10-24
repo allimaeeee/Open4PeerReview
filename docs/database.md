@@ -175,8 +175,10 @@ this convention in its own header comment.
 The de-facto process:
 
 1. Write the DDL (tables, columns, indexes, **and RLS policies**).
-2. Apply it in the Supabase **SQL editor** (or via the Supabase MCP
-   `apply_migration` — a Supabase MCP server is configured in `.mcp.json`).
+2. Apply it in the Supabase **SQL editor**. The Supabase MCP server in
+   `.mcp.json` is **read-only** (`read_only=true`), so use it to inspect the
+   schema, policies, and advisors, not to apply migrations. To apply via MCP,
+   point a separate, non-read-only server entry at a Supabase **branch**.
    Prefer a Supabase **branch** for anything risky, then merge.
 3. Regenerate the TypeScript types:
    ```bash

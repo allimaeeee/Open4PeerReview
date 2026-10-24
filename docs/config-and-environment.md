@@ -60,8 +60,10 @@ Full script set (`package.json`):
 
 The project points at a **hosted** Supabase project by default; there is no
 top-level `supabase/` directory or `config.toml` checked in, so a local stack is
-optional. A Supabase **MCP server** is configured in `.mcp.json` for
-tool-driven access to the hosted project.
+optional. A **read-only** Supabase **MCP server** is configured in `.mcp.json`
+(scoped to the hosted project) for inspecting schema, RLS policies, and
+advisors. Authentication happens through the browser; no credentials are stored
+in the file.
 
 To run Supabase locally:
 
