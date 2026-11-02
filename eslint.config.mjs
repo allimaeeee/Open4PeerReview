@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+
+    // Vendored third-party code (Mozilla's PDF.js worker), not our source
+    "public/pdf.worker.min.mjs",
+    // Extension build output, generated from extension/src
+    "extension/dist/**",
   ]),
 ]);
 

@@ -1,0 +1,108 @@
+{
+  "app/author/components/UploadDocumentForm.tsx": {
+    "react/no-unescaped-entities": {
+      "count": 2
+    }
+  },
+  "app/author/feedback/[documentId]/FeedbackView.tsx": {
+    "react-hooks/preserve-manual-memoization": {
+      "count": 1
+    }
+  },
+  "app/author/feedback/[documentId]/PDFViewerReadOnlyCanvas.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 6
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/author/feedback/[documentId]/ReportFeedbackView.tsx": {
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "app/author/feedback/[documentId]/page.tsx": {
+    "react-hooks/error-boundaries": {
+      "count": 4
+    }
+  },
+  "app/coordinator/components/EditDraftForm.tsx": {
+    "react/no-unescaped-entities": {
+      "count": 2
+    }
+  },
+  "app/onboard/OnboardingForm.tsx": {
+    "react/no-unescaped-entities": {
+      "count": 4
+    }
+  },
+  "app/review/components/AnnotationHoverCard.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    },
+    "react-hooks/immutability": {
+      "count": 1
+    }
+  },
+  "app/review/components/AnnotationListCard.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 2
+    }
+  },
+  "app/review/components/AnnotationPopup.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/review/components/CriterionCard.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "app/review/components/HtmlViewerCanvas.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "app/review/components/PDFViewerCanvas.tsx": {
+    "@typescript-eslint/no-explicit-any": {
+      "count": 3
+    }
+  },
+  "components/layout/Navbar.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/patterns/DocumentCard.tsx": {
+    "react/no-unescaped-entities": {
+      "count": 2
+    }
+  },
+  "components/patterns/SettingsModal.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "components/ui/EvidenceCard.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "extension/src/content.ts": {
+    "prefer-const": {
+      "count": 2
+    }
+  },
+  "features/ai-chat/ChatMessages.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "features/ai-chat/useChatContext.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  }
+}
