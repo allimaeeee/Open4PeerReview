@@ -131,9 +131,10 @@ npm run package:ext     # build.mjs + package.mjs → extension/dist.zip
 
 `extension/package.mjs` uses `archiver` to zip the **contents** of
 `extension/dist/` (entries at the archive root, not nested under `dist/`) into
-`extension/dist.zip`. Per the README, `dist.zip` is **not committed** — it is
-regenerated fresh each time and shared directly (e.g. via Slack) with anyone who
-needs to install it.
+`extension/dist.zip`. **Neither `extension/dist/` nor `dist.zip` is committed** —
+both are generated (`npm run build:ext` / `npm run package:ext`) and gitignored.
+Per the README, `dist.zip` is regenerated fresh each time and shared directly
+(e.g. via Slack) with anyone who needs to install it.
 
 To publish a new version:
 
