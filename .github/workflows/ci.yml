@@ -37,6 +37,9 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      - name: Type-check extension
+        run: npm run typecheck:ext
+        
       - name: Tests
         run: npm test
 
