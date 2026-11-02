@@ -30,7 +30,7 @@ Package manager is npm. Node scripts live in `package.json`.
 - `npm run build` — production build (`next build`).
 - `npm start` — serve the production build.
 - `npm run lint` — ESLint (flat config in `eslint.config.mjs`, extends `eslint-config-next`).
-- There is **no** repo-wide typecheck script; `tsc` runs `--noEmit` via the Next build. `tsconfig.json` **excludes `extension/`** (it has its own build).
+- npm run typecheck runs next typegen && tsc --noEmit and also runs in CI. tsconfig.json excludes extension/ (it has its own esbuild build, which does not type-check).
 
 ### Tests (Vitest)
 - `npm test` — runs `vitest run`. **Test scope is currently narrow:** `vitest.config.ts` only includes `features/ai-chat/__tests__/**/*.test.ts` (Node environment). There is no component/E2E test layer yet.
