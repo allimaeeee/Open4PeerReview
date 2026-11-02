@@ -44,7 +44,7 @@ Package manager is npm. Node scripts live in `package.json`.
 - `npm run watch:ext` / `npm run watch:ext:dev` — rebuild on change.
 - `npm run package:ext` — production build + zip → `extension/dist.zip` (runs `extension/build.mjs` then `extension/package.mjs`).
 - Build script: `extension/build.mjs`. The target OER Hub URL is baked in at build time based on `OERHUB_ENV`, so pick the matching command for where the app is running.
-- `extension/dist.zip` and `extension/dist.crx` are gitignored and never committed. Run `npm run package:ext` to generate a fresh zip on demand — don't assume a committed zip exists, and don't try to "update" one in git.
+- `extension/dist/`, `extension/dist.zip`, and `extension/dist.crx` are all gitignored and never committed. Run `npm run build:ext` (or `build:ext:dev`) to generate `extension/dist/` before loading it unpacked, or `npm run package:ext` for a fresh zip — don't assume any of these exist in a fresh clone, and don't try to "update" one in git.
 
 ### Environment variables
 Required for the app to run (Supabase + AI):

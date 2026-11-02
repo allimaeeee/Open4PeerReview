@@ -55,6 +55,7 @@ next-env.d.ts
 
 extension/dist.zip
 extension/dist.crx
+extension/dist/
 
 # Supabase CLI internal cache
 /supabase/.temp/
