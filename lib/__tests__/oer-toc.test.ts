@@ -99,6 +99,18 @@ describe('Pressbooks', () => {
     expect(toc.chapters.map(c => [c.title, c.pages.length])).toEqual([['Intro', 1], ['Methods', 1]])
   })
 
+  it('lists front matter first and back matter last, one page each', () => {
+    const toc = parsePressbooksToc(
+      {
+        'front-matter': [{ title: 'Overview', link: 'https://b.pub/x/front-matter/overview/' }],
+        parts: [{ title: 'Chapter 1: Basics', chapters: [{ title: '1.1 Intro', link: 'https://b.pub/x/chapter/1-1/' }] }],
+        'back-matter': [{ title: 'Appendix A', link: 'https://b.pub/x/back-matter/appendix-a/' }],
+      },
+      'Book',
+    )!
+    expect(toc.chapters.map(c => [c.title, c.pages.length])).toEqual([['Overview', 1], ['Chapter 1: Basics', 1], ['Appendix A', 1]])
+  })
+
   it('returns null for an empty TOC', () => {
     expect(parsePressbooksToc({ parts: [] }, 'Book')).toBeNull()
   })

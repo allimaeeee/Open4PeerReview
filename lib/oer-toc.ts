@@ -86,9 +86,17 @@ export function parseOpenStaxToc(html: string, pageUrl: string): OerToc | null {
 // ── Pressbooks ──────────────────────────────────────────────────────────────
 // Every Pressbooks book (any domain) serves its TOC at <book root>/wp-json/pressbooks/v2/toc.
 // Parts group chapters; books without parts put everything in one untitled "Main Body" part.
+// Front matter (overview, preface) and back matter (appendices) are single pages around the parts.
+
+interface PressbooksItem {
+  title?: string
+  link?: string
+}
 
 export interface PressbooksToc {
-  parts?: { title?: string; chapters?: { title?: string; link?: string }[] }[]
+  'front-matter'?: PressbooksItem[]
+  parts?: { title?: string; chapters?: PressbooksItem[] }[]
+  'back-matter'?: PressbooksItem[]
 }
 
 /** https://host/book/chapter/x/ → https://host/book/ (works for root-domain books too). */
@@ -99,11 +107,13 @@ export function pressbooksBookRoot(url: string): string {
 }
 
 export function parsePressbooksToc(toc: PressbooksToc, bookTitle: string): OerToc | null {
-  const chapters: TocChapter[] = []
+  const toPages = (items: PressbooksItem[] = []) =>
+    items.filter(c => c.link).map(c => ({ title: cleanTitle(c.title ?? ''), url: c.link! }))
+  const singles = (items?: PressbooksItem[]) => toPages(items).map(p => ({ title: p.title, pages: [p] }))
+
+  const chapters: TocChapter[] = singles(toc['front-matter'])
   for (const part of toc.parts ?? []) {
-    const pages = (part.chapters ?? [])
-      .filter(c => c.link)
-      .map(c => ({ title: cleanTitle(c.title ?? ''), url: c.link! }))
+    const pages = toPages(part.chapters)
     if (!pages.length) continue
     const partTitle = cleanTitle(part.title ?? '')
     if (!partTitle || /^main body$/i.test(partTitle)) {
@@ -113,6 +123,7 @@ export function parsePressbooksToc(toc: PressbooksToc, bookTitle: string): OerTo
       chapters.push({ title: partTitle, pages })
     }
   }
+  chapters.push(...singles(toc['back-matter']))
   return chapters.length ? { bookTitle: cleanTitle(bookTitle), platform: 'Pressbooks', chapters } : null
 }
 
