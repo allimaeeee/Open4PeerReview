@@ -278,6 +278,7 @@ export function CriterionCard({
           </div>
 
           <div className={`flex gap-3 min-w-0 ${isNarrow ? 'flex-col' : ''}`}>
+            {(!isReadOnly || score.scores.includes('exceeds')) && (
             <RatingBox
               variant="exceeds"
               style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('exceeds')}
@@ -292,6 +293,8 @@ export function CriterionCard({
               onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
               isReadOnly={isReadOnly}
             />
+            )}
+            {(!isReadOnly || score.scores.includes('exemplifies')) && (
             <RatingBox
               variant="exemplifies"
               style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('exemplifies')}
@@ -306,6 +309,8 @@ export function CriterionCard({
               onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
               isReadOnly={isReadOnly}
             />
+            )}
+            {(!isReadOnly || score.scores.includes('does_not_meet')) && (
             <RatingBox
               variant="does_not_meet"
               style={isNarrow ? { flex: 'none', width: '100%' } : getColumnStyle('does_not_meet')}
@@ -320,6 +325,7 @@ export function CriterionCard({
               onTextareaBlur={isNarrow ? undefined : () => setFocusedBox(null)}
               isReadOnly={isReadOnly}
             />
+            )}
           </div>
 
           {score.annotations.length > 0 && (

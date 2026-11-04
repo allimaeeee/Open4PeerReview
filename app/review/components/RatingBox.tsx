@@ -124,10 +124,11 @@ export function RatingBox({
         variant={TEXTAREA_VARIANTS[variant]}
         placeholder={PLACEHOLDERS[variant]}
         value={localText}
-        onChange={e => setLocalText(e.target.value)}
+        onChange={isReadOnly ? undefined : e => setLocalText(e.target.value)}
         rows={4}
         resize="none"
-        disabled={isReadOnly}
+        readOnly={isReadOnly}
+        placeholder={isReadOnly && !localText.trim() ? '' : PLACEHOLDERS[variant]}
         onFocus={onTextareaFocus}
         onBlur={onTextareaBlur}
         className="flex-1 bg-transparent [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-secondary/40 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb:hover]:bg-secondary/60"
