@@ -122,7 +122,6 @@ export function RatingBox({
       <span className={labelClass}>{LABELS[variant]}</span>
       <Textarea
         variant={TEXTAREA_VARIANTS[variant]}
-        placeholder={PLACEHOLDERS[variant]}
         value={localText}
         onChange={isReadOnly ? undefined : e => setLocalText(e.target.value)}
         rows={4}
